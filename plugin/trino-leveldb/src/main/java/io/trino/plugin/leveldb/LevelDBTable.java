@@ -78,7 +78,7 @@ public class LevelDBTable
         ArrayList<LevelDBColumn> columns = new ArrayList<LevelDBColumn>();
         // TODO: we build a similar list three times -> optimize
         for (Map<String, Object> col : cols) {
-            LevelDBColumn c = new LevelDBColumn((String)col.get("name"), checkNotNull(LevelDBColumn.type_converter((String) col.get("type")), "Failed to convert %s::%s", description.get("name"), col.get("name") ), Integer.valueOf((Integer)col.get("index")));
+            LevelDBColumn c = new LevelDBColumn((String) col.get("name"), checkNotNull(LevelDBColumn.type_converter((String) col.get("type")), "Failed to convert %s::%s", description.get("name"), col.get("name")), Integer.valueOf((Integer) col.get("index")));
             columns.add(c);
         }
         System.out.println("LevelDBTable::getColumnList end");

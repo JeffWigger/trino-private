@@ -34,7 +34,7 @@ public class LevelDBSplit
             @JsonProperty("address") String address,
             @JsonProperty("port") int port)
     {
-        System.out.println("LevelDBSplit: "+ address+" port: "+ port);
+        System.out.println("LevelDBSplit: " + address + " port: " + port);
         this.address = address;
         this.port = port;
 

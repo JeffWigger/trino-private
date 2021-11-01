@@ -68,7 +68,7 @@ public final class LevelDBColumn
                     return CharType.createCharType(Integer.valueOf(type.substring(type.indexOf('(') + 1, type.indexOf(')'))));
                 }
         }
-        System.err.println("Could not convert "+ typeName+ " to a Trino type");
+        System.err.println("Could not convert " + typeName + " to a Trino type");
         return null;
     }
 

@@ -20,7 +20,6 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.trino.spi.connector.RecordCursor;
 import io.trino.spi.type.BigintType;
-import io.trino.spi.type.DateTimeEncoding;
 import io.trino.spi.type.DateType;
 import io.trino.spi.type.DecimalParseResult;
 import io.trino.spi.type.DecimalType;
@@ -29,11 +28,6 @@ import io.trino.spi.type.Type;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.Period;
-import java.time.format.DateTimeFormatter;
-
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -41,10 +35,8 @@ import java.util.Map;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
-import static io.trino.spi.type.VarcharType.createUnboundedVarcharType;
 
 public class LevelDBRecordCursor
         implements RecordCursor
@@ -54,11 +46,11 @@ public class LevelDBRecordCursor
     private final List<LevelDBColumnHandle> columnHandles;
     private final int[] fieldToColumnIndex;
     private final CommunicatorFactory commFactory;
-    private long totalBytes;
-    private List<String> fields;
     private final Communicator comm;
     private final LevelDBTableHandle table;
-    private final  SimpleDateFormat formatter;
+    private final SimpleDateFormat formatter;
+    private long totalBytes;
+    private List<String> fields;
 
     public LevelDBRecordCursor(LevelDBTableHandle table, List<LevelDBColumnHandle> columnHandles, CommunicatorFactory commFactory)
     {
@@ -79,7 +71,8 @@ public class LevelDBRecordCursor
         totalBytes = 0;
     }
 
-    private void setUpServer(){
+    private void setUpServer()
+    {
         System.out.println("LevelDBRecordCursor::setUpServer");
         ObjectMapper mapper = new ObjectMapper();
         Map<String, String> map = new HashMap<String, String>();
@@ -150,29 +143,29 @@ public class LevelDBRecordCursor
         String s = getFieldValue(field);
         //System.out.println("getLong: "+s+" was field:"+field);
         Type t = getType(field);
-        if(t instanceof DecimalType){
+        if (t instanceof DecimalType) {
             DecimalType tt = (DecimalType) t;
             String prefix = "";
             String postfix = "";
-            if (s.startsWith("-")){
+            if (s.startsWith("-")) {
                 prefix = "-";
                 s = s.substring(1);
             }
-            if (!s.contains(".")){
-                postfix  =".00";
+            if (!s.contains(".")) {
+                postfix = ".00";
             }
-            if (s.length() > ((DecimalType) t).getPrecision()){
+            if (s.length() > ((DecimalType) t).getPrecision()) {
                 //System.out.println("MALFORMED DECIMAL");
             }
             // TODO: currently assume the decimal point is always included
-            DecimalParseResult ret = Decimals.parseIncludeLeadingZerosInPrecision(prefix+"0".repeat(((DecimalType) t).getPrecision()-s.length())+s+postfix);
+            DecimalParseResult ret = Decimals.parseIncludeLeadingZerosInPrecision(prefix + "0".repeat(((DecimalType) t).getPrecision() - s.length()) + s + postfix);
             return (Long) ret.getObject();
-
-        }else if( t instanceof BigintType){
+        }
+        else if (t instanceof BigintType) {
             //System.out.println("BIGINT");
             return Long.parseLong(s);
-        }else if( t instanceof DateType){
-
+        }
+        else if (t instanceof DateType) {
             Date date = null;
             try {
                 date = this.formatter.parse(s);
@@ -180,15 +173,11 @@ public class LevelDBRecordCursor
             catch (ParseException e) {
                 e.printStackTrace();
             }
-            Long data_long = date.getTime();
-            //System.out.println("Long_date: "+ data_long);
-            return data_long/86400000 + 1; // millisecond in a day //TODO why is +1 needed
-
-
-
+            Long dataLong = date.getTime();
+            //System.out.println("Long_date: "+ dataLong);
+            return dataLong / 86400000 + 1; // millisecond in a day //TODO why is +1 needed
         }
         return Long.parseLong(s);
-
     }
 
     @Override

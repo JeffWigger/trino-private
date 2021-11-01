@@ -27,9 +27,7 @@ import io.trino.spi.connector.TableNotFoundException;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
 public class LevelDBSplitManager

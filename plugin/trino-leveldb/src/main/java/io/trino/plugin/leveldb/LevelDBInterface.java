@@ -60,11 +60,10 @@ public class LevelDBInterface
         ArrayList<String> tables = null;
         try {
             tables = mapper.treeToValue(json.get("tables"), ArrayList.class);
-            for(String str : tables){
+            for (String str : tables) {
                 System.out.println(str);
                 System.out.println(str.charAt(0) == '\n');
-                System.out.println(str.charAt(str.length()-1) == '\n');
-
+                System.out.println(str.charAt(str.length() - 1) == '\n');
             }
         }
         catch (JsonProcessingException e) {

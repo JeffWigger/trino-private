@@ -69,11 +69,11 @@ public class LevelDBMetadata
         }
         List<String> tables = levelDBAPI.getTableNames(Optional.empty());
         // TODO: This is unfortunate
-        for (String str: tables){
+        for (String str : tables) {
             System.out.println(str);
         }
         if (!tables.contains(tableName.getTableName().toUpperCase(Locale.ENGLISH))) {
-            System.out.println("getTableHandle table "+tableName.getTableName().toUpperCase(Locale.ENGLISH)+" not included in tables");
+            System.out.println("getTableHandle table " + tableName.getTableName().toUpperCase(Locale.ENGLISH) + " not included in tables");
             return null;
         }
 
@@ -156,7 +156,7 @@ public class LevelDBMetadata
 
         JsonNode json = levelDBAPI.getTableDesc(tableName.getTableName(), Optional.of(tableName.getSchemaName()));
         LevelDBTable table;
-        System.out.println("getTableMetadata cmp: "+ tableName.getTableName() +" : "+json.get("name").asText() );
+        System.out.println("getTableMetadata cmp: " + tableName.getTableName() + " : " + json.get("name").asText());
         if (!tableName.getTableName().equalsIgnoreCase(json.get("name").asText())) { // TODO can json be null here or will it just be empty
             System.out.println("getTableMetadata: not equal");
             return null;
