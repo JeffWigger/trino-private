@@ -10,7 +10,7 @@
 
     <groupId>io.trino</groupId>
     <artifactId>trino-root</artifactId>
-    <version>363</version>
+    <version>363-SNAPSHOT</version>
 
     <name>trino-root</name>
     <description>Trino</description>
@@ -30,7 +30,7 @@
     <scm>
         <connection>scm:git:git://github.com/trinodb/trino.git</connection>
         <url>https://github.com/trinodb/trino</url>
-        <tag>363</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <properties>
@@ -125,6 +125,7 @@
         <module>plugin/trino-kafka</module>
         <module>plugin/trino-kinesis</module>
         <module>plugin/trino-kudu</module>
+        <module>plugin/trino-leveldb</module>
         <module>plugin/trino-local-file</module>
         <module>plugin/trino-memory</module>
         <module>plugin/trino-memsql</module>
@@ -554,7 +555,7 @@
             <dependency>
                 <groupId>io.trino.hive</groupId>
                 <artifactId>hive-apache</artifactId>
-                <version>3.1.2-16</version>
+                <version>3.1.2-15</version>
             </dependency>
 
             <dependency>
@@ -1721,7 +1722,6 @@
                                     -Xep:EqualsIncompatibleType:ERROR
                                     -Xep:FallThrough:ERROR
                                     -Xep:FormatString:ERROR
-                                    -Xep:FormatStringAnnotation:ERROR
                                     -Xep:GetClassOnAnnotation:ERROR
                                     -Xep:GetClassOnClass:ERROR
                                     -Xep:IdentityBinaryExpression:ERROR
@@ -1737,8 +1737,6 @@
                                     -Xep:OptionalMapUnusedValue:ERROR
                                     -Xep:PreconditionsInvalidPlaceholder:ERROR
                                     -Xep:ReturnValueIgnored:ERROR
-                                    -Xep:SelfAssignment:ERROR
-                                    -Xep:StreamToString
                                     -Xep:StaticQualifiedUsingExpression:ERROR
                                     -Xep:ThrowIfUncheckedKnownChecked:ERROR
                                     -Xep:UnnecessaryCheckNotNull:ERROR
