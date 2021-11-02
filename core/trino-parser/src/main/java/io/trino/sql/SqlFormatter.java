@@ -33,6 +33,7 @@ import io.trino.sql.tree.CreateTableAsSelect;
 import io.trino.sql.tree.CreateView;
 import io.trino.sql.tree.Deallocate;
 import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.DescribeInput;
 import io.trino.sql.tree.DescribeOutput;
 import io.trino.sql.tree.DropColumn;
@@ -1773,6 +1774,13 @@ public final class SqlFormatter
         {
             builder.append("SET TIME ZONE ");
             builder.append(node.getTimeZone().map(ExpressionFormatter::formatExpression).orElse("LOCAL"));
+            return null;
+        }
+
+        @Override
+        public Void visitDeltaUpdate(DeltaUpdate node, Integer indent)
+        {
+            builder.append("DELTAUPDATE ").append(node.getTarget()).append(" FROM ").append(node.getSource());
             return null;
         }
 
