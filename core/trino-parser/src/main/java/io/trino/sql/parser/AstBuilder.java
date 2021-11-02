@@ -58,6 +58,7 @@ import io.trino.sql.tree.DateTimeDataType;
 import io.trino.sql.tree.Deallocate;
 import io.trino.sql.tree.DecimalLiteral;
 import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.DereferenceExpression;
 import io.trino.sql.tree.DescribeInput;
 import io.trino.sql.tree.DescribeOutput;
@@ -1196,6 +1197,15 @@ class AstBuilder
     }
 
     @Override
+    public Node visitDeltaUpdate(SqlBaseParser.DeltaUpdateContext context)
+    {
+        return new DeltaUpdate(
+                getLocation(context),
+                getQualifiedName(context.target),
+                getQualifiedName(context.source));
+    }
+
+    @Override
     public Node visitShowFunctions(SqlBaseParser.ShowFunctionsContext context)
     {
         return new ShowFunctions(getLocation(context),
@@ -1947,7 +1957,7 @@ class AstBuilder
 
     /**
      * Returns the corresponding {@link FunctionCall} for the `LISTAGG` primary expression.
-     *
+     * <p>
      * Although the syntax tree should represent the structure of the original parsed query
      * as closely as possible and any semantic interpretation should be part of the
      * analysis/planning phase, in case of `LISTAGG` aggregation function it is more pragmatic
