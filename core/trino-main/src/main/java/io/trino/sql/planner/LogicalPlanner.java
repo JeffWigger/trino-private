@@ -50,6 +50,7 @@ import io.trino.sql.planner.optimizations.PlanOptimizer;
 import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.ExplainAnalyzeNode;
 import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.OutputNode;
@@ -71,6 +72,7 @@ import io.trino.sql.tree.CoalesceExpression;
 import io.trino.sql.tree.ComparisonExpression;
 import io.trino.sql.tree.CreateTableAsSelect;
 import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.ExplainAnalyze;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.FunctionCall;
@@ -258,6 +260,10 @@ public class LogicalPlanner
             }
             return createTableCreationPlan(analysis, ((CreateTableAsSelect) statement).getQuery());
         }
+        if (statement instanceof DeltaUpdate){
+            checkState(analysis.getDeltaUpdate().isPresent(), "DeltaUpdate handle is missing");
+            return createDeltaUpdatePlan(analysis, (DeltaUpdate) statement);
+        }
         if (statement instanceof Analyze) {
             return createAnalyzePlan(analysis, (Analyze) statement);
         }
@@ -376,6 +382,41 @@ public class LogicalPlanner
                 tableMetadata.getColumns(),
                 newTableLayout,
                 statisticsMetadata);
+    }
+
+    private RelationPlan createDeltaUpdatePlan(Analysis analysis, DeltaUpdate deltaUpdateStatement)
+    {
+        Analysis.DeltaUpdate deltaUpdate = analysis.getDeltaUpdate().orElseThrow();
+
+        //List<Analysis.Insert> inserts = deltaUpdate.getInserts();
+        ImmutableList.Builder<PlanNode> plans = new ImmutableList.Builder<>();
+        //for (Analysis.Insert insert : inserts){
+
+        for (int i = 0 ; i < deltaUpdate.getAnalyses().size(); i++){
+            Insert insertStatement = deltaUpdateStatement.getInserts().get(i);
+            // createInsertPlan needs analysis.Insert so we paste the body here
+            /*Analysis.Insert insert = deltaUpdate.getAnalyses().get(i).getInsert().get();
+            TableHandle tableHandle = insert.getTarget();
+            Query query = insertStatement.getQuery();
+            Optional<NewTableLayout> newTableLayout = insert.getNewTableLayout();
+            //return getInsertPlan(analysis, query, tableHandle, insert.getColumns(), newTableLayout, false, null);
+            plans.add(getInsertPlan(analysis, query, tableHandle, insert.getColumns(), newTableLayout, false, null).getRoot());
+
+            */
+
+            plans.add(createInsertPlan(deltaUpdate.getAnalyses().get(i), insertStatement).getRoot());
+            // createInsertPlan return this
+            //  new RelationPlan(commitNode, analysis.getRootScope(), commitNode.getOutputSymbols(), Optional.empty());
+        }
+        DeltaUpdateNode topNode = new DeltaUpdateNode(
+                idAllocator.getNextId(),
+                plans.build(),
+                symbolAllocator.newSymbol("partialrows", BIGINT)
+                //symbolAllocator.newSymbol("fragment", VARBINARY)
+        );
+
+        return new RelationPlan(topNode, analysis.getRootScope(), topNode.getOutputSymbols(), Optional.empty());
+
     }
 
     private RelationPlan getInsertPlan(

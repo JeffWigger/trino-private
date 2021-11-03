@@ -43,6 +43,7 @@ import io.trino.sql.planner.plan.ApplyNode;
 import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.ChildReplacer;
 import io.trino.sql.planner.plan.CorrelatedJoinNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.DistinctLimitNode;
 import io.trino.sql.planner.plan.EnforceSingleRowNode;
 import io.trino.sql.planner.plan.ExchangeNode;
@@ -616,6 +617,17 @@ public class AddExchanges
                         source.getProperties());
             }
             return rebaseAndDeriveProperties(node, source);
+        }
+
+        @Override
+        public PlanWithProperties visitDeltaUpdate(DeltaUpdateNode node, PreferredProperties preferredProperties)
+        {
+            ImmutableList.Builder<PlanWithProperties> properties = new ImmutableList.Builder();
+
+            for (PlanNode np : node.getSources()){
+                properties.add(np.accept(this, preferredProperties));
+            }
+            return rebaseAndDeriveProperties(node, properties.build());
         }
 
         @Override

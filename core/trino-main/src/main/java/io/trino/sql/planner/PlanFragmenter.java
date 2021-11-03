@@ -31,6 +31,7 @@ import io.trino.spi.connector.ConnectorPartitionHandle;
 import io.trino.spi.connector.ConnectorPartitioningHandle;
 import io.trino.spi.type.Type;
 import io.trino.sql.planner.plan.AggregationNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.ExchangeNode;
 import io.trino.sql.planner.plan.ExplainAnalyzeNode;
 import io.trino.sql.planner.plan.JoinNode;
@@ -303,6 +304,15 @@ public class PlanFragmenter
             context.get().setCoordinatorOnlyDistribution();
             return context.defaultRewrite(node, context.get());
         }
+
+        /*@Override
+        public PlanNode visitDeltaUpdate(DeltaUpdateNode node, RewriteContext<FragmentProperties> context)
+        {
+            // only want DeltaUpdate to be on the Distributor only
+            // context.get().setCoordinatorOnlyDistribution();
+            // the function changes the context for all children
+            return context.defaultRewrite(node, context.get());
+        }*/
 
         @Override
         public PlanNode visitTableScan(TableScanNode node, RewriteContext<FragmentProperties> context)

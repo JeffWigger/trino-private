@@ -49,6 +49,7 @@ import static java.util.Objects.requireNonNull;
         @JsonSubTypes.Type(value = IndexSourceNode.class, name = "indexsource"),
         @JsonSubTypes.Type(value = RefreshMaterializedViewNode.class, name = "refreshmaterializedview"),
         @JsonSubTypes.Type(value = TableWriterNode.class, name = "tablewriter"),
+        @JsonSubTypes.Type(value = DeltaUpdateNode.class, name = "deltaupdate"),
         @JsonSubTypes.Type(value = DeleteNode.class, name = "delete"),
         @JsonSubTypes.Type(value = UpdateNode.class, name = "update"),
         @JsonSubTypes.Type(value = TableDeleteNode.class, name = "tableDelete"),

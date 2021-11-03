@@ -20,6 +20,7 @@ import com.google.common.collect.Ordering;
 import io.trino.execution.SqlStageExecution;
 import io.trino.execution.StageState;
 import io.trino.sql.planner.PlanFragment;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.ExchangeNode;
 import io.trino.sql.planner.plan.IndexJoinNode;
 import io.trino.sql.planner.plan.JoinNode;
@@ -175,6 +176,16 @@ public class AllAtOnceExecutionSchedule
 
         @Override
         public Void visitUnion(UnionNode node, Void context)
+        {
+            for (PlanNode subPlanNode : node.getSources()) {
+                subPlanNode.accept(this, context);
+            }
+
+            return null;
+        }
+
+        @Override
+        public Void visitDeltaUpdate(DeltaUpdateNode node, Void context)
         {
             for (PlanNode subPlanNode : node.getSources()) {
                 subPlanNode.accept(this, context);

@@ -34,6 +34,7 @@ import io.trino.sql.planner.plan.ApplyNode;
 import io.trino.sql.planner.plan.AssignUniqueId;
 import io.trino.sql.planner.plan.CorrelatedJoinNode;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.DistinctLimitNode;
 import io.trino.sql.planner.plan.EnforceSingleRowNode;
 import io.trino.sql.planner.plan.ExchangeNode;
@@ -458,6 +459,15 @@ public final class StreamPropertyDerivations
             StreamProperties properties = Iterables.getOnlyElement(inputProperties);
             // table writer only outputs the row count
             return properties.withUnspecifiedPartitioning();
+        }
+
+        @Override
+        public StreamProperties visitDeltaUpdate(DeltaUpdateNode node, List<StreamProperties> inputProperties)
+        {
+            /*StreamProperties properties = Iterables.getOnlyElement(inputProperties);
+            //  visitDeltaUpdate only outputs the row count
+            return properties.withUnspecifiedPartitioning();*/
+            return StreamProperties.singleStream();
         }
 
         @Override
