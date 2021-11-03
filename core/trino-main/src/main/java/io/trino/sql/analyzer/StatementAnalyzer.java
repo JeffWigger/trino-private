@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Streams;
 import io.trino.Session;
 import io.trino.connector.CatalogName;
@@ -31,6 +32,7 @@ import io.trino.metadata.Metadata;
 import io.trino.metadata.NewTableLayout;
 import io.trino.metadata.OperatorNotFoundException;
 import io.trino.metadata.QualifiedObjectName;
+import io.trino.metadata.QualifiedTablePrefix;
 import io.trino.metadata.RedirectionAwareTableHandle;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TableHandle;
@@ -96,6 +98,7 @@ import io.trino.sql.tree.CreateView;
 import io.trino.sql.tree.Cube;
 import io.trino.sql.tree.Deallocate;
 import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.DereferenceExpression;
 import io.trino.sql.tree.DropColumn;
 import io.trino.sql.tree.DropMaterializedView;
@@ -189,6 +192,7 @@ import io.trino.type.TypeCoercion;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -225,6 +229,7 @@ import static io.trino.spi.StandardErrorCode.DUPLICATE_WINDOW_NAME;
 import static io.trino.spi.StandardErrorCode.EXPRESSION_NOT_CONSTANT;
 import static io.trino.spi.StandardErrorCode.EXPRESSION_NOT_IN_DISTINCT;
 import static io.trino.spi.StandardErrorCode.FUNCTION_NOT_WINDOW;
+import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.INVALID_ARGUMENTS;
 import static io.trino.spi.StandardErrorCode.INVALID_COLUMN_REFERENCE;
 import static io.trino.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
@@ -248,6 +253,7 @@ import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.StandardErrorCode.NULL_TREATMENT_NOT_ALLOWED;
 import static io.trino.spi.StandardErrorCode.NUMERIC_VALUE_OUT_OF_RANGE;
 import static io.trino.spi.StandardErrorCode.SCHEMA_NOT_FOUND;
+import static io.trino.spi.StandardErrorCode.SYNTAX_ERROR;
 import static io.trino.spi.StandardErrorCode.TABLE_ALREADY_EXISTS;
 import static io.trino.spi.StandardErrorCode.TABLE_HAS_NO_COLUMNS;
 import static io.trino.spi.StandardErrorCode.TABLE_NOT_FOUND;
@@ -850,6 +856,234 @@ class StatementAnalyzer
                     Optional.of(outputColumns.build()));
 
             return createAndAssignScope(node, scope, Field.newUnqualified("rows", BIGINT));
+        }
+        
+        @Override
+        protected Scope visitDeltaUpdate(DeltaUpdate node, Optional<Scope> scope)
+        {
+            // it assumes the tables in source and target have the same name.
+            // it also assumes that the columns of source are included in target. The columns are alos matched by their name.
+            // (target can have more columns, it can also have more tables).
+
+            // If target has more columns than source, then please first add them before calling DeltaUpdate
+
+            // adapted from visitCreateTableAsSelect
+
+            // turns node.getTarget() into a fully qualified name (if it is not already) by using the
+            // catalogName and schemaName from the session information
+            // cannot use createQualifiedObjectName and QualifiedObjectName, as they are not designed
+            // for object name to be null
+
+            // modified from by MetadataUtil::createQualifiedObjectName
+            // TODO put this code into a function in MetadataUtil that returns a QualifiedTablePrefix
+            List<String> targetParts = node.getTarget().getParts();
+            if (targetParts.size() > 3){
+                throw new TrinoException(SYNTAX_ERROR, format("Too many dots in table name: %s", node.getTarget()));
+            }
+            String targetCatalogName;
+            String targetSchemaName;
+            String targetTableName = null;
+            if (session.getCatalog().isPresent()){
+                targetCatalogName = session.getCatalog().get();
+                if (session.getSchema().isPresent()){
+                    targetSchemaName = session.getSchema().get();
+                    if (targetParts.size() == 3){
+                        targetTableName = targetParts.get(2);
+                        if (!targetParts.get(0).equals(targetCatalogName) || !targetParts.get(1).equals(targetSchemaName)){
+                            throw new TrinoException(SYNTAX_ERROR, format("Catalog or Schema name of %s do not match session", node.getTarget()));
+                        }
+                    } else if (targetParts.size() == 2){
+                        targetTableName = targetParts.get(1);
+                        if (!targetParts.get(0).equals(targetSchemaName)){
+                            throw new TrinoException(SYNTAX_ERROR, format("Schema name of %s do not match session", node.getTarget()));
+                        }
+                    } else{
+                        targetTableName = targetParts.get(0);
+                    }
+                }else{
+                    int i = 0;
+                    if (targetParts.size() == 3){
+                        i = 1;
+                    } //else it is the first
+                    targetSchemaName = targetParts.get(i);
+                    if (targetParts.size()== 3){
+                        targetTableName = targetParts.get(2);
+                    } else if (targetParts.size()== 2 && !targetParts.get(0).equals(targetCatalogName)){
+                        // user provided schema.table
+                        targetTableName = targetParts.get(1);
+                    }
+                }
+            }else{
+                targetCatalogName = targetParts.get(0);
+                targetSchemaName = targetParts.get(1);
+                if (targetParts.size()== 3){
+                    targetTableName = targetParts.get(2);
+                }
+            }
+            
+            List<String> sourceParts = node.getSource().getParts();
+            if (sourceParts.size() > 3 || sourceParts.size() == 1){
+                throw new TrinoException(SYNTAX_ERROR, format("Too many dots in table name: %s", node.getTarget()));
+            }
+            String sourceCatalogName;
+            String sourceSchemaName;
+            String sourceTableName = null;
+
+            if (sourceParts.size() == 3){
+                sourceCatalogName = sourceParts.get(0);
+                sourceSchemaName = sourceParts.get(1);
+                sourceTableName = sourceParts.get(2);
+            }else{
+                sourceCatalogName = sourceParts.get(0);
+                sourceSchemaName = sourceParts.get(1);
+            }
+
+            if ((sourceTableName == null && targetTableName != null) || (sourceTableName != null && targetTableName == null)){
+                throw new TrinoException(GENERIC_USER_ERROR, format("DELTAUPDATE: If eithe rfor the source or the target the" +
+                        " tableName is provided then it must be provided for both"));
+
+            }
+
+            List<QualifiedObjectName> sourceQON;
+            List<QualifiedObjectName> targetQON;
+
+            if(sourceTableName != null){
+                sourceQON = List.of(new QualifiedObjectName(sourceCatalogName, sourceSchemaName, sourceTableName));
+                targetQON = List.of(new QualifiedObjectName(targetCatalogName, targetSchemaName, targetTableName));
+            }else{
+                sourceQON = metadata.listTables(session, new QualifiedTablePrefix(sourceCatalogName, sourceSchemaName));
+                targetQON = metadata.listTables(session, new QualifiedTablePrefix(targetCatalogName, targetSchemaName));
+            }
+
+            List<TableHandle> sourceTableH;
+            List<TableHandle> targetTableH;
+
+            sourceTableH = sourceQON.stream().map(qon -> metadata.getTableHandle(session, qon))
+                    .filter(Optional::isPresent).map(Optional::get).collect(toImmutableList());
+
+            targetTableH = targetQON.stream().map(qon -> metadata.getTableHandle(session, qon))
+                    .filter(Optional::isPresent).map(Optional::get).collect(toImmutableList());
+
+            // checking if we can insert into the source table
+            // doing what they do in visitInsert
+            // TODO: do some checks for update and delete
+            for (QualifiedObjectName qon : targetQON){
+                // will throw an error if not
+                accessControl.checkCanInsertIntoTable(session.toSecurityContext(), qon);
+
+                if (!accessControl.getRowFilters(session.toSecurityContext(), qon).isEmpty()) {
+                    throw semanticException(NOT_SUPPORTED, node, "Insert into table with a row filter is not supported");
+                }
+            }
+
+            Map<String, TableHandle> targetMap = new HashMap<>();
+
+            for (TableHandle target : targetTableH){
+                TableSchema tableSchema = metadata.getTableSchema(session, target);
+                targetMap.put(tableSchema.getTable().getTableName(), target);
+
+            }
+
+            ImmutableList.Builder<Analysis.Insert> inserts = ImmutableList.builder();
+            ImmutableList.Builder<Insert> insertStatements = ImmutableList.builder();
+
+            for(TableHandle source : sourceTableH){
+                // doing what they do in visitInsert
+                TableSchema sourceSchema = metadata.getTableSchema(session, source);
+                String tableName = sourceSchema.getTable().getTableName();
+
+                if (!targetMap.containsKey(tableName)){
+                    throw new TrinoException(GENERIC_USER_ERROR, format("DELTAUPDATE: target does not include all tables from source"));
+                }
+
+                TableHandle targetTableHandle = targetMap.get(tableName);
+                TableSchema targetSchema = metadata.getTableSchema(session, targetTableHandle);;
+
+                // check for the columns to be matching
+
+                List<ColumnSchema> sourceColumns = sourceSchema.getColumns().stream()
+                        //.filter(column -> !column.isHidden())
+                        .collect(toImmutableList());
+
+                List<ColumnSchema> targetColumns = targetSchema.getColumns().stream()
+                        //.filter(column -> !column.isHidden())
+                        .collect(toImmutableList());
+
+                for (ColumnSchema column : targetColumns) {
+                    if (!accessControl.getColumnMasks(session.toSecurityContext(), targetSchema.getQualifiedName(), column.getName(), column.getType()).isEmpty()) {
+                        throw semanticException(NOT_SUPPORTED, node, "Insert into table with column masks is not supported");
+                    }
+                }
+
+                // TODO: figure out how partition columns are chosen
+                Optional<NewTableLayout> newTableLayout = metadata.getInsertLayout(session, targetTableHandle);
+                newTableLayout.ifPresent(layout -> {
+                    if (!ImmutableSet.copyOf(targetColumns).containsAll(layout.getPartitionColumns())) {
+                        throw new TrinoException(NOT_SUPPORTED, "INSERT must write all distribution columns: " + layout.getPartitionColumns());
+                    }
+                });
+
+                // getting the names of both target and source columns
+                List<String> sourceColumnNames = sourceColumns.stream()
+                        .map(ColumnSchema::getName)
+                        .collect(toImmutableList());
+                List<String> targetColumnNames = targetColumns.stream()
+                        .map(ColumnSchema::getName)
+                        .collect(toImmutableList());
+
+
+                for (String sourceColumnName : sourceColumnNames) {
+                    if (!targetColumnNames.contains(sourceColumnName)) {
+                        throw semanticException(COLUMN_NOT_FOUND, node, "Insert column name does not exist in target table: %s", sourceColumnName);
+                    }
+                }
+
+                // check that types of columns also match:
+                List<Type> sourceTableTypes = sourceColumnNames.stream()
+                        .map(insertColumn -> sourceSchema.getColumn(insertColumn).getType())
+                        .collect(toImmutableList());
+
+                List<Type> targetTableTypes = targetColumnNames.stream()
+                        .map(insertColumn -> targetSchema.getColumn(insertColumn).getType())
+                        .collect(toImmutableList());
+
+                if (!typesMatchForInsert(targetTableTypes, sourceTableTypes)) {
+                    throw semanticException(TYPE_MISMATCH,
+                            node,
+                            "DeltaUpdate query has mismatched column types: Target: [%s], Source: [%s]",
+                            Joiner.on(", ").join(targetTableTypes),
+                            Joiner.on(", ").join(sourceTableTypes));
+                }
+
+                // creating the Analysis.Insert that is needed for planning
+                Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, targetTableHandle);
+                inserts.add(new Analysis.Insert(
+                        targetTableHandle,
+                        columnHandles.values().stream().collect(toImmutableList()),
+                        newTableLayout));
+
+                // creating the insert statements
+                //example of a querry
+                //INSERT INTO memory.d1.test
+                //SELECT * FROM memory.d2.test;
+                // TODO: Porbably not where I should add this!
+                insertStatements.add(new Insert(targetSchema.getQualifiedName(), Optional.empty(), null));
+
+            }
+
+
+            analysis.setDeltaUpdate(new Analysis.DeltaUpdate(inserts.build()));
+
+
+            /*analysis.setUpdateType(
+                    "INSERT",
+                    null,
+                    Optional.empty(),
+                    Optional.empty());
+             */
+
+            return createAndAssignScope(node, scope, Field.newUnqualified("rows", BIGINT));
+
         }
 
         @Override

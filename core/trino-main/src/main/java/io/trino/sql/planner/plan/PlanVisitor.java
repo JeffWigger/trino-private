@@ -228,4 +228,11 @@ public abstract class PlanVisitor<R, C>
     {
         return visitPlan(node, context);
     }
+
+    public R visitDeltaUpdate(DeltaUpdateNode node, C context)
+    {
+        return visitPlan(node, context);
+    }
+
+
 }

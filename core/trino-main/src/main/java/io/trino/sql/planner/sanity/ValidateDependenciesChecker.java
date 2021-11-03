@@ -30,6 +30,7 @@ import io.trino.sql.planner.plan.ApplyNode;
 import io.trino.sql.planner.plan.AssignUniqueId;
 import io.trino.sql.planner.plan.CorrelatedJoinNode;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.DistinctLimitNode;
 import io.trino.sql.planner.plan.EnforceSingleRowNode;
 import io.trino.sql.planner.plan.ExceptNode;
@@ -695,6 +696,14 @@ public final class ValidateDependenciesChecker
 
             return null;
         }
+
+        @Override
+        public Void visitDeltaUpdate(DeltaUpdateNode node, Set<Symbol> boundSymbols)
+        {
+            node.getSources().stream().map(s -> s.accept(this, boundSymbols));
+            return null;
+        }
+
 
         @Override
         public Void visitIntersect(IntersectNode node, Set<Symbol> boundSymbols)

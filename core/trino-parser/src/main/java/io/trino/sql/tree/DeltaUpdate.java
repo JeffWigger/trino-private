@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import io.trino.sql.tree.Insert;
+
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
@@ -26,6 +28,7 @@ public class DeltaUpdate
 {
     private final QualifiedName target;
     private final QualifiedName source;
+    private List<Insert>  inserts;
 
     public DeltaUpdate(QualifiedName target, QualifiedName source)
     {
@@ -52,6 +55,14 @@ public class DeltaUpdate
     public QualifiedName getSource()
     {
         return source;
+    }
+
+    public void setInserts(List<Insert>  inserts){
+        this.inserts = inserts;
+    }
+
+    public List<Insert> getInserts(){
+        return this.inserts;
     }
 
     @Override

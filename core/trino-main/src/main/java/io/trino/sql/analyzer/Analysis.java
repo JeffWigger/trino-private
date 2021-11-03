@@ -197,6 +197,7 @@ public class Analysis
     private final Map<NodeRef<Unnest>, UnnestAnalysis> unnestAnalysis = new LinkedHashMap<>();
     private Optional<Create> create = Optional.empty();
     private Optional<Insert> insert = Optional.empty();
+    private Optional<DeltaUpdate> deltaUpdate = Optional.empty();
     private Optional<RefreshMaterializedViewAnalysis> refreshMaterializedView = Optional.empty();
     private Optional<QualifiedObjectName> delegatedRefreshMaterializedView = Optional.empty();
     private Optional<TableHandle> analyzeTarget = Optional.empty();
@@ -725,6 +726,14 @@ public class Analysis
         return insert;
     }
 
+    public void setDeltaUpdate(DeltaUpdate du){
+        this.deltaUpdate = Optional.of(du);
+    }
+
+    public Optional<DeltaUpdate> getDeltaUpdate(){
+        return deltaUpdate;
+    }
+
     public void setUpdatedColumns(List<ColumnMetadata> updatedColumns)
     {
         this.updatedColumns = Optional.of(updatedColumns);
@@ -1209,6 +1218,23 @@ public class Analysis
         {
             return newTableLayout;
         }
+    }
+
+    @Immutable
+    public static final class DeltaUpdate
+    {
+        private final List<Insert> inserts;
+
+        public DeltaUpdate(List<Insert> inserts)
+        {
+            this.inserts = requireNonNull(inserts, "inserts are null");
+        }
+
+        public List<Insert> getInserts()
+        {
+            return inserts;
+        }
+
     }
 
     @Immutable

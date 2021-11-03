@@ -165,6 +165,7 @@ import io.trino.sql.planner.plan.AggregationNode.Step;
 import io.trino.sql.planner.plan.AssignUniqueId;
 import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.DistinctLimitNode;
 import io.trino.sql.planner.plan.DynamicFilterId;
 import io.trino.sql.planner.plan.EnforceSingleRowNode;
@@ -3084,6 +3085,13 @@ public class LocalExecutionPlanner
         public PhysicalOperation visitUnion(UnionNode node, LocalExecutionPlanContext context)
         {
             throw new UnsupportedOperationException("Union node should not be present in a local execution plan");
+        }
+
+        @Override
+        public PhysicalOperation visitDeltaUpdate(DeltaUpdateNode node, LocalExecutionPlanContext context)
+        {
+            //TODO: JW
+            throw new UnsupportedOperationException("DeltaUpdate node should not be present in a local execution plan, atm");
         }
 
         @Override

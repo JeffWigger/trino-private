@@ -50,6 +50,7 @@ import io.trino.sql.planner.optimizations.PlanOptimizer;
 import io.trino.sql.planner.plan.AggregationNode;
 import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.ExplainAnalyzeNode;
 import io.trino.sql.planner.plan.LimitNode;
 import io.trino.sql.planner.plan.OutputNode;
@@ -71,6 +72,7 @@ import io.trino.sql.tree.CoalesceExpression;
 import io.trino.sql.tree.ComparisonExpression;
 import io.trino.sql.tree.CreateTableAsSelect;
 import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.ExplainAnalyze;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.FunctionCall;
@@ -258,6 +260,10 @@ public class LogicalPlanner
             }
             return createTableCreationPlan(analysis, ((CreateTableAsSelect) statement).getQuery());
         }
+        if (statement instanceof DeltaUpdate){
+            checkState(analysis.getDeltaUpdate().isPresent(), "DeltaUpdate handle is missing");
+            return createDeltaUpdatePlan(analysis, (DeltaUpdate) statement);
+        }
         if (statement instanceof Analyze) {
             return createAnalyzePlan(analysis, (Analyze) statement);
         }
@@ -376,6 +382,27 @@ public class LogicalPlanner
                 tableMetadata.getColumns(),
                 newTableLayout,
                 statisticsMetadata);
+    }
+
+    private RelationPlan createDeltaUpdatePlan(Analysis analysis, DeltaUpdate deltaUpdateStatement)
+    {
+        Analysis.DeltaUpdate deltaUpdate = analysis.getDeltaUpdate().orElseThrow();
+
+        List<Analysis.Insert> inserts = deltaUpdate.getInserts();
+        ImmutableList.Builder<RelationPlan> plans = new ImmutableList.Builder<>();
+        for (Analysis.Insert insert : inserts){
+            plans.add(createInsertPlan(analysis, );)
+        }
+        RelationPlan plan = createRelationPlan(analysis, query);
+        DeltaUpdateNode topNode = new DeltaUpdateNode(
+                idAllocator.getNextId(),
+
+                symbolAllocator.newSymbol("partialrows", BIGINT),
+                symbolAllocator.newSymbol("fragment", VARBINARY),
+        );
+
+        return new RelationPlan(topNode, analysis.getRootScope(), topNode.getOutputSymbols(), Optional.empty());
+
     }
 
     private RelationPlan getInsertPlan(
