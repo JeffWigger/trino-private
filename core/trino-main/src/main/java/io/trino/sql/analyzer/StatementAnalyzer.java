@@ -229,6 +229,7 @@ import static io.trino.spi.StandardErrorCode.DUPLICATE_WINDOW_NAME;
 import static io.trino.spi.StandardErrorCode.EXPRESSION_NOT_CONSTANT;
 import static io.trino.spi.StandardErrorCode.EXPRESSION_NOT_IN_DISTINCT;
 import static io.trino.spi.StandardErrorCode.FUNCTION_NOT_WINDOW;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.INVALID_ARGUMENTS;
 import static io.trino.spi.StandardErrorCode.INVALID_COLUMN_REFERENCE;
@@ -1067,12 +1068,32 @@ class StatementAnalyzer
                 //INSERT INTO memory.d1.test
                 //SELECT * FROM memory.d2.test;
                 // TODO: Porbably not where I should add this!
-                insertStatements.add(new Insert(targetSchema.getQualifiedName(), Optional.empty(), null));
+                QualifiedObjectName tQON = targetSchema.getQualifiedName();
+                QualifiedObjectName sQON = sourceSchema.getQualifiedName();
+                SqlParser sqlParser = new SqlParser();
+                Statement s = sqlParser.createStatement(String.format("INSERT INTO %s SELECT * FROM %s;", tQON.toString(), sQON.toString() ),  createParsingOptions(session));
+                /*QuerySpecification body = QuerySpecification(
+                        new Select(false),  , // false -> no distinct
+                        Optional<Relation> from,
+                        Optional<Expression> where,
+                        Optional<GroupBy> groupBy,
+                        Optional<Expression> having,
+                        List<WindowDefinition> windows,
+                        Optional<OrderBy> orderBy,
+                        Optional<Offset> offset,
+                        Optional<Node> limit);
+                Query q = new Query(Optional.empty(), null, Optional.empty(), Optional.empty(), Optional.empty());*/
+                if (!(s instanceof Query)){
+                    throw  new TrinoException(GENERIC_INTERNAL_ERROR, "DeltaUpdate generating the queries failed");
+                }
+                insertStatements.add(new Insert(QualifiedName.of(tQON.getCatalogName(), tQON.getSchemaName(), tQON.getObjectName()), Optional.empty(), (Query) s));
 
             }
 
 
             analysis.setDeltaUpdate(new Analysis.DeltaUpdate(inserts.build()));
+
+            node.setInserts(insertStatements.build());
 
 
             /*analysis.setUpdateType(
