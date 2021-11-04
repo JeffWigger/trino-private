@@ -388,17 +388,27 @@ public class LogicalPlanner
     {
         Analysis.DeltaUpdate deltaUpdate = analysis.getDeltaUpdate().orElseThrow();
 
-        List<Analysis.Insert> inserts = deltaUpdate.getInserts();
-        ImmutableList.Builder<RelationPlan> plans = new ImmutableList.Builder<>();
-        for (Analysis.Insert insert : inserts){
-            plans.add(createInsertPlan(analysis, );)
+        //List<Analysis.Insert> inserts = deltaUpdate.getInserts();
+        ImmutableList.Builder<PlanNode> plans = new ImmutableList.Builder<>();
+        //for (Analysis.Insert insert : inserts){
+
+        for (int i = 0 ; i < deltaUpdate.getInserts().size(); i++){
+            Insert insertStatement = deltaUpdateStatement.getInserts().get(i);
+            // createInsertPlan needs analysis.Insert so we paste the body here
+            Analysis.Insert insert = deltaUpdate.getInserts().get(i);
+            TableHandle tableHandle = insert.getTarget();
+            Query query = insertStatement.getQuery();
+            Optional<NewTableLayout> newTableLayout = insert.getNewTableLayout();
+            //return getInsertPlan(analysis, query, tableHandle, insert.getColumns(), newTableLayout, false, null);
+            plans.add(getInsertPlan(analysis, query, tableHandle, insert.getColumns(), newTableLayout, false, null).getRoot());
+            // createInsertPlan return this
+            //  new RelationPlan(commitNode, analysis.getRootScope(), commitNode.getOutputSymbols(), Optional.empty());
         }
-        RelationPlan plan = createRelationPlan(analysis, query);
         DeltaUpdateNode topNode = new DeltaUpdateNode(
                 idAllocator.getNextId(),
-
+                plans.build(),
                 symbolAllocator.newSymbol("partialrows", BIGINT),
-                symbolAllocator.newSymbol("fragment", VARBINARY),
+                symbolAllocator.newSymbol("fragment", VARBINARY)
         );
 
         return new RelationPlan(topNode, analysis.getRootScope(), topNode.getOutputSymbols(), Optional.empty());

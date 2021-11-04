@@ -25,6 +25,7 @@ import com.google.common.collect.Streams;
 import io.trino.Session;
 import io.trino.connector.CatalogName;
 import io.trino.execution.Column;
+import io.trino.execution.QueryPreparer;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.metadata.FunctionKind;
 import io.trino.metadata.FunctionMetadata;
@@ -1071,7 +1072,11 @@ class StatementAnalyzer
                 QualifiedObjectName tQON = targetSchema.getQualifiedName();
                 QualifiedObjectName sQON = sourceSchema.getQualifiedName();
                 SqlParser sqlParser = new SqlParser();
-                Statement s = sqlParser.createStatement(String.format("INSERT INTO %s SELECT * FROM %s;", tQON.toString(), sQON.toString() ),  createParsingOptions(session));
+                String query = String.format("SELECT * FROM %s", sQON.toString() );
+                System.out.println(query);
+                QueryPreparer queryPreparer = new QueryPreparer(sqlParser);
+                QueryPreparer.PreparedQuery pq = queryPreparer.prepareQuery(session, query);
+                //Statement s = sqlParser.createStatement(query,  createParsingOptions(session));
                 /*QuerySpecification body = QuerySpecification(
                         new Select(false),  , // false -> no distinct
                         Optional<Relation> from,
@@ -1087,7 +1092,6 @@ class StatementAnalyzer
                     throw  new TrinoException(GENERIC_INTERNAL_ERROR, "DeltaUpdate generating the queries failed");
                 }
                 insertStatements.add(new Insert(QualifiedName.of(tQON.getCatalogName(), tQON.getSchemaName(), tQON.getObjectName()), Optional.empty(), (Query) s));
-
             }
 
 
