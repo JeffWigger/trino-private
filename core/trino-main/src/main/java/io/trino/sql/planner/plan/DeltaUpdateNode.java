@@ -47,25 +47,25 @@ public class DeltaUpdateNode
 {
     private final List<PlanNode> sources;
     private final Symbol rowCountSymbol;
-    private final Symbol fragmentSymbol;
+    //private final Symbol fragmentSymbol;
     private final List<Symbol> outputs;
 
     @JsonCreator
     public DeltaUpdateNode(
             @JsonProperty("id") PlanNodeId id,
             @JsonProperty("source") List<PlanNode> sources,
-            @JsonProperty("rowCountSymbol") Symbol rowCountSymbol,
-            @JsonProperty("fragmentSymbol") Symbol fragmentSymbol)
+            @JsonProperty("rowCountSymbol") Symbol rowCountSymbol)
+            //@JsonProperty("fragmentSymbol") Symbol fragmentSymbol)
     {
         super(id);
 
         this.sources = requireNonNull(sources, "source is null");
         this.rowCountSymbol = requireNonNull(rowCountSymbol, "rowCountSymbol is null");
-        this.fragmentSymbol = requireNonNull(fragmentSymbol, "fragmentSymbol is null");
+        //this.fragmentSymbol = requireNonNull(fragmentSymbol, "fragmentSymbol is null");
 
         ImmutableList.Builder<Symbol> outputs = ImmutableList.<Symbol>builder()
-                .add(rowCountSymbol)
-                .add(fragmentSymbol);
+                .add(rowCountSymbol);
+                //.add(fragmentSymbol);
         this.outputs = outputs.build();
     }
 
@@ -75,11 +75,11 @@ public class DeltaUpdateNode
         return rowCountSymbol;
     }
 
-    @JsonProperty
+    /*@JsonProperty
     public Symbol getFragmentSymbol()
     {
         return fragmentSymbol;
-    }
+    }*/
 
     @JsonProperty
     @Override
@@ -103,6 +103,6 @@ public class DeltaUpdateNode
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
-        return new DeltaUpdateNode(getId(), newChildren, rowCountSymbol, fragmentSymbol);
+        return new DeltaUpdateNode(getId(), newChildren, rowCountSymbol); //fragmentSymbol
     }
 }

@@ -38,6 +38,7 @@ import io.trino.sql.planner.plan.AssignUniqueId;
 import io.trino.sql.planner.plan.Assignments;
 import io.trino.sql.planner.plan.CorrelatedJoinNode;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.DistinctLimitNode;
 import io.trino.sql.planner.plan.DynamicFilterId;
 import io.trino.sql.planner.plan.EnforceSingleRowNode;
@@ -1166,6 +1167,37 @@ public class UnaliasSymbolReferences
                                     .collect(toImmutableList()),
                             newOutputToInputs,
                             newOutputs),
+                    mapping);
+        }
+
+        @Override
+        public PlanAndMappings visitDeltaUpdate(DeltaUpdateNode node, UnaliasContext context)
+        {
+            // No idea what this functionis for, no idea what I am doing
+            //derived from visitUnionUpdate
+            List<PlanAndMappings> rewrittenSources = node.getSources().stream()
+                    .map(source -> source.accept(this, context))
+                    .collect(toImmutableList());
+
+            List<SymbolMapper> inputMappers = rewrittenSources.stream()
+                    .map(source -> symbolMapper(new HashMap<>(source.getMappings())))
+                    .collect(toImmutableList());
+
+            Map<Symbol, Symbol> mapping = new HashMap<>(context.getCorrelationMapping());
+            SymbolMapper outputMapper = symbolMapper(mapping);
+
+
+
+            //ListMultimap<Symbol, Symbol> newOutputToInputs = rewriteOutputToInputsMap(node.getSymbolMapping(), outputMapper, inputMappers);
+            //List<Symbol> newOutputs = outputMapper.mapAndDistinct(node.getOutputSymbols());
+
+            return new PlanAndMappings(
+                    new DeltaUpdateNode(
+                            node.getId(),
+                            rewrittenSources.stream()
+                                    .map(PlanAndMappings::getRoot)
+                                    .collect(toImmutableList()),
+                            node.getRowCountSymbol()),
                     mapping);
         }
 

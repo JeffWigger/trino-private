@@ -411,8 +411,8 @@ public class LogicalPlanner
         DeltaUpdateNode topNode = new DeltaUpdateNode(
                 idAllocator.getNextId(),
                 plans.build(),
-                symbolAllocator.newSymbol("partialrows", BIGINT),
-                symbolAllocator.newSymbol("fragment", VARBINARY)
+                symbolAllocator.newSymbol("partialrows", BIGINT)
+                //symbolAllocator.newSymbol("fragment", VARBINARY)
         );
 
         return new RelationPlan(topNode, analysis.getRootScope(), topNode.getOutputSymbols(), Optional.empty());

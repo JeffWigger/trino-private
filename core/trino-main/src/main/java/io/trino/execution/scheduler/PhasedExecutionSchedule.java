@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import io.trino.execution.SqlStageExecution;
 import io.trino.execution.StageState;
 import io.trino.sql.planner.PlanFragment;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.ExchangeNode;
 import io.trino.sql.planner.plan.IndexJoinNode;
 import io.trino.sql.planner.plan.JoinNode;
@@ -289,6 +290,25 @@ public class PhasedExecutionSchedule
 
         @Override
         public Set<PlanFragmentId> visitUnion(UnionNode node, PlanFragmentId currentFragmentId)
+        {
+            ImmutableSet.Builder<PlanFragmentId> allSources = ImmutableSet.builder();
+
+            // Link the source fragments together, so we only schedule one at a time.
+            Set<PlanFragmentId> previousSources = ImmutableSet.of();
+            for (PlanNode subPlanNode : node.getSources()) {
+                Set<PlanFragmentId> currentSources = subPlanNode.accept(this, currentFragmentId);
+                allSources.addAll(currentSources);
+
+                addEdges(previousSources, currentSources);
+
+                previousSources = currentSources;
+            }
+
+            return allSources.build();
+        }
+
+        @Override
+        public Set<PlanFragmentId> visitDeltaUpdate(DeltaUpdateNode node, PlanFragmentId currentFragmentId)
         {
             ImmutableSet.Builder<PlanFragmentId> allSources = ImmutableSet.builder();
 

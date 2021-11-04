@@ -305,14 +305,14 @@ public class PlanFragmenter
             return context.defaultRewrite(node, context.get());
         }
 
-        @Override
+        /*@Override
         public PlanNode visitDeltaUpdate(DeltaUpdateNode node, RewriteContext<FragmentProperties> context)
         {
             // only want DeltaUpdate to be on the Distributor only
             // context.get().setCoordinatorOnlyDistribution();
             // the function changes the context for all children
             return context.defaultRewrite(node, context.get());
-        }
+        }*/
 
         @Override
         public PlanNode visitTableScan(TableScanNode node, RewriteContext<FragmentProperties> context)

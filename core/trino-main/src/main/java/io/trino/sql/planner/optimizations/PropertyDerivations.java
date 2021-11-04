@@ -44,6 +44,7 @@ import io.trino.sql.planner.plan.ApplyNode;
 import io.trino.sql.planner.plan.AssignUniqueId;
 import io.trino.sql.planner.plan.CorrelatedJoinNode;
 import io.trino.sql.planner.plan.DeleteNode;
+import io.trino.sql.planner.plan.DeltaUpdateNode;
 import io.trino.sql.planner.plan.DistinctLimitNode;
 import io.trino.sql.planner.plan.EnforceSingleRowNode;
 import io.trino.sql.planner.plan.ExchangeNode;
@@ -763,6 +764,29 @@ public final class PropertyDerivations
             return ActualProperties.builder()
                     .global(properties.isSingleNode() ? singleStreamPartition() : arbitraryPartition())
                     .build();
+        }
+
+        @Override
+        public ActualProperties visitDeltaUpdate(DeltaUpdateNode node, List<ActualProperties> inputProperties)
+        {
+            // based on visitTableWriter
+            ActualProperties properties = Iterables.getOnlyElement(inputProperties);
+
+            //if (properties.isCoordinatorOnly()) {
+            return properties; // want coordinator only
+            //}
+            //return ActualProperties.builder()
+              //      .global(new Global(Optional.empty(), Optional.empty(), false)) //coordinatorSingleStreamPartition()
+                //    .build();
+
+            /*return ActualProperties.builder()
+                    .global(coordinatorSingleStreamPartition()) //coordinatorSingleStreamPartition()
+                    .build();
+            }*/
+
+            //return ActualProperties.builder()
+              //      .global(properties.isSingleNode() ? singleStreamPartition() : arbitraryPartition())
+                //    .build();
         }
 
         @Override
