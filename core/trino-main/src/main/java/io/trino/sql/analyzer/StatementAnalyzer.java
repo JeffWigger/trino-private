@@ -270,6 +270,7 @@ import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static io.trino.sql.NodeUtils.getSortItemsFromOrderBy;
 import static io.trino.sql.NodeUtils.mapFromProperties;
+import static io.trino.sql.ParameterUtils.parameterExtractor;
 import static io.trino.sql.ParsingUtil.createParsingOptions;
 import static io.trino.sql.analyzer.AggregationAnalyzer.verifyOrderByAggregations;
 import static io.trino.sql.analyzer.AggregationAnalyzer.verifySourceAggregations;
@@ -306,7 +307,7 @@ class StatementAnalyzer
 {
     private static final Set<String> WINDOW_VALUE_FUNCTIONS = ImmutableSet.of("lead", "lag", "first_value", "last_value", "nth_value");
 
-    private final Analysis analysis;
+    private Analysis analysis;
     private final Metadata metadata;
     private final TypeCoercion typeCoercion;
     private final Session session;
@@ -861,7 +862,7 @@ class StatementAnalyzer
         }
         
         @Override
-        protected Scope visitDeltaUpdate(DeltaUpdate node, Optional<Scope> scope)
+        public Scope visitDeltaUpdate(DeltaUpdate node, Optional<Scope> scope)
         {
             // it assumes the tables in source and target have the same name.
             // it also assumes that the columns of source are included in target. The columns are alos matched by their name.
@@ -986,7 +987,7 @@ class StatementAnalyzer
 
             }
 
-            ImmutableList.Builder<Analysis.Insert> inserts = ImmutableList.builder();
+            ImmutableList.Builder<Analysis> inserts = ImmutableList.builder();
             ImmutableList.Builder<Insert> insertStatements = ImmutableList.builder();
 
             for(TableHandle source : sourceTableH){
@@ -1057,12 +1058,7 @@ class StatementAnalyzer
                             Joiner.on(", ").join(sourceTableTypes));
                 }
 
-                // creating the Analysis.Insert that is needed for planning
-                Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, targetTableHandle);
-                inserts.add(new Analysis.Insert(
-                        targetTableHandle,
-                        columnHandles.values().stream().collect(toImmutableList()),
-                        newTableLayout));
+
 
                 // creating the insert statements
                 //example of a querry
@@ -1072,26 +1068,34 @@ class StatementAnalyzer
                 QualifiedObjectName tQON = targetSchema.getQualifiedName();
                 QualifiedObjectName sQON = sourceSchema.getQualifiedName();
                 SqlParser sqlParser = new SqlParser();
-                String query = String.format("SELECT * FROM %s", sQON.toString() );
+                String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString() );
                 System.out.println(query);
                 QueryPreparer queryPreparer = new QueryPreparer(sqlParser);
                 QueryPreparer.PreparedQuery pq = queryPreparer.prepareQuery(session, query);
-                //Statement s = sqlParser.createStatement(query,  createParsingOptions(session));
-                /*QuerySpecification body = QuerySpecification(
-                        new Select(false),  , // false -> no distinct
-                        Optional<Relation> from,
-                        Optional<Expression> where,
-                        Optional<GroupBy> groupBy,
-                        Optional<Expression> having,
-                        List<WindowDefinition> windows,
-                        Optional<OrderBy> orderBy,
-                        Optional<Offset> offset,
-                        Optional<Node> limit);
-                Query q = new Query(Optional.empty(), null, Optional.empty(), Optional.empty(), Optional.empty());*/
-                if (!(s instanceof Query)){
+                // the original analysis is greated in Analyzer::analyze, it gets called from SqlQueryExecution::analyze
+                // there it also changes the stateMachine --> not sure what that one does
+                // in analyze it also StatementRewrite.rewrite( on the preparedquery, however this seems to only add new nodes, that are used to get runtime info about the execution.
+
+                //maybe aggregate these changes to the base analysis
+                //stateMachine.setUpdateType(analysis.getUpdateType());
+                //stateMachine.setReferencedTables(analysis.getReferencedTables());
+                //stateMachine.setRoutines(analysis.getRoutines());
+
+                // later on also this is called  stateMachine.setOutput(analysis.getTarget());
+
+                Analysis analysis_ = new Analysis(pq.getStatement(), parameterExtractor(pq.getStatement(), pq.getParameters()), analysis.isDescribe());
+                if (!(pq.getStatement() instanceof Insert)){
                     throw  new TrinoException(GENERIC_INTERNAL_ERROR, "DeltaUpdate generating the queries failed");
                 }
-                insertStatements.add(new Insert(QualifiedName.of(tQON.getCatalogName(), tQON.getSchemaName(), tQON.getObjectName()), Optional.empty(), (Query) s));
+                //insertStatements.add(new Insert(QualifiedName.of(tQON.getCatalogName(), tQON.getSchemaName(), tQON.getObjectName()), Optional.empty(), (Query) pq.getStatement()));
+                // creating the Analysis.Insert that is needed for planning
+                Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, targetTableHandle);
+                Analysis old = analysis; // is from outsie this visitor class
+                analysis = analysis_;
+                analyze(pq.getStatement(), scope); // or scope optional
+                inserts.add(analysis_);
+                analysis = old;
+                insertStatements.add((Insert) pq.getStatement());
             }
 
 

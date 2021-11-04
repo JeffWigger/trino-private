@@ -1223,16 +1223,16 @@ public class Analysis
     @Immutable
     public static final class DeltaUpdate
     {
-        private final List<Insert> inserts;
+        private final List<Analysis> analyses;
 
-        public DeltaUpdate(List<Insert> inserts)
+        public DeltaUpdate(List<Analysis> analyses)
         {
-            this.inserts = requireNonNull(inserts, "inserts are null");
+            this.analyses = requireNonNull(analyses, "inserts are null");
         }
 
-        public List<Insert> getInserts()
+        public List<Analysis> getAnalyses()
         {
-            return inserts;
+            return analyses;
         }
 
     }

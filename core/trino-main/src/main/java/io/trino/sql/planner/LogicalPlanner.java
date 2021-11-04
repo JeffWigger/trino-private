@@ -392,15 +392,19 @@ public class LogicalPlanner
         ImmutableList.Builder<PlanNode> plans = new ImmutableList.Builder<>();
         //for (Analysis.Insert insert : inserts){
 
-        for (int i = 0 ; i < deltaUpdate.getInserts().size(); i++){
+        for (int i = 0 ; i < deltaUpdate.getAnalyses().size(); i++){
             Insert insertStatement = deltaUpdateStatement.getInserts().get(i);
             // createInsertPlan needs analysis.Insert so we paste the body here
-            Analysis.Insert insert = deltaUpdate.getInserts().get(i);
+            /*Analysis.Insert insert = deltaUpdate.getAnalyses().get(i).getInsert().get();
             TableHandle tableHandle = insert.getTarget();
             Query query = insertStatement.getQuery();
             Optional<NewTableLayout> newTableLayout = insert.getNewTableLayout();
             //return getInsertPlan(analysis, query, tableHandle, insert.getColumns(), newTableLayout, false, null);
             plans.add(getInsertPlan(analysis, query, tableHandle, insert.getColumns(), newTableLayout, false, null).getRoot());
+
+            */
+
+            plans.add(createInsertPlan(deltaUpdate.getAnalyses().get(i), insertStatement).getRoot());
             // createInsertPlan return this
             //  new RelationPlan(commitNode, analysis.getRootScope(), commitNode.getOutputSymbols(), Optional.empty());
         }
