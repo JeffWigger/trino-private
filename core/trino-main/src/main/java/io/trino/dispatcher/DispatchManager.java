@@ -42,10 +42,14 @@ import org.weakref.jmx.Managed;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import javax.annotation.concurrent.GuardedBy;
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -75,9 +79,12 @@ public class DispatchManager
 
     private final Executor dispatchExecutor;
 
-    private final QueryTracker<DispatchQuery> queryTracker;
+    public final QueryTracker<DispatchQuery> queryTracker;
 
     private final QueryManagerStats stats = new QueryManagerStats();
+
+    // set once a
+
 
     @Inject
     public DispatchManager(
@@ -111,6 +118,7 @@ public class DispatchManager
         this.dispatchExecutor = requireNonNull(dispatchExecutor, "dispatchExecutor is null").getExecutor();
 
         this.queryTracker = new QueryTracker<>(queryManagerConfig, dispatchExecutor.getScheduledExecutor());
+
     }
 
     @PostConstruct
@@ -208,7 +216,7 @@ public class DispatchManager
                     slug,
                     selectionContext.getResourceGroupId());
 
-            boolean queryAdded = queryCreated(dispatchQuery);
+            boolean queryAdded = queryCreated(dispatchQuery, sessionContext);
             if (queryAdded && !dispatchQuery.isDone()) {
                 try {
                     resourceGroupManager.submit(dispatchQuery, selectionContext, dispatchExecutor);
@@ -230,13 +238,13 @@ public class DispatchManager
             }
             Optional<String> preparedSql = Optional.ofNullable(preparedQuery).flatMap(PreparedQuery::getPrepareSql);
             DispatchQuery failedDispatchQuery = failedDispatchQueryFactory.createFailedDispatchQuery(session, query, preparedSql, Optional.empty(), throwable);
-            queryCreated(failedDispatchQuery);
+            queryCreated(failedDispatchQuery, sessionContext);
         }
     }
 
-    private boolean queryCreated(DispatchQuery dispatchQuery)
+    private boolean queryCreated(DispatchQuery dispatchQuery, SessionContext context)
     {
-        boolean queryAdded = queryTracker.addQuery(dispatchQuery);
+        boolean queryAdded = queryTracker.addQuery(dispatchQuery, context);
 
         // only add state tracking if this query instance will actually be used for the execution
         if (queryAdded) {

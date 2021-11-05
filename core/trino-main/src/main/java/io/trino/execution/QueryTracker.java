@@ -18,6 +18,7 @@ import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.trino.Session;
 import io.trino.execution.QueryTracker.TrackedQuery;
+import io.trino.server.SessionContext;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
 import org.joda.time.DateTime;
@@ -60,6 +61,9 @@ public class QueryTracker<T extends TrackedQuery>
     private final Duration clientTimeout;
 
     private final ScheduledExecutorService queryManagementExecutor;
+
+    // holds the SessionContext, used for DeltaUpdate
+    private ConcurrentMap<QueryId, SessionContext> contexts;
 
     @GuardedBy("this")
     private ScheduledFuture<?> backgroundTask;
@@ -148,12 +152,26 @@ public class QueryTracker<T extends TrackedQuery>
                 .orElseThrow(() -> new NoSuchElementException(queryId.toString()));
     }
 
+    public SessionContext getContext(QueryId queryId)
+            throws NoSuchElementException{
+        requireNonNull(queryId, "queryId is null");
+        return Optional.ofNullable(contexts.get(queryId))
+                .orElseThrow(() -> new NoSuchElementException(queryId.toString()));
+    }
+
     public Optional<T> tryGetQuery(QueryId queryId)
     {
         requireNonNull(queryId, "queryId is null");
         return Optional.ofNullable(queries.get(queryId));
     }
 
+    public boolean addQuery(T execution, SessionContext context){
+
+        boolean addedQuery =  queries.putIfAbsent(execution.getQueryId(), execution) == null;
+        boolean addedContext =  contexts.putIfAbsent(execution.getQueryId(), context) == null;
+        // TODO handle case when one fails
+        return addedQuery && addedContext;
+    }
     public boolean addQuery(T execution)
     {
         return queries.putIfAbsent(execution.getQueryId(), execution) == null;
@@ -246,6 +264,7 @@ public class QueryTracker<T extends TrackedQuery>
 
             log.debug("Remove query %s", queryId);
             queries.remove(queryId);
+            contexts.remove(queryId);
             expirationQueue.remove(query);
         }
     }

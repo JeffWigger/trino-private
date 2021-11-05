@@ -121,8 +121,8 @@ public final class StatementUtils
             .put(Update.class, UPDATE)
             .put(Delete.class, DELETE)
             .put(Analyze.class, ANALYZE)
-            .put(DeltaUpdate.class, UPDATE)
             // DDL
+            .put(DeltaUpdate.class, DATA_DEFINITION)
             .put(AddColumn.class, DATA_DEFINITION)
             .put(Call.class, DATA_DEFINITION)
             .put(Comment.class, DATA_DEFINITION)
