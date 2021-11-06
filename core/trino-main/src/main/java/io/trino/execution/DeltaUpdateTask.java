@@ -90,10 +90,8 @@ public class DeltaUpdateTask
 
     private SettableFuture<Void> future = SettableFuture.create();
 
-
-    @Inject
     public DeltaUpdateTask(DispatchManager dispatchManager){
-        super();
+        // super();
         this.dispatchManager = checkNotNull(dispatchManager, "dispatchManager is null");
     }
 
@@ -250,7 +248,8 @@ public class DeltaUpdateTask
             String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString() );
             QueryId queryId = dispatchManager.createQueryId();
             // TODO: Save the slug?
-            queryFutures.put(queryId, dispatchManager.createQuery(queryId, Slug.createNew(), context, query));
+            ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, Slug.createNew(), context, query);
+            queryFutures.put(queryId, queryFuture);
             synchronized (this){
                 allDone.put(queryId, false);
             }
@@ -283,19 +282,21 @@ public class DeltaUpdateTask
             //analysis = old;
             //insertStatements.add((Insert) pq.getStatement());
 
-            dispatchManager.getQuery(queryId).addStateChangeListener(state ->
+
+            /*dispatchManager.getQuery(queryId).addStateChangeListener(state ->
             {
                 if (state.isDone()){
                     synchronized (this){
                         allDone.put(queryId, true);
                         if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
                             // documentation warns of not doing this when holding a lock
+                            outputConsumer.accept(Optional.empty());
                             boolean tvalue = future.set(null);
-                            System.out.println("Queries finished: " + tvalue);
+                            System.out.println("Queries finished: " + tvalue+ "is done?:"+ queryFuture.isDone());
                         }
                     }
                 }
-            });
+            });*/
         }
 
         //analysis.setDeltaUpdate(new Analysis.DeltaUpdate(inserts.build()));
@@ -309,19 +310,19 @@ public class DeltaUpdateTask
                     Optional.empty(),
                     Optional.empty());
              */
-        ListenableFuture<List<Void>> voids = Futures.successfulAsList(queryFutures.values());
+
         // alternative get the query from the dispatchManager
         // and then query.addStateChangeListener(state -> { if state is done
-
-        /*while(!voids.isDone()){
+        ListenableFuture<List<Void>> voids = Futures.successfulAsList(queryFutures.values());
+        while(!voids.isDone()){
             try {
                 Thread.sleep(50);
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
             }
-        }*/
-
+        }
+        future.set(null);
         outputConsumer.accept(Optional.empty());
         return future;
     }
@@ -424,5 +425,13 @@ public class DeltaUpdateTask
             sourceQualifiedObjectNames = metadata.listTables(session, new QualifiedTablePrefix(sourceCatalogName, sourceSchemaName));
             targetQualifiedObjectNames = metadata.listTables(session, new QualifiedTablePrefix(targetCatalogName, targetSchemaName));
         }
+    }
+
+    @Override
+    protected void finalize()
+            throws Throwable
+    {
+        super.finalize();
+        System.out.println("object is deallocaed");
     }
 }

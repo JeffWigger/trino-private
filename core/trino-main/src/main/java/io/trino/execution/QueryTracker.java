@@ -63,7 +63,7 @@ public class QueryTracker<T extends TrackedQuery>
     private final ScheduledExecutorService queryManagementExecutor;
 
     // holds the SessionContext, used for DeltaUpdate
-    private ConcurrentMap<QueryId, SessionContext> contexts;
+    private ConcurrentMap<QueryId, SessionContext> contexts = new ConcurrentHashMap<>();
 
     @GuardedBy("this")
     private ScheduledFuture<?> backgroundTask;

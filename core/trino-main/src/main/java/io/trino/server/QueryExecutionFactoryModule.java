@@ -30,7 +30,7 @@ import io.trino.execution.CreateViewTask;
 import io.trino.execution.DataDefinitionExecution.DataDefinitionExecutionFactory;
 import io.trino.execution.DataDefinitionTask;
 import io.trino.execution.DeallocateTask;
-import io.trino.execution.DeltaUpdateTask;
+import io.trino.execution.DeltaUpdateExecution;
 import io.trino.execution.DropColumnTask;
 import io.trino.execution.DropMaterializedViewTask;
 import io.trino.execution.DropRoleTask;
@@ -115,6 +115,10 @@ public class QueryExecutionFactoryModule
         for (Class<? extends Statement> statement : getNonDataDefinitionStatements()) {
             executionBinder.addBinding(statement).to(SqlQueryExecutionFactory.class).in(Scopes.SINGLETON);
         }
+        //add my bindings here
+        binder.bind(DeltaUpdateExecution.DeltaUpdateExecutionFactory.class).in(Scopes.SINGLETON);
+        executionBinder.addBinding(DeltaUpdate.class).to(DeltaUpdateExecution.DeltaUpdateExecutionFactory.class).in(Scopes.SINGLETON);
+
 
         binder.bind(DataDefinitionExecutionFactory.class).in(Scopes.SINGLETON);
         bindDataDefinitionTask(binder, executionBinder, AddColumn.class, AddColumnTask.class);
@@ -126,7 +130,6 @@ public class QueryExecutionFactoryModule
         bindDataDefinitionTask(binder, executionBinder, CreateTable.class, CreateTableTask.class);
         bindDataDefinitionTask(binder, executionBinder, CreateView.class, CreateViewTask.class);
         bindDataDefinitionTask(binder, executionBinder, Deallocate.class, DeallocateTask.class);
-        bindDataDefinitionTask(binder, executionBinder, DeltaUpdate.class, DeltaUpdateTask.class);
         bindDataDefinitionTask(binder, executionBinder, DropColumn.class, DropColumnTask.class);
         bindDataDefinitionTask(binder, executionBinder, DropRole.class, DropRoleTask.class);
         bindDataDefinitionTask(binder, executionBinder, DropSchema.class, DropSchemaTask.class);
