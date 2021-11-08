@@ -356,28 +356,7 @@ public class DeltaUpdateTask
                                         // need chained blocking else we will spin
                                         // they are also notified when a new page is added
                                         addSuccessCallback(exchangeClient.isBlocked(), () -> {
-                                            //nextIsBlocked(exchangeClient);
-                                            while (!exchangeClient.isFinished()) {
-                                                //TODO: in the ExchangeOperator::getOutput, they do operatorContext.recordProcessedInput for stats?
-                                                SerializedPage p = exchangeClient.pollPage();
-                                                if (p != null) {
-                                                    System.out.println("Got page: " + p.getPositionCount() + " id: " + id);
-                                                    System.out.println("Got page: " + p);
-                                                    System.out.println("Blocked?: " + exchangeClient.isBlocked());
-                                                }
-                                                else {
-                                                    // look at Query::waitForResults for how to make this properly.
-                                                    // for these queries it is good enough
-                                                    // in Query::removePagesFromExchange they break when it returns null
-                                                    // If query is not yet finished it starts a new callback
-                                                    System.out.println("TODO: should check if blocked at each iteration.");
-                                                    System.out.println("Blocked: " + exchangeClient.isBlocked());
-                                                }
-                                            }
-                                            System.out.println("Finished" + " id: " + id);
-                                            // Query::closeExchangeClientIfNecessary
-                                            // not sure if we should close here
-                                            exchangeClient.close();
+                                            nextIsBlocked(exchangeClient, id);
                                         });
                                     } // else failure?
                                 }
@@ -405,8 +384,42 @@ public class DeltaUpdateTask
         return future;
     }
 
-    private void nextIsBlocked(ExchangeClient exchangeClient){
-
+    private void nextIsBlocked(ExchangeClient exchangeClient, QueryId id){
+         if (!exchangeClient.isClosed()) {
+            //TODO: in the ExchangeOperator::getOutput, they do operatorContext.recordProcessedInput for stats?
+             int i = 0;
+             while(!exchangeClient.isFinished()){ // it looks like this doeds not always work, sometimes we make an extra loop when we get the page in the previous round
+                 SerializedPage p = exchangeClient.pollPage();
+                 // should I again call is blocked here? - In Query they don't
+                 if (p != null) {
+                     System.out.println("Got page: " + p.getPositionCount() + " id: " + id+ " i: "+i);
+                     System.out.println("Got page: " + p);
+                     i++;
+                     //System.out.println("Blocked?: " + exchangeClient.isBlocked());
+                 }
+                 else {
+                     // look at Query::waitForResults for how to make this properly.
+                     // for these queries it is good enough
+                     // in Query::removePagesFromExchange they break when it returns null
+                     // If query is not yet finished it starts a new callback
+                     //System.out.println("TODO: should check if blocked at each iteration.");
+                     if(!exchangeClient.isFinished() ||!exchangeClient.isClosed()){
+                         System.out.println("Page was null: " + " id: " + id+ " i: "+i);
+                         addSuccessCallback(exchangeClient.isBlocked(), () -> {nextIsBlocked(exchangeClient, id);});
+                         System.out.println("Ret: " + " id: " + id);
+                         return;
+                     }else{
+                         System.out.println("???: " + " id: " + id);
+                         return;
+                     }
+                 }
+             }
+        }
+        System.out.println("Finished" + " id: " + id);
+        // Query::closeExchangeClientIfNecessary
+        // not sure if we should close here
+        // TDOD: potentially call this twice, seems not to be an issue
+        exchangeClient.close();
     }
 
 
