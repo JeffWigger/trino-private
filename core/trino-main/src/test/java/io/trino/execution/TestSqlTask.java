@@ -232,6 +232,7 @@ public class TestSqlTask
 
         sqlTask.abortTaskResults(OUT);
 
+
         taskInfo = sqlTask.getTaskInfo(taskInfo.getTaskStatus().getVersion()).get();
         assertEquals(taskInfo.getTaskStatus().getState(), TaskState.FINISHED);
 

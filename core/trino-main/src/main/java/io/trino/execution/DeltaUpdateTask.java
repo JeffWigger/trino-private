@@ -21,20 +21,33 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
+import io.airlift.concurrent.BoundedExecutor;
+import io.airlift.jaxrs.testing.MockUriInfo;
+import io.airlift.units.DataSize;
+import io.airlift.units.Duration;
 import io.trino.Session;
+import io.trino.client.QueryResults;
 import io.trino.dispatcher.DispatchManager;
+import io.trino.execution.buffer.SerializedPage;
 import io.trino.execution.warnings.WarningCollector;
+import io.trino.memory.context.SimpleLocalMemoryContext;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.NewTableLayout;
 import io.trino.metadata.QualifiedObjectName;
 import io.trino.metadata.QualifiedTablePrefix;
 import io.trino.metadata.TableHandle;
 import io.trino.metadata.TableSchema;
+import io.trino.operator.ExchangeClient;
+import io.trino.operator.ExchangeClientSupplier;
 import io.trino.security.AccessControl;
 import io.trino.server.SessionContext;
+import io.trino.server.protocol.Query;
+import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
+import io.trino.spi.Page;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
+import io.trino.spi.block.BlockEncodingSerde;
 import io.trino.spi.connector.ColumnSchema;
 import io.trino.spi.type.Type;
 import io.trino.sql.analyzer.Output;
@@ -44,17 +57,25 @@ import io.trino.transaction.TransactionManager;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import java.net.URI;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
+import static io.trino.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.trino.spi.StandardErrorCode.COLUMN_NOT_FOUND;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -62,11 +83,22 @@ import static io.trino.spi.StandardErrorCode.SYNTAX_ERROR;
 import static io.trino.spi.StandardErrorCode.TYPE_MISMATCH;
 import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 import static java.lang.String.format;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 public class DeltaUpdateTask
         implements DataDefinitionTask<DeltaUpdate>
 {
     private final DispatchManager dispatchManager;
+    private final QueryManager queryManager;
+    private final QueryInfoUrlFactory queryInfoUrlFactory;
+    private final ExchangeClientSupplier exchangeClientSupplier;
+    private final BoundedExecutor responseExecutor;
+    private final ScheduledExecutorService timeoutExecutor;
+    private final BlockEncodingSerde blockEncodingSerde;
+
     private QualifiedTablePrefix source;
     private QualifiedTablePrefix target;
     private List<QualifiedObjectName> sourceQualifiedObjectNames;
@@ -82,12 +114,30 @@ public class DeltaUpdateTask
     @GuardedBy("this")
     private Map<QueryId, Boolean> allDone = new HashMap<>();
 
+    @GuardedBy("this")
+    private Map<QueryId, Query> queries = new HashMap<>();
+
     private SettableFuture<Void> future = SettableFuture.create();
 
-    public DeltaUpdateTask(DispatchManager dispatchManager)
+
+    public DeltaUpdateTask(DispatchManager dispatchManager,
+            QueryManager queryManager,
+            QueryInfoUrlFactory queryInfoUrlFactory,
+            ExchangeClientSupplier exchangeClientSupplier,
+            BoundedExecutor responseExecutor,
+            ScheduledExecutorService timeoutExecutor,
+            BlockEncodingSerde blockEncodingSerde)
     {
         // super();
         this.dispatchManager = checkNotNull(dispatchManager, "dispatchManager is null");
+        this.queryManager = queryManager;
+        this.queryInfoUrlFactory = queryInfoUrlFactory;
+        this.exchangeClientSupplier = exchangeClientSupplier;
+        //TODO: response executor will use a thread reserved for http requests, maybe use another executor
+        this.responseExecutor = responseExecutor;
+        this.timeoutExecutor = timeoutExecutor;
+        this.blockEncodingSerde = blockEncodingSerde;
+
     }
 
     @Override
@@ -239,25 +289,134 @@ public class DeltaUpdateTask
             String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString());
             QueryId queryId = dispatchManager.createQueryId();
             // TODO: Save the slug?
-            ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, Slug.createNew(), context, query);
+            Slug slug = Slug.createNew();
+            ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, slug, context, query);
             queryFutures.put(queryId, queryFuture);
             synchronized (this) {
                 allDone.put(queryId, false);
+                ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
+                // based on Query.java and ExecutingStatementResource.java
+                Query q = Query.create(
+                        session,
+                        slug,
+                        queryManager,
+                        queryInfoUrlFactory.getQueryInfoUrl(queryId),
+                        exchangeClient,
+                        responseExecutor,
+                        timeoutExecutor,
+                        blockEncodingSerde);
+                queries.put(queryId, q);
             }
 
             System.out.println(query);
         }
         ListenableFuture<List<Void>> voids = Futures.successfulAsList(queryFutures.values());
-        while (!voids.isDone()) {
-            try {
-                Thread.sleep(50);
+        // look into FluentFuture.from(query.waitForDispatched()) used in QueuedStatementResource
+        // it waits for it to finish?
+
+        // In TestFlushingStageState they do:
+        // queryRunner.getCoordinator().getFullQueryInfo(queryId).getOutputStage().get().getState(), FLUSHING)
+        addSuccessCallback(voids, ()->{
+            System.out.println("voids finished");
+            System.out.println("\n\n\n\nDELTA:"+ Arrays.toString(queryFutures.keySet().toArray(new QueryId[0])));
+            System.out.flush();
+            synchronized (this){
+                for (QueryId id : queryFutures.keySet()){
+                    System.out.println("state is "+dispatchManager.getFullQueryInfo(id).get().getState());
+                    dispatchManager.getQuery(id).addStateChangeListener(state ->
+                    {
+                        System.out.println(state);
+                        if (state.equals(QueryState.RUNNING)){
+                            // based on Query.java and ExecutingStatementResource.java
+                            // Flusing does not exist as a query state it only exists as a task state
+                            // figure out how to wait for this to turn to flushing
+                            long token = 0;
+                            ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
+
+                            queryManager.addOutputInfoListener(id, outputInfo -> {
+                                System.out.println(outputInfo.getColumnNames());
+                                for (URI outputLocation : outputInfo.getBufferLocations()) {
+                                    exchangeClient.addLocation(outputLocation);
+                                }
+                                if (outputInfo.isNoMoreBufferLocations()) {
+                                    exchangeClient.noMoreLocations();
+                                }
+                                // if ((!queryInfo.isFinalQueryInfo() && queryInfo.getState() != FAILED) || !exchangeClient.isClosed()) {
+                                while(!exchangeClient.isFinished()){
+                                    SerializedPage p = exchangeClient.pollPage();
+                                    if (p != null){
+                                        System.out.println("Got page: " + p.getPositionCount()+ " id: "+id);
+                                        System.out.println("Got page: " + p);
+                                        System.out.println("Blocked?: "+ exchangeClient.isBlocked());
+                                    }else{
+                                        System.out.println("page was null"+ " id: "+id);
+                                        System.out.println("Status: "+exchangeClient.getStatus());
+                                        System.out.println("Close: "+ exchangeClient.isClosed());
+                                        System.out.println("Blocked: "+ exchangeClient.isBlocked());
+                                        try {
+                                            Thread.sleep(50);
+                                        }
+                                        catch (InterruptedException e) {
+                                            e.printStackTrace();
+                                        }
+                                    }
+                                }
+                                System.out.println("Finished"+ " id: "+id);
+                                exchangeClient.close();
+
+                            });
+                            //while (true){
+                                /*dispatchManager.getFullQueryInfo(id).get().getOutputStage().get();
+                                System.out.println("TASKS in OUTPUT: " + dispatchManager.getFullQueryInfo(id).get().getOutputStage().get().getTasks().size() +"Token " + token );
+                                // TODO may need an executor that gets as many until the query is finished!
+                                ListenableFuture<QueryResults> queryResultsFuture = queries.get(id).waitForResults(token, MockUriInfo.from("test"), new Duration(1, SECONDS), DataSize.of(10, DataSize.Unit.MEGABYTE));
+                                try {
+                                    QueryResults res = queryResultsFuture.get();
+                                    System.out.println("got result: "+res.getNextUri());
+                                    if(res.getData() != null){
+                                        System.out.println("DATA: "+res.getData());
+                                        for (Iterator<List<Object>> it = res.getData().iterator(); it.hasNext(); ) {
+                                            List<Object> obj = it.next();
+                                            for (Object o : obj){
+                                                System.out.println(o);
+                                            }
+                                        }
+                                        token++;
+                                    }
+
+
+                                }
+                                catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                    break;
+                                }
+                                catch (ExecutionException e) {
+                                    e.printStackTrace();
+                                    break;
+                                }*/
+
+                        }
+
+                        if (state.isDone()){
+                            synchronized (this){
+                                allDone.put(id, true);
+                                if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
+                                    // documentation warns of not doing this when holding a lock
+                                    outputConsumer.accept(Optional.empty());
+                                    boolean tvalue = future.set(null);
+                                    System.out.println("Queries finished: " + tvalue);
+                                }
+                            }
+                        }
+                    });
+                }
             }
-            catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        future.set(null);
-        outputConsumer.accept(Optional.empty());
+
+        });
+
+
+        //future.set(null);
+        // outputConsumer.accept(Optional.empty());
         return future;
     }
 

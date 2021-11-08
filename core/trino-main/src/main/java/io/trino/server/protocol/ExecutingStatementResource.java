@@ -154,6 +154,7 @@ public class ExecutingStatementResource
             @Suspended AsyncResponse asyncResponse)
     {
         Query query = getQuery(queryId, slug, token);
+        System.out.println("UriInfo: "+uriInfo.getPath());
         asyncQueryResults(query, token, maxWait, targetResultSize, uriInfo, asyncResponse);
     }
 
@@ -211,6 +212,7 @@ public class ExecutingStatementResource
         else {
             targetResultSize = Ordering.natural().min(targetResultSize, MAX_TARGET_RESULT_SIZE);
         }
+        System.out.println("In state when getting result: "+ query.getQueryInfo().getState());
         ListenableFuture<QueryResults> queryResultsFuture = query.waitForResults(token, uriInfo, wait, targetResultSize);
 
         ListenableFuture<Response> response = Futures.transform(queryResultsFuture, queryResults -> toResponse(query, queryResults, compressionEnabled), directExecutor());

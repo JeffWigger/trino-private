@@ -160,6 +160,7 @@ public class DispatchManager
         dispatchExecutor.execute(() -> {
             try {
                 createQueryInternal(queryId, slug, sessionContext, query, resourceGroupManager);
+                System.out.println("fin");
             }
             finally {
                 queryCreationFuture.set(null);
