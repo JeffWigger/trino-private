@@ -316,6 +316,10 @@ public class DeltaUpdateTask
 
         // In TestFlushingStageState they do:
         // queryRunner.getCoordinator().getFullQueryInfo(queryId).getOutputStage().get().getState(), FLUSHING)
+        // TODO: waisfull to wait for all of them to be scheduled,
+        // addSuccessCallback uses the Thread that calls the the executable to run the callback, not suited for long running functions.
+        // but is used everywhere in dispatch query.
+        // if weird errors appear change this.
         addSuccessCallback(voids, ()->{
             System.out.println("voids finished");
             System.out.println("\n\n\n\nDELTA:"+ Arrays.toString(queryFutures.keySet().toArray(new QueryId[0])));
@@ -327,9 +331,8 @@ public class DeltaUpdateTask
                     {
                         System.out.println(state);
                         if (state.equals(QueryState.RUNNING)){
-                            // based on Query.java and ExecutingStatementResource.java
-                            // Flusing does not exist as a query state it only exists as a task state
-                            // figure out how to wait for this to turn to flushing
+                            // based on code from Query.java and ExecutingStatementResource.java
+                            // Flushing does not exist as a query state it only exists as a task state
                             long token = 0;
                             ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
 
@@ -342,59 +345,43 @@ public class DeltaUpdateTask
                                     exchangeClient.noMoreLocations();
                                 }
                                 // if ((!queryInfo.isFinalQueryInfo() && queryInfo.getState() != FAILED) || !exchangeClient.isClosed()) {
-                                while(!exchangeClient.isFinished()){
-                                    SerializedPage p = exchangeClient.pollPage();
-                                    if (p != null){
-                                        System.out.println("Got page: " + p.getPositionCount()+ " id: "+id);
-                                        System.out.println("Got page: " + p);
-                                        System.out.println("Blocked?: "+ exchangeClient.isBlocked());
-                                    }else{
-                                        System.out.println("page was null"+ " id: "+id);
-                                        System.out.println("Status: "+exchangeClient.getStatus());
-                                        System.out.println("Close: "+ exchangeClient.isClosed());
-                                        System.out.println("Blocked: "+ exchangeClient.isBlocked());
-                                        try {
-                                            Thread.sleep(50);
-                                        }
-                                        catch (InterruptedException e) {
-                                            e.printStackTrace();
-                                        }
-                                    }
-                                }
-                                System.out.println("Finished"+ " id: "+id);
-                                exchangeClient.close();
-
-                            });
-                            //while (true){
-                                /*dispatchManager.getFullQueryInfo(id).get().getOutputStage().get();
-                                System.out.println("TASKS in OUTPUT: " + dispatchManager.getFullQueryInfo(id).get().getOutputStage().get().getTasks().size() +"Token " + token );
-                                // TODO may need an executor that gets as many until the query is finished!
-                                ListenableFuture<QueryResults> queryResultsFuture = queries.get(id).waitForResults(token, MockUriInfo.from("test"), new Duration(1, SECONDS), DataSize.of(10, DataSize.Unit.MEGABYTE));
-                                try {
-                                    QueryResults res = queryResultsFuture.get();
-                                    System.out.println("got result: "+res.getNextUri());
-                                    if(res.getData() != null){
-                                        System.out.println("DATA: "+res.getData());
-                                        for (Iterator<List<Object>> it = res.getData().iterator(); it.hasNext(); ) {
-                                            List<Object> obj = it.next();
-                                            for (Object o : obj){
-                                                System.out.println(o);
+                                if (!exchangeClient.isClosed()) {
+                                    // TODO: to handle failure:
+                                    /*Futures.addCallback(future, new FutureCallback<>()
+                                    {@Override public void onSuccess(@Nullable Void result){}
+                                    @Override public void onFailure(Throwable throwable){fail(throwable);}}, directExecutor());
+                                     */
+                                    if (!exchangeClient.isClosed()) {
+                                        // Once the current lock holder in the exchangeClient gets unlocked all blocked ones get notified
+                                        // need chained blocking else we will spin
+                                        // they are also notified when a new page is added
+                                        addSuccessCallback(exchangeClient.isBlocked(), () -> {
+                                            //nextIsBlocked(exchangeClient);
+                                            while (!exchangeClient.isFinished()) {
+                                                //TODO: in the ExchangeOperator::getOutput, they do operatorContext.recordProcessedInput for stats?
+                                                SerializedPage p = exchangeClient.pollPage();
+                                                if (p != null) {
+                                                    System.out.println("Got page: " + p.getPositionCount() + " id: " + id);
+                                                    System.out.println("Got page: " + p);
+                                                    System.out.println("Blocked?: " + exchangeClient.isBlocked());
+                                                }
+                                                else {
+                                                    // look at Query::waitForResults for how to make this properly.
+                                                    // for these queries it is good enough
+                                                    // in Query::removePagesFromExchange they break when it returns null
+                                                    // If query is not yet finished it starts a new callback
+                                                    System.out.println("TODO: should check if blocked at each iteration.");
+                                                    System.out.println("Blocked: " + exchangeClient.isBlocked());
+                                                }
                                             }
-                                        }
-                                        token++;
-                                    }
-
-
+                                            System.out.println("Finished" + " id: " + id);
+                                            // Query::closeExchangeClientIfNecessary
+                                            // not sure if we should close here
+                                            exchangeClient.close();
+                                        });
+                                    } // else failure?
                                 }
-                                catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                    break;
-                                }
-                                catch (ExecutionException e) {
-                                    e.printStackTrace();
-                                    break;
-                                }*/
-
+                            });
                         }
 
                         if (state.isDone()){
@@ -413,23 +400,15 @@ public class DeltaUpdateTask
             }
 
         });
-
-
         //future.set(null);
         // outputConsumer.accept(Optional.empty());
         return future;
     }
 
-    private static Map<String, Object> combineProperties(Set<String> specifiedPropertyKeys, Map<String, Object> defaultProperties, Map<String, Object> inheritedProperties)
-    {
-        Map<String, Object> finalProperties = new HashMap<>(inheritedProperties);
-        for (Map.Entry<String, Object> entry : defaultProperties.entrySet()) {
-            if (specifiedPropertyKeys.contains(entry.getKey()) || !finalProperties.containsKey(entry.getKey())) {
-                finalProperties.put(entry.getKey(), entry.getValue());
-            }
-        }
-        return finalProperties;
+    private void nextIsBlocked(ExchangeClient exchangeClient){
+
     }
+
 
     private void processSourceAndTarget()
     {
