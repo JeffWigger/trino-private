@@ -78,6 +78,7 @@ import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
 import static io.trino.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.trino.spi.StandardErrorCode.COLUMN_NOT_FOUND;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
+import static io.trino.spi.StandardErrorCode.MISSING_TABLE;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.StandardErrorCode.SYNTAX_ERROR;
 import static io.trino.spi.StandardErrorCode.TYPE_MISMATCH;
@@ -114,8 +115,6 @@ public class DeltaUpdateTask
     @GuardedBy("this")
     private Map<QueryId, Boolean> allDone = new HashMap<>();
 
-    @GuardedBy("this")
-    private Map<QueryId, Query> queries = new HashMap<>();
 
     private SettableFuture<Void> future = SettableFuture.create();
 
@@ -188,8 +187,16 @@ public class DeltaUpdateTask
         sourceTableH = sourceQualifiedObjectNames.stream().map(qon -> metadata.getTableHandle(session, qon))
                 .filter(Optional::isPresent).map(Optional::get).collect(toImmutableList());
 
+        if (sourceTableH.size() == 0){
+            throw semanticException(MISSING_TABLE, deltaUpdate, "Deltaupdate: Source table(s) do(es) not exist");
+        }
+
         targetTableH = targetQualifiedObjectNames.stream().map(qon -> metadata.getTableHandle(session, qon))
                 .filter(Optional::isPresent).map(Optional::get).collect(toImmutableList());
+
+        if (targetTableH.size() == 0){
+            throw semanticException(MISSING_TABLE, deltaUpdate, "Deltaupdate: Target table(s) do(es) not exist");
+        }
 
         // checking if we can insert into the source table
         // doing what they do in visitInsert
@@ -211,6 +218,7 @@ public class DeltaUpdateTask
         }
 
         for (TableHandle source : sourceTableH) {
+            System.out.println("LOOP");
             // based on visitInsert of StatementAnalyzer
             TableSchema sourceSchema = metadata.getTableSchema(session, source);
             String tableName = sourceSchema.getTable().getTableName();
@@ -294,93 +302,76 @@ public class DeltaUpdateTask
             queryFutures.put(queryId, queryFuture);
             synchronized (this) {
                 allDone.put(queryId, false);
-                ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
-                // based on Query.java and ExecutingStatementResource.java
-                Query q = Query.create(
-                        session,
-                        slug,
-                        queryManager,
-                        queryInfoUrlFactory.getQueryInfoUrl(queryId),
-                        exchangeClient,
-                        responseExecutor,
-                        timeoutExecutor,
-                        blockEncodingSerde);
-                queries.put(queryId, q);
             }
 
-            System.out.println(query);
+            //System.out.println("state is "+dispatchManager.getFullQueryInfo(queryId).get().getState());
+
+            // addSuccessCallback uses the Thread that calls the the executable to run the callback, not suited for long running functions.
+            // but is used everywhere in dispatch query.
+            // if weird errors appear change this.
+            addSuccessCallback(queryFuture, () -> dispatchManager.getQuery(queryId).addStateChangeListener(state ->
+            {
+                System.out.println(state);
+                if (state.equals(QueryState.RUNNING)){
+                    // based on code from Query.java and ExecutingStatementResource.java
+                    // Flushing does not exist as a query state it only exists as a task state
+                    ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
+
+                    queryManager.addOutputInfoListener(queryId, outputInfo -> {
+                        System.out.println(outputInfo.getColumnNames());
+                        for (URI outputLocation : outputInfo.getBufferLocations()) {
+                            exchangeClient.addLocation(outputLocation);
+                        }
+                        if (outputInfo.isNoMoreBufferLocations()) {
+                            exchangeClient.noMoreLocations();
+                        }
+                        // if ((!queryInfo.isFinalQueryInfo() && queryInfo.getState() != FAILED) || !exchangeClient.isClosed()) {
+                        if (!exchangeClient.isClosed()) {
+                            // TODO: to handle failure:
+                            /*Futures.addCallback(future, new FutureCallback<>()
+                            {@Override public void onSuccess(@Nullable Void result){}
+                            @Override public void onFailure(Throwable throwable){fail(throwable);}}, directExecutor());
+                             */
+
+                            // Once the current lock holder in the exchangeClient gets unlocked all blocked ones get notified
+                            // need chained blocking else we will spin
+                            // they are also notified when a new page is added
+                            // TODO: Here we should definately use a different executor
+                            addSuccessCallback(exchangeClient.isBlocked(), () -> {
+                                nextIsBlocked(exchangeClient, queryId);
+                            });
+
+                        } // else failure?
+                    });
+                }
+
+                if (state.isDone()){
+                    synchronized (this){
+                        allDone.put(queryId, true);
+                        if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
+                            // documentation warns of not doing this when holding a lock
+                            outputConsumer.accept(Optional.empty());
+                            boolean tvalue = future.set(null);
+                            System.out.println("Queries finished: " + tvalue);
+                        }
+                    }
+                }
+            }));
         }
-        ListenableFuture<List<Void>> voids = Futures.successfulAsList(queryFutures.values());
+
+
         // look into FluentFuture.from(query.waitForDispatched()) used in QueuedStatementResource
         // it waits for it to finish?
 
         // In TestFlushingStageState they do:
         // queryRunner.getCoordinator().getFullQueryInfo(queryId).getOutputStage().get().getState(), FLUSHING)
-        // TODO: waisfull to wait for all of them to be scheduled,
-        // addSuccessCallback uses the Thread that calls the the executable to run the callback, not suited for long running functions.
-        // but is used everywhere in dispatch query.
-        // if weird errors appear change this.
-        addSuccessCallback(voids, ()->{
-            System.out.println("voids finished");
-            System.out.println("\n\n\n\nDELTA:"+ Arrays.toString(queryFutures.keySet().toArray(new QueryId[0])));
-            System.out.flush();
-            synchronized (this){
-                for (QueryId id : queryFutures.keySet()){
-                    System.out.println("state is "+dispatchManager.getFullQueryInfo(id).get().getState());
-                    dispatchManager.getQuery(id).addStateChangeListener(state ->
-                    {
-                        System.out.println(state);
-                        if (state.equals(QueryState.RUNNING)){
-                            // based on code from Query.java and ExecutingStatementResource.java
-                            // Flushing does not exist as a query state it only exists as a task state
-                            long token = 0;
-                            ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
 
-                            queryManager.addOutputInfoListener(id, outputInfo -> {
-                                System.out.println(outputInfo.getColumnNames());
-                                for (URI outputLocation : outputInfo.getBufferLocations()) {
-                                    exchangeClient.addLocation(outputLocation);
-                                }
-                                if (outputInfo.isNoMoreBufferLocations()) {
-                                    exchangeClient.noMoreLocations();
-                                }
-                                // if ((!queryInfo.isFinalQueryInfo() && queryInfo.getState() != FAILED) || !exchangeClient.isClosed()) {
-                                if (!exchangeClient.isClosed()) {
-                                    // TODO: to handle failure:
-                                    /*Futures.addCallback(future, new FutureCallback<>()
-                                    {@Override public void onSuccess(@Nullable Void result){}
-                                    @Override public void onFailure(Throwable throwable){fail(throwable);}}, directExecutor());
-                                     */
-                                    if (!exchangeClient.isClosed()) {
-                                        // Once the current lock holder in the exchangeClient gets unlocked all blocked ones get notified
-                                        // need chained blocking else we will spin
-                                        // they are also notified when a new page is added
-                                        addSuccessCallback(exchangeClient.isBlocked(), () -> {
-                                            nextIsBlocked(exchangeClient, id);
-                                        });
-                                    } // else failure?
-                                }
-                            });
-                        }
 
-                        if (state.isDone()){
-                            synchronized (this){
-                                allDone.put(id, true);
-                                if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
-                                    // documentation warns of not doing this when holding a lock
-                                    outputConsumer.accept(Optional.empty());
-                                    boolean tvalue = future.set(null);
-                                    System.out.println("Queries finished: " + tvalue);
-                                }
-                            }
-                        }
-                    });
-                }
-            }
-
-        });
         //future.set(null);
         // outputConsumer.accept(Optional.empty());
+
+        // TODO add a call back that indicates failure if one of the subqueries fails
+        // TDOO: How to get back to a consistent state when one fails an the others succeed.
         return future;
     }
 
