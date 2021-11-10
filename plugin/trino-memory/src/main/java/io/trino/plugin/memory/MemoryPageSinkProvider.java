@@ -16,6 +16,7 @@ package io.trino.plugin.memory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
+import io.trino.spi.DeltaPage;
 import io.trino.spi.HostAddress;
 import io.trino.spi.NodeManager;
 import io.trino.spi.Page;
@@ -96,6 +97,12 @@ public class MemoryPageSinkProvider
         @Override
         public CompletableFuture<?> appendPage(Page page)
         {
+
+            if (page instanceof DeltaPage){
+                DeltaPage dpage = (DeltaPage) page;
+                System.out.println("MemoryPageSinkProvider: Page is a DeltaPage: "+ dpage.getClass().getName());
+            }
+            System.out.println("MemoryPageSinkProvider: Page got type: "+ page.getClass().getName());
             pagesStore.add(tableId, page);
             addedRows += page.getPositionCount();
             return NOT_BLOCKED;

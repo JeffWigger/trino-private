@@ -44,7 +44,14 @@ public class LevelDBRecordSetProvider
         for (ColumnHandle handle : columns) {
             handles.add((LevelDBColumnHandle) handle);
         }
+        LevelDBTableHandle tableHandle = (LevelDBTableHandle) table;
+        // cannot use deltaupdate as it is now a sql statement
+        System.out.println("LevelDBRecordSetProvider: "+ tableHandle.getSchemaName());
+        if (tableHandle.getSchemaName().equals("dupdate")){
+            return new LevelDBDeltaRecordSet(tableHandle, levelDBSplit, handles.build(), commFactory);
+        }else{
+            return new LevelDBRecordSet((LevelDBTableHandle) table, levelDBSplit, handles.build(), commFactory);
+        }
 
-        return new LevelDBRecordSet((LevelDBTableHandle) table, levelDBSplit, handles.build(), commFactory);
     }
 }

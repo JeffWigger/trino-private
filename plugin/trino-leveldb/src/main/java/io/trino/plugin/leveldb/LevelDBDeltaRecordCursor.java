@@ -19,7 +19,6 @@ import com.google.common.base.Strings;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.trino.spi.connector.DeltaRecordCursor;
-import io.trino.spi.connector.RecordCursor;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.DateType;
 import io.trino.spi.type.DecimalParseResult;
@@ -39,8 +38,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 
-// extends DeltaRecordCursor which is a  subclass of RecordCursor, so we can use it for delta and normal
-public class LevelDBRecordCursor
+public class LevelDBDeltaRecordCursor
         implements DeltaRecordCursor
 {
     private static final Splitter LINE_SPLITTER = Splitter.on("|").trimResults();
@@ -54,18 +52,21 @@ public class LevelDBRecordCursor
     private long totalBytes;
     private List<String> fields;
 
-    public LevelDBRecordCursor(LevelDBTableHandle table, List<LevelDBColumnHandle> columnHandles, CommunicatorFactory commFactory)
+    public LevelDBDeltaRecordCursor(LevelDBTableHandle table, List<LevelDBColumnHandle> columnHandles, CommunicatorFactory commFactory)
     {
         System.out.println("LevelDBRecordCursor");
         this.columnHandles = columnHandles;
         this.table = table;
         this.formatter = new SimpleDateFormat("yyyy-MM-dd");
 
-        fieldToColumnIndex = new int[columnHandles.size()];
+        fieldToColumnIndex = new int[columnHandles.size()+1];
         for (int i = 0; i < columnHandles.size(); i++) {
             LevelDBColumnHandle columnHandle = columnHandles.get(i);
             fieldToColumnIndex[i] = columnHandle.getOrdinalPosition();
         }
+        // for the mode: Insert, Update, or Delete
+        // represented by INS, UPD, DEL
+        fieldToColumnIndex[fieldToColumnIndex.length-1] = fieldToColumnIndex.length-1;
         this.commFactory = commFactory;
         this.comm = commFactory.getCommunicator();
 

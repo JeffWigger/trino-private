@@ -19,6 +19,7 @@ import io.airlift.slice.SliceInput;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import io.airlift.slice.XxHash64;
+import io.trino.spi.DeltaPage;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockEncodingSerde;
@@ -42,9 +43,18 @@ public final class PagesSerdeUtil
      */
     public static final long NO_CHECKSUM = 0x0123456789abcdefL;
 
+    public static final byte deltaPageNr = 1;
+    public static final byte BasePageNr = 2;
+
     static void writeRawPage(Page page, SliceOutput output, BlockEncodingSerde serde)
     {
         output.writeInt(page.getChannelCount());
+        if (page instanceof DeltaPage){
+            output.writeByte(deltaPageNr);
+            writeBlock(serde, output, ((DeltaPage)page).getUpdateType());
+        }else {
+            output.writeByte(BasePageNr);
+        }
         for (int channel = 0; channel < page.getChannelCount(); channel++) {
             writeBlock(serde, output, page.getBlock(channel));
         }
@@ -53,11 +63,18 @@ public final class PagesSerdeUtil
     static Page readRawPage(int positionCount, SliceInput input, BlockEncodingSerde blockEncodingSerde)
     {
         int numberOfBlocks = input.readInt();
+        int deltaType = input.readByte();
+        Block updateType = null;
+        if (deltaType == deltaPageNr){
+            updateType = readBlock(blockEncodingSerde, input);
+        }
         Block[] blocks = new Block[numberOfBlocks];
         for (int i = 0; i < blocks.length; i++) {
             blocks[i] = readBlock(blockEncodingSerde, input);
         }
-
+        if (deltaType == deltaPageNr){
+            return new DeltaPage(positionCount, blocks, updateType);
+        }
         return new Page(positionCount, blocks);
     }
 

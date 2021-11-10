@@ -57,6 +57,7 @@ public class LevelDBMetadata
         LinkedList<String> ll = new LinkedList<String>();
         // TODO: could maybe use a schema for the delta structure
         ll.add("default");
+        ll.add("dupdate"); // schema for the delta structure
         return ll;
     }
 

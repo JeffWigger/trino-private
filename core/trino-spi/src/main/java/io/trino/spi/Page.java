@@ -30,7 +30,7 @@ import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
-public final class Page
+public class Page
 {
     public static final int INSTANCE_SIZE = ClassLayout.parseClass(Page.class).instanceSize();
     private static final Block[] EMPTY_BLOCKS = new Block[0];
@@ -45,7 +45,7 @@ public final class Page
     }
 
     private final Block[] blocks;
-    private final int positionCount;
+    public final int positionCount;
     private volatile long sizeInBytes = -1;
     private volatile long retainedSizeInBytes = -1;
     private volatile long logicalSizeInBytes = -1;
@@ -65,7 +65,7 @@ public final class Page
         this(true, positionCount, blocks);
     }
 
-    private Page(boolean blocksCopyRequired, int positionCount, Block[] blocks)
+    public Page(boolean blocksCopyRequired, int positionCount, Block[] blocks)
     {
         requireNonNull(blocks, "blocks is null");
         this.positionCount = positionCount;
@@ -326,7 +326,7 @@ public final class Page
         return builder.toString();
     }
 
-    private static int determinePositionCount(Block... blocks)
+    public static int determinePositionCount(Block... blocks)
     {
         requireNonNull(blocks, "blocks is null");
         if (blocks.length == 0) {
@@ -397,7 +397,7 @@ public final class Page
         return retainedSizeInBytes;
     }
 
-    private static class DictionaryBlockIndexes
+    public static class DictionaryBlockIndexes
     {
         private final List<DictionaryBlock> blocks = new ArrayList<>();
         private final List<Integer> indexes = new ArrayList<>();
