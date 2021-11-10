@@ -14,9 +14,20 @@
 package io.trino.plugin.memory;
 
 import com.google.common.collect.ImmutableList;
+import io.airlift.slice.BasicSliceOutput;
+import io.airlift.slice.Slice;
+import io.airlift.slice.SliceInput;
+import io.airlift.slice.SliceOutput;
+import io.airlift.slice.Slices;
+import io.trino.spi.DeltaPage;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.Block;
+import io.trino.spi.block.ByteArrayBlock;
+import io.trino.spi.block.ByteArrayBlockBuilder;
+import io.trino.spi.block.VariableWidthBlockBuilder;
+import io.trino.spi.type.Type;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
@@ -47,20 +58,99 @@ public class MemoryPagesStore
 
     private final Map<Long, TableData> tables = new HashMap<>();
 
+    // Hashtables that map primary keys to the storage position.
+    // TODO: chose a good initial capacity
+    // This will be unaccounted for in the tracked storage size
+    @GuardedBy("this")
+    private Map<Long, Map<Slice, TableDataPosition>> hashTables;
+    private Map<Long, List<ColumnInfo>> indecies;
+
     @Inject
     public MemoryPagesStore(MemoryConfig config)
     {
         this.maxBytes = config.getMaxDataPerNode().toBytes();
     }
 
-    public synchronized void initialize(long tableId)
+    public synchronized void initialize(long tableId, List<ColumnInfo> indecies)
     {
         if (!tables.containsKey(tableId)) {
             tables.put(tableId, new TableData());
+            hashTables.put(tableId, new HashMap<>());
+            this.indecies.put(tableId, indecies);
         }
     }
 
     public synchronized void add(Long tableId, Page page)
+    {
+        if (!contains(tableId)) {
+            throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
+        }
+
+        TableData tableData = tables.get(tableId);
+
+        int pageSize = page.getPositionCount();
+
+        // checking the hashTable
+        Map<Slice, TableDataPosition> htable = hashTables.get(tableId);
+        if (htable.isEmpty()){
+            htable = new HashMap<Slice, TableDataPosition>(2*pageSize);
+            hashTables.put(tableId, htable);
+        }
+        int pageNr = tableData.getPageNumber() + 1;
+
+        for(int i = 0; i < pageSize; i ++){
+            Page row = page.getSingleValuePage(i);
+            List<ColumnInfo> indecies = this.indecies.get(tableId);
+            // TODO: For TPC benchmarks this is good enough, but should add resizing if it is too small.
+            Slice keyData =  Slices.allocate(50);
+            SliceOutput key = keyData.getOutput();//Slices.allocate(5);
+            for(ColumnInfo ci : indecies){
+                if(ci.isPrimaryKey()){// should always be the case
+                    Type type = ci.getType();
+                    Block block = page.getBlock(((MemoryColumnHandle)ci.getHandle()).getColumnIndex());
+                    // from RecordPageSource
+                    Class<?> javaType = type.getJavaType();
+                    if (javaType == boolean.class) {
+                        boolean b = type.getBoolean(block, i);
+                        key.writeBoolean(b);
+                    }
+                    else if (javaType == long.class) {
+                        long l = type.getLong(block, i);
+                        key.writeLong(l);
+                    }
+                    else if (javaType == double.class) {
+                        double d = type.getDouble(block, i);
+                        key.writeDouble(d);
+                    }
+                    else if (javaType == Slice.class) {
+                        Slice s = type.getSlice(block, i);
+                        key.writeBytes(s);
+                    }
+                    else {
+                        // TODO: THIS PROBABLY DOES NOT WORK!
+                        Object o = type.getObject(block, i);
+                        key.writeBytes(o.toString());
+                    }
+                }else{
+                    throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
+                }
+            }
+            //.slice only get the part of the slice we have written too!
+            htable.put(key.slice(), new TableDataPosition(pageNr, i));
+        }
+
+        page.compact();
+
+        long newSize = currentBytes + page.getRetainedSizeInBytes();
+        if (maxBytes < newSize) {
+            throw new TrinoException(MEMORY_LIMIT_EXCEEDED, format("Memory limit [%d] for memory connector exceeded", maxBytes));
+        }
+        currentBytes = newSize;
+
+        tableData.add(page);
+    }
+
+    public synchronized void addDelta(Long tableId, DeltaPage page)
     {
         if (!contains(tableId)) {
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
@@ -146,6 +236,8 @@ public class MemoryPagesStore
                     currentBytes -= removedPage.getRetainedSizeInBytes();
                 }
                 tableDataIterator.remove();
+                hashTables.remove(tableId);
+                indecies.remove(tableId);
             }
         }
     }
@@ -166,10 +258,12 @@ public class MemoryPagesStore
         private final List<Page> pages = new ArrayList<>();
         private long rows;
 
-        public void add(Page page)
+        // TODO: check that it is synchronized
+        public int add(Page page)
         {
             pages.add(page);
             rows += page.getPositionCount();
+            return pages.size();
         }
 
         private List<Page> getPages()
@@ -177,9 +271,25 @@ public class MemoryPagesStore
             return pages;
         }
 
+        private int getPageNumber()
+        {
+            return pages.size();
+        }
+
         private long getRows()
         {
             return rows;
+        }
+    }
+
+    private static final class TableDataPosition
+    {
+        public int positon;
+        public int pageNr;
+
+        public TableDataPosition(int pageNr, int position){
+            this.pageNr = pageNr;
+            this.positon = position;
         }
     }
 }

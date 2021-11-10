@@ -19,9 +19,12 @@ import io.trino.spi.connector.ConnectorPageSinkProvider;
 import io.trino.spi.connector.ConnectorPageSourceProvider;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
+import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
 
 import javax.inject.Inject;
+
+import java.util.List;
 
 public class MemoryConnector
         implements Connector
@@ -30,18 +33,21 @@ public class MemoryConnector
     private final MemorySplitManager splitManager;
     private final MemoryPageSourceProvider pageSourceProvider;
     private final MemoryPageSinkProvider pageSinkProvider;
+    private final MemoryTableProperties tableProperties;
 
     @Inject
     public MemoryConnector(
             MemoryMetadata metadata,
             MemorySplitManager splitManager,
             MemoryPageSourceProvider pageSourceProvider,
-            MemoryPageSinkProvider pageSinkProvider)
+            MemoryPageSinkProvider pageSinkProvider,
+            MemoryTableProperties tableProperties)
     {
         this.metadata = metadata;
         this.splitManager = splitManager;
         this.pageSourceProvider = pageSourceProvider;
         this.pageSinkProvider = pageSinkProvider;
+        this.tableProperties = tableProperties;
     }
 
     @Override
@@ -72,5 +78,11 @@ public class MemoryConnector
     public ConnectorPageSinkProvider getPageSinkProvider()
     {
         return pageSinkProvider;
+    }
+
+    @Override
+    public List<PropertyMetadata<?>> getColumnProperties()
+    {
+        return tableProperties.getColumnProperties();
     }
 }

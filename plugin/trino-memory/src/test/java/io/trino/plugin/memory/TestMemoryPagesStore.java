@@ -144,12 +144,12 @@ public class TestMemoryPagesStore
 
     private static ConnectorOutputTableHandle createMemoryOutputTableHandle(long tableId, Long... activeTableIds)
     {
-        return new MemoryOutputTableHandle(tableId, ImmutableSet.copyOf(activeTableIds));
+        return new MemoryOutputTableHandle(tableId, ImmutableSet.copyOf(activeTableIds), null);
     }
 
     private static ConnectorInsertTableHandle createMemoryInsertTableHandle(long tableId, Long[] activeTableIds)
     {
-        return new MemoryInsertTableHandle(tableId, ImmutableSet.copyOf(activeTableIds));
+        return new MemoryInsertTableHandle(tableId, ImmutableSet.copyOf(activeTableIds), null);
     }
 
     private static Page createPage()

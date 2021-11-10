@@ -63,7 +63,7 @@ public class MemoryPageSinkProvider
         checkState(memoryOutputTableHandle.getActiveTableIds().contains(tableId));
 
         pagesStore.cleanUp(memoryOutputTableHandle.getActiveTableIds());
-        pagesStore.initialize(tableId);
+        pagesStore.initialize(tableId, memoryOutputTableHandle.getIndecies());
         return new MemoryPageSink(pagesStore, currentHostAddress, tableId);
     }
 
@@ -75,7 +75,7 @@ public class MemoryPageSinkProvider
         checkState(memoryInsertTableHandle.getActiveTableIds().contains(tableId));
 
         pagesStore.cleanUp(memoryInsertTableHandle.getActiveTableIds());
-        pagesStore.initialize(tableId);
+        pagesStore.initialize(tableId, memoryInsertTableHandle.getIndecies());
         return new MemoryPageSink(pagesStore, currentHostAddress, tableId);
     }
 
@@ -101,6 +101,7 @@ public class MemoryPageSinkProvider
             if (page instanceof DeltaPage){
                 DeltaPage dpage = (DeltaPage) page;
                 System.out.println("MemoryPageSinkProvider: Page is a DeltaPage: "+ dpage.getClass().getName());
+                pagesStore.addDelta()
             }
             System.out.println("MemoryPageSinkProvider: Page got type: "+ page.getClass().getName());
             pagesStore.add(tableId, page);

@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.spi.connector.ConnectorInsertTableHandle;
 
+import java.util.List;
 import java.util.Set;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -27,14 +28,17 @@ public class MemoryInsertTableHandle
 {
     private final long table;
     private final Set<Long> activeTableIds;
+    private final List<ColumnInfo>  indecies;
 
     @JsonCreator
     public MemoryInsertTableHandle(
             @JsonProperty("table") long table,
-            @JsonProperty("activeTableIds") Set<Long> activeTableIds)
+            @JsonProperty("activeTableIds") Set<Long> activeTableIds,
+            @JsonProperty("indecies") List<ColumnInfo> indecies)
     {
         this.table = table;
         this.activeTableIds = requireNonNull(activeTableIds, "activeTableIds is null");
+        this.indecies = requireNonNull(indecies, "indecies is null");
     }
 
     @JsonProperty
@@ -47,6 +51,11 @@ public class MemoryInsertTableHandle
     public Set<Long> getActiveTableIds()
     {
         return activeTableIds;
+    }
+
+    @JsonProperty
+    public List<ColumnInfo> getIndecies(){
+        return indecies;
     }
 
     @Override

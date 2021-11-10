@@ -24,12 +24,14 @@ public class ColumnInfo
     private final ColumnHandle handle;
     private final String name;
     private final Type type;
+    private final boolean primaryKey;
 
-    public ColumnInfo(ColumnHandle handle, String name, Type type)
+    public ColumnInfo(ColumnHandle handle, String name, Type type, boolean primaryKey)
     {
         this.handle = requireNonNull(handle, "handle is null");
         this.name = requireNonNull(name, "name is null");
         this.type = requireNonNull(type, "type is null");
+        this.primaryKey = primaryKey;
     }
 
     public ColumnHandle getHandle()
@@ -47,9 +49,17 @@ public class ColumnInfo
         return new ColumnMetadata(name, type);
     }
 
+    public boolean isPrimaryKey(){
+        return primaryKey;
+    }
+
+    public  Type getType(){
+        return type;
+    }
+
     @Override
     public String toString()
     {
-        return name + "::" + type;
+        return name + "::" + type +"::"+ primaryKey;
     }
 }
