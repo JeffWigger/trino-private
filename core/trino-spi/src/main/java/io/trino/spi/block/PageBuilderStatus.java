@@ -53,9 +53,10 @@ public class PageBuilderStatus
 
     void addBytes(int bytes)
     {
-        if (bytes < 0) {
+        // allowed for UpdatableBlocks
+        /*if (bytes < 0) {
             throw new IllegalArgumentException("bytes cannot be negative");
-        }
+        }*/
         currentSize += bytes;
     }
 
