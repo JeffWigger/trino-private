@@ -16,7 +16,7 @@ package io.trino.spi.block;
 import io.airlift.slice.Slice;
 
 public interface UpdatableBlockBuilder
-        extends Block
+        extends BlockBuilder
 {
     /**
      * Write a byte to the current entry;
@@ -92,11 +92,13 @@ public interface UpdatableBlockBuilder
 
     /**
      * Update a byte sequences to the current entry;
+     * sourceIndex is the position inside the source slice
      */
-    default UpdatableBlockBuilder updateBytes(Slice source, int sourceIndex, int length)
+    default UpdatableBlockBuilder updateBytes(Slice source, int sourceIndex, int length,  int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
+
     /**
      * Delete a byte to the current entry;
      */

@@ -306,6 +306,12 @@ public class VariableWidthBlockBuilder
     }
 
     @Override
+    public UpdatableBlockBuilder makeUpdatable()
+    {
+        return new UpdatableVariableWidthBlock(null, positions, valueIsNull, sliceOutput);
+    }
+
+    @Override
     protected boolean isEntryNull(int position)
     {
         return valueIsNull[position];

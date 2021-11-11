@@ -20,11 +20,15 @@ import io.airlift.slice.SliceInput;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import io.trino.spi.DeltaPage;
+import io.trino.spi.DeltaPageBuilder;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.ByteArrayBlockBuilder;
+import io.trino.spi.block.LongArrayBlock;
+import io.trino.spi.block.UpdatableBlockBuilder;
+import io.trino.spi.block.UpdatableLongArrayBlock;
 import io.trino.spi.block.VariableWidthBlockBuilder;
 import io.trino.spi.type.Type;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -34,6 +38,7 @@ import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -102,6 +107,7 @@ public class MemoryPagesStore
             Page row = page.getSingleValuePage(i);
             List<ColumnInfo> indecies = this.indecies.get(tableId);
             // TODO: For TPC benchmarks this is good enough, but should add resizing if it is too small.
+            // USE DynamicSliceOutput!!!!!!!!!!!!!!!!!!!!!!!
             Slice keyData =  Slices.allocate(50);
             SliceOutput key = keyData.getOutput();//Slices.allocate(5);
             for(ColumnInfo ci : indecies){
@@ -138,7 +144,7 @@ public class MemoryPagesStore
             //.slice only get the part of the slice we have written too!
             htable.put(key.slice(), new TableDataPosition(pageNr, i));
         }
-
+        page = make_updatable(page);
         page.compact();
 
         long newSize = currentBytes + page.getRetainedSizeInBytes();
@@ -155,6 +161,54 @@ public class MemoryPagesStore
         if (!contains(tableId)) {
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
         }
+        int cols = page.getChannelCount();
+        int size = page.getPositionCount();
+
+        UpdatableBlockBuilder[] insertBlocks = new UpdatableBlockBuilder[cols];
+        Type[] types = new Type[cols];
+        for (int c = 0; c < cols; c++) {
+            ColumnInfo ci = indecies.get(tableId).get(c);
+            Type type = ci.getType();
+            types[c] = type;
+            insertBlocks[c] = ci.getType().createBlockBuilder(null, 0).makeUpdatable();
+        }
+
+        for (int i = 0; i < size; i++) {
+            Page row = page.getSingleValuePage(i);
+            if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.INS.ordinal()) {
+                for (int c = 0; c < cols; c++) {
+                    Type type = types[c];
+                    Class<?> javaType = type.getJavaType();
+                    UpdatableBlockBuilder insertsBlock = insertBlocks[c];
+                    // TODO: what about the other types?
+
+                    if (javaType == boolean.class) {
+                        type.writeBoolean(insertsBlock, type.getBoolean(row.getBlock(c), 0));
+                    }
+                    else if (javaType == long.class) {
+                        type.writeLong(insertsBlock, type.getLong(row.getBlock(c), 0));
+                    }
+                    else if (javaType == double.class) {
+                        type.writeDouble(insertsBlock, type.getDouble(row.getBlock(c), 0));
+                    }
+                    else if (javaType == Slice.class) {
+                        Slice slice = type.getSlice(row.getBlock(c), 0);
+                        type.writeSlice(insertsBlock, slice, 0, slice.length());
+                    }
+                    else {
+                        type.writeObject(insertsBlock, type.getObject(row.getBlock(c), 0));
+                    }
+                }
+            }else{
+                // handle delete and update
+            }
+        }
+
+        // Page containing only the inserts
+        Page inserts = new Page(false, insertBlocks[0].getPositionCount(), insertBlocks);
+
+        return newpage;
+
 
         page.compact();
 
@@ -249,7 +303,7 @@ public class MemoryPagesStore
         for (int i = 0; i < columnIndexes.size(); i++) {
             outputBlocks[i] = page.getBlock(columnIndexes.get(i));
         }
-
+        // TODO: copies the columns
         return new Page(page.getPositionCount(), outputBlocks);
     }
 
@@ -292,4 +346,17 @@ public class MemoryPagesStore
             this.positon = position;
         }
     }
+
+    //UpdatableLongArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, long[] values, int nullCounter, int deleteCounter)
+    static Page make_updatable(Page page){
+        int cols = page.getChannelCount();
+        Block[] blocks = new Block[page.getChannelCount()];
+        for (int i =0; i< cols; i++){
+            Block b = page.getBlock(i).getLoadedBlock();
+            blocks[i]= b.makeUpdatable();
+        }
+        Page newpage = new Page(false,blocks[0].getPositionCount(), blocks);
+        return newpage;
+    }
+
 }

@@ -142,6 +142,12 @@ public class ByteArrayBlock
     }
 
     @Override
+    public UpdatableBlockBuilder makeUpdatable()
+    {
+        return new UpdatableByteArrayBlock(null, positionCount, valueIsNull, values);
+    }
+
+    @Override
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);

@@ -317,4 +317,10 @@ public interface Block
     {
         return Collections.emptyList();
     }
+
+
+    /**
+     *  Turns it into an updatable block
+     */
+    UpdatableBlockBuilder makeUpdatable();
 }

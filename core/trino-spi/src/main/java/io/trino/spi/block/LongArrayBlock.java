@@ -37,8 +37,8 @@ public class LongArrayBlock
     private final int arrayOffset;
     private final int positionCount;
     @Nullable
-    private final boolean[] valueIsNull;
-    private final long[] values;
+    public boolean[] valueIsNull;
+    public long[] values;
 
     private final long sizeInBytes;
     private final long retainedSizeInBytes;

@@ -16,6 +16,7 @@ package io.trino.plugin.leveldb;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
+import com.google.errorprone.annotations.Var;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.trino.spi.connector.DeltaRecordCursor;
@@ -25,6 +26,8 @@ import io.trino.spi.type.DateType;
 import io.trino.spi.type.DecimalParseResult;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
+import io.trino.spi.type.CharType;
+import io.trino.spi.type.VarcharType;
 import io.trino.spi.type.Type;
 
 import java.text.ParseException;
@@ -194,6 +197,22 @@ public class LevelDBRecordCursor
     {
         // checkFieldType(field, createUnboundedVarcharType());
         // cannot distinguish bewteen char(25) and varchar
+        Type type = getType(field);
+        if (type instanceof CharType){
+            CharType charType = (CharType) type;
+            String small = getFieldValue(field);
+            if( small.length() < charType.getLength()){
+                small = small + " ".repeat(small.length() - charType.getLength());
+            }
+        }else if (type instanceof VarcharType){
+            // Just for simpler updates
+            VarcharType varcharType = (VarcharType) type;
+            String small = getFieldValue(field);
+            if( small.length() < varcharType.getBoundedLength()){
+                small = small + " ".repeat(small.length() - varcharType.getBoundedLength());
+            }
+        }
+        System.out.println("LevelDBRecordCursor: got unecpected slice type");
         return Slices.utf8Slice(getFieldValue(field));
     }
 
