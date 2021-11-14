@@ -306,7 +306,7 @@ public class VariableWidthBlockBuilder
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable()
+    public UpdatableBlock makeUpdatable()
     {
         return new UpdatableVariableWidthBlock(null, positions, valueIsNull, sliceOutput);
     }

@@ -40,14 +40,12 @@ import static io.trino.spi.block.BlockUtil.checkValidRegion;
 import static io.trino.spi.block.BlockUtil.compactArray;
 import static io.trino.spi.block.BlockUtil.compactOffsets;
 import static io.trino.spi.block.BlockUtil.compactSlice;
-import static io.trino.spi.block.UpdatableUtils.DEL;
-import static io.trino.spi.block.UpdatableUtils.NULL;
 import static io.trino.spi.block.UpdatableUtils.toBoolean;
 import static java.lang.Math.min;
 
 public class UpdatableVariableWidthBlock
         extends AbstractVariableWidthBlock
-        implements UpdatableBlockBuilder
+        implements UpdatableBlock
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(UpdatableVariableWidthBlock.class).instanceSize();
 
@@ -242,7 +240,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder writeByte(int value)
+    public UpdatableBlock writeByte(int value)
     {
         if (!initialized) {
             initializeCapacity();
@@ -253,7 +251,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder writeShort(int value)
+    public UpdatableBlock writeShort(int value)
     {
         if (!initialized) {
             initializeCapacity();
@@ -264,7 +262,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder writeInt(int value)
+    public UpdatableBlock writeInt(int value)
     {
         if (!initialized) {
             initializeCapacity();
@@ -275,7 +273,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder writeLong(long value)
+    public UpdatableBlock writeLong(long value)
     {
         if (!initialized) {
             initializeCapacity();
@@ -286,7 +284,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder writeBytes(Slice source, int sourceIndex, int length)
+    public UpdatableBlock writeBytes(Slice source, int sourceIndex, int length)
     {
         if (!initialized) {
             initializeCapacity();
@@ -297,7 +295,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder closeEntry()
+    public UpdatableBlock closeEntry()
     {
         entryAdded(currentEntrySize, false);
         currentEntrySize = 0;
@@ -305,7 +303,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder appendNull()
+    public UpdatableBlock appendNull()
     {
         if (currentEntrySize > 0) {
             throw new IllegalStateException("Current entry must be closed before a null can be written");
@@ -337,7 +335,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder updateBytes(Slice source, int sourceIndex, int length, int position, int offset){
+    public UpdatableBlock updateBytes(Slice source, int sourceIndex, int length, int position, int offset){
         // currently, we cannot handle updates that do not exactly match the size
         // we would need another array encoding the size of each entry
         if(length == this.getSliceLength(position)){
@@ -355,7 +353,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder deleteBytes(int position, int offset, int length){
+    public UpdatableBlock deleteBytes(int position, int offset, int length){
         if (valueMarker[position] == NULL){
             nullCounter--;
         }
@@ -396,7 +394,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable()
+    public UpdatableBlock makeUpdatable()
     {
         return this;
     }
@@ -440,7 +438,7 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlockBuilder newBlockBuilderLike(BlockBuilderStatus blockBuilderStatus)
+    public UpdatableBlock newBlockBuilderLike(BlockBuilderStatus blockBuilderStatus)
     {
         int currentSizeInBytes = positions == 0 ? positions : (getOffset(positions) - getOffset(0));
         return new UpdatableVariableWidthBlock(blockBuilderStatus, calculateBlockResetSize(positions), calculateBlockResetBytes(currentSizeInBytes));

@@ -349,7 +349,7 @@ public class LongArrayBlockBuilder
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable(){
+    public UpdatableBlock makeUpdatable(){
         // (@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, long[] values)
         return new UpdatableLongArrayBlock(blockBuilderStatus, positionCount, valueIsNull, values);
     }

@@ -15,13 +15,13 @@ package io.trino.spi.block;
 
 import io.airlift.slice.Slice;
 
-public interface UpdatableBlockBuilder
+public interface UpdatableBlock
         extends BlockBuilder
 {
     /**
      * Write a byte to the current entry;
      */
-    default UpdatableBlockBuilder writeByte(int value)
+    default UpdatableBlock writeByte(int value)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -29,7 +29,7 @@ public interface UpdatableBlockBuilder
     /**
      * Write a short to the current entry;
      */
-    default UpdatableBlockBuilder writeShort(int value)
+    default UpdatableBlock writeShort(int value)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -37,7 +37,7 @@ public interface UpdatableBlockBuilder
     /**
      * Write a int to the current entry;
      */
-    default UpdatableBlockBuilder writeInt(int value)
+    default UpdatableBlock writeInt(int value)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -45,7 +45,7 @@ public interface UpdatableBlockBuilder
     /**
      * Write a long to the current entry;
      */
-    default UpdatableBlockBuilder writeLong(long value)
+    default UpdatableBlock writeLong(long value)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -53,7 +53,7 @@ public interface UpdatableBlockBuilder
     /**
      * Write a byte sequences to the current entry;
      */
-    default UpdatableBlockBuilder writeBytes(Slice source, int sourceIndex, int length)
+    default UpdatableBlock writeBytes(Slice source, int sourceIndex, int length)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -61,7 +61,7 @@ public interface UpdatableBlockBuilder
     /**
      * Update a byte to the current entry;
      */
-    default UpdatableBlockBuilder updateByte(Integer value, int position, int offset)
+    default UpdatableBlock updateByte(Integer value, int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -69,7 +69,7 @@ public interface UpdatableBlockBuilder
     /**
      * Update a short to the current entry;
      */
-    default UpdatableBlockBuilder updateShort(Integer value, int position, int offset)
+    default UpdatableBlock updateShort(Integer value, int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -77,7 +77,7 @@ public interface UpdatableBlockBuilder
     /**
      * Update a int to the current entry;
      */
-    default UpdatableBlockBuilder updateInt(Integer value, int position, int offset)
+    default UpdatableBlock updateInt(Integer value, int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -85,7 +85,7 @@ public interface UpdatableBlockBuilder
     /**
      * Update a long to the current entry;
      */
-    default UpdatableBlockBuilder updateLong(Long value, int position, int offset)
+    default UpdatableBlock updateLong(Long value, int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -94,7 +94,7 @@ public interface UpdatableBlockBuilder
      * Update a byte sequences to the current entry;
      * sourceIndex is the position inside the source slice
      */
-    default UpdatableBlockBuilder updateBytes(Slice source, int sourceIndex, int length,  int position, int offset)
+    default UpdatableBlock updateBytes(Slice source, int sourceIndex, int length,  int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -102,7 +102,7 @@ public interface UpdatableBlockBuilder
     /**
      * Delete a byte to the current entry;
      */
-    default UpdatableBlockBuilder deleteByte(int position, int offset)
+    default UpdatableBlock deleteByte(int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -110,7 +110,7 @@ public interface UpdatableBlockBuilder
     /**
      * Delete a short to the current entry;
      */
-    default UpdatableBlockBuilder deleteShort(int position, int offset)
+    default UpdatableBlock deleteShort(int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -118,7 +118,7 @@ public interface UpdatableBlockBuilder
     /**
      * Delete a int to the current entry;
      */
-    default UpdatableBlockBuilder deleteInt(int position, int offset)
+    default UpdatableBlock deleteInt(int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -126,7 +126,7 @@ public interface UpdatableBlockBuilder
     /**
      * Delete a long to the current entry;
      */
-    default UpdatableBlockBuilder deleteLong(int position, int offset)
+    default UpdatableBlock deleteLong(int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -134,7 +134,7 @@ public interface UpdatableBlockBuilder
     /**
      * Delete a byte sequences to the current entry;
      */
-    default UpdatableBlockBuilder deleteBytes(int position, int offset, int length)
+    default UpdatableBlock deleteBytes(int position, int offset, int length)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -143,7 +143,7 @@ public interface UpdatableBlockBuilder
      * Return a writer to the current entry. The caller can operate on the returned caller to incrementally build the object. This is generally more efficient than
      * building the object elsewhere and call writeObject afterwards because a large chunk of memory could potentially be unnecessarily copied in this process.
      */
-    default UpdatableBlockBuilder beginBlockEntry()
+    default UpdatableBlock beginBlockEntry()
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -161,17 +161,17 @@ public interface UpdatableBlockBuilder
     /**
      * Write a byte to the current entry;
      */
-    UpdatableBlockBuilder closeEntry();
+    UpdatableBlock closeEntry();
 
     /**
      * Appends a null value to the block.
      */
-    UpdatableBlockBuilder appendNull();
+    UpdatableBlock appendNull();
 
     /**
      * Append a struct to the block and close the entry.
      */
-    default UpdatableBlockBuilder appendStructure(Block value)
+    default UpdatableBlock appendStructure(Block value)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -180,7 +180,7 @@ public interface UpdatableBlockBuilder
      * Do not use this interface outside block package.
      * Instead, use Block.writePositionTo(BlockBuilder, position)
      */
-    default UpdatableBlockBuilder appendStructureInternal(Block block, int position)
+    default UpdatableBlock appendStructureInternal(Block block, int position)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -193,10 +193,15 @@ public interface UpdatableBlockBuilder
     /**
      * Creates a new block builder of the same type based on the current usage statistics of this block builder.
      */
-    UpdatableBlockBuilder newBlockBuilderLike(BlockBuilderStatus blockBuilderStatus);
+    UpdatableBlock newBlockBuilderLike(BlockBuilderStatus blockBuilderStatus);
 
     /**
      * Returns true if there are deleted values in the block.
      */
     public boolean mayHaveDel();
+
+    default UpdatableBlock getLoadedBlock()
+    {
+        return this;
+    }
 }

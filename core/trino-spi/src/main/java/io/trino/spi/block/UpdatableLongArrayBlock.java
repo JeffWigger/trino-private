@@ -33,7 +33,7 @@ import static java.lang.Math.max;
 import static java.lang.Math.toIntExact;
 
 public class UpdatableLongArrayBlock
-        implements UpdatableBlockBuilder
+        implements UpdatableBlock
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(UpdatableLongArrayBlock.class).instanceSize();
     private static final Block NULL_VALUE_BLOCK = new LongArrayBlock(0, 1, new boolean[] {true}, new long[1]);
@@ -361,7 +361,7 @@ public class UpdatableLongArrayBlock
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable()
+    public UpdatableBlock makeUpdatable()
     {
         return this;
     }

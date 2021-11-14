@@ -189,6 +189,16 @@ public class LongArrayBlock
     }
 
     @Override
+    public UpdatableBlock makeUpdatable()
+    {
+        if (arrayOffset == 0){
+            return new UpdatableLongArrayBlock(null, positionCount, valueIsNull, values);
+        }
+        return null;
+
+    }
+
+    @Override
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);

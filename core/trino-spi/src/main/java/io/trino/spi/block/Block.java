@@ -322,5 +322,7 @@ public interface Block
     /**
      *  Turns it into an updatable block
      */
-    UpdatableBlockBuilder makeUpdatable();
+    default UpdatableBlock makeUpdatable(){
+        throw new UnsupportedOperationException(getClass().getName());
+    }
 }

@@ -205,7 +205,7 @@ public class ByteArrayBlockBuilder
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable()
+    public UpdatableBlock makeUpdatable()
     {
         return new UpdatableByteArrayBlock(null, positionCount, valueIsNull, values);
     }

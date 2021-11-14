@@ -1,0 +1,366 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.trino.spi;
+
+import io.trino.spi.block.Block;
+import io.trino.spi.block.DictionaryBlock;
+import io.trino.spi.block.DictionaryId;
+import io.trino.spi.block.LongArrayBlock;
+import io.trino.spi.block.UpdatableBlock;
+import io.trino.spi.block.UpdatableByteArrayBlock;
+import io.trino.spi.block.UpdatableLongArrayBlock;
+import org.openjdk.jol.info.ClassLayout;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static io.airlift.slice.SizeOf.sizeOf;
+import static io.trino.spi.block.DictionaryId.randomDictionaryId;
+import static java.lang.Math.min;
+import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
+
+public class UpdatablePage
+    extends Page
+{
+    public static final int INSTANCE_SIZE = ClassLayout.parseClass(UpdatablePage.class).instanceSize();
+    private static final UpdatableBlock[] EMPTY_BLOCKS = new UpdatableBlock[0];
+
+    /**
+     * Visible to give trusted classes like {@link PageBuilder} access to a constructor that doesn't
+     * defensively copy the blocks
+     */
+    static UpdatablePage wrapBlocksWithoutCopy(int positionCount, UpdatableBlock[] blocks)
+    {
+        return new UpdatablePage(false, positionCount, blocks);
+    }
+
+    private UpdatableBlock[] blocks;
+    public int positionCount;
+    private volatile long sizeInBytes = -1;
+    private volatile long retainedSizeInBytes = -1;
+    private volatile long logicalSizeInBytes = -1;
+
+    public UpdatablePage(Block... blocks)
+    {
+        this(true, determinePositionCount(blocks), makeUpdatable(blocks));
+    }
+
+    public UpdatablePage(int positionCount)
+    {
+        this(false, positionCount, EMPTY_BLOCKS);
+    }
+
+    public UpdatablePage(int positionCount, Block... blocks)
+    {
+        this(true, positionCount, makeUpdatable(blocks));
+    }
+
+    public UpdatablePage(boolean blocksCopyRequired, int positionCount, UpdatableBlock[] blocks)
+    {
+        requireNonNull(blocks, "blocks is null");
+        this.positionCount = positionCount;
+        if (blocks.length == 0) {
+            this.blocks = EMPTY_BLOCKS;
+            this.sizeInBytes = 0;
+            this.logicalSizeInBytes = 0;
+            // Empty blocks are not considered "retained" by any particular page
+            this.retainedSizeInBytes = INSTANCE_SIZE;
+        }
+        else {
+            this.blocks = blocksCopyRequired ? blocks.clone() : blocks;
+        }
+    }
+
+    public int getChannelCount()
+    {
+        return blocks.length;
+    }
+
+    public int getPositionCount()
+    {
+        return positionCount;
+    }
+
+    public long getSizeInBytes()
+    {
+        long sizeInBytes = this.sizeInBytes;
+        if (sizeInBytes < 0) {
+            sizeInBytes = 0;
+            for (Block block : blocks) {
+                sizeInBytes += block.getLoadedBlock().getSizeInBytes();
+            }
+            this.sizeInBytes = sizeInBytes;
+        }
+        return sizeInBytes;
+    }
+
+    public long getLogicalSizeInBytes()
+    {
+        long logicalSizeInBytes = this.logicalSizeInBytes;
+        if (logicalSizeInBytes < 0) {
+            logicalSizeInBytes = 0;
+            for (Block block : blocks) {
+                logicalSizeInBytes += block.getLogicalSizeInBytes();
+            }
+            this.logicalSizeInBytes = logicalSizeInBytes;
+        }
+        return logicalSizeInBytes;
+    }
+
+    public long getRetainedSizeInBytes()
+    {
+        long retainedSizeInBytes = this.retainedSizeInBytes;
+        if (retainedSizeInBytes < 0) {
+            return updateRetainedSize();
+        }
+        return retainedSizeInBytes;
+    }
+
+    public UpdatableBlock getBlock(int channel)
+    {
+        return blocks[channel];
+    }
+
+    /**
+     * Gets the values at the specified position as a single element page.  The method creates independent
+     * copy of the data.
+     */
+    public Page getSingleValuePage(int position)
+    {
+        Block[] singleValueBlocks = new UpdatableBlock[this.blocks.length];
+        for (int i = 0; i < this.blocks.length; i++) {
+            singleValueBlocks[i] = this.blocks[i].getSingleValueBlock(position);
+        }
+        return Page.wrapBlocksWithoutCopy(1, singleValueBlocks);
+    }
+
+    public Page getRegion(int positionOffset, int length)
+    {
+        if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
+            throw new IndexOutOfBoundsException(format("Invalid position %s and length %s in page with %s positions", positionOffset, length, positionCount));
+        }
+
+        int channelCount = getChannelCount();
+        Block[] slicedBlocks = new Block[channelCount];
+        for (int i = 0; i < channelCount; i++) {
+            slicedBlocks[i] = blocks[i].getRegion(positionOffset, length);
+        }
+        return Page.wrapBlocksWithoutCopy(length, slicedBlocks);
+    }
+
+    public UpdatablePage appendColumn(UpdatableBlock block)
+    {
+        requireNonNull(block, "block is null");
+        if (positionCount != block.getPositionCount()) {
+            throw new IllegalArgumentException("Block does not have same position count");
+        }
+
+        UpdatableBlock[] newBlocks = Arrays.copyOf(blocks, blocks.length + 1);
+        newBlocks[blocks.length] = block;
+        return wrapBlocksWithoutCopy(positionCount, newBlocks);
+    }
+
+    public void compact()
+    {
+        // currently not supported
+    }
+
+    /**
+     * Returns a page that assures all data is in memory.
+     * May return the same page if all page data is already in memory.
+     * <p>
+     * This allows streaming data sources to skip sections that are not
+     * accessed in a query.
+     */
+    public UpdatablePage getLoadedPage()
+    {
+        for (int i = 0; i < blocks.length; i++) {
+            UpdatableBlock loaded = blocks[i].getLoadedBlock();
+            if (loaded != blocks[i]) {
+                // Transition to new block creation mode after the first newly loaded block is encountered
+                UpdatableBlock[] loadedBlocks = blocks.clone();
+                loadedBlocks[i++] = loaded;
+                for (; i < blocks.length; i++) {
+                    loadedBlocks[i] = blocks[i].getLoadedBlock();
+                }
+                return wrapBlocksWithoutCopy(positionCount, loadedBlocks);
+            }
+        }
+        // No newly loaded blocks
+        return this;
+    }
+
+    public UpdatablePage getLoadedPage(int column)
+    {
+        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[]{this.blocks[column].getLoadedBlock()});
+    }
+
+    public UpdatablePage getLoadedPage(int... columns)
+    {
+        requireNonNull(columns, "columns is null");
+
+        UpdatableBlock[] blocks = new UpdatableBlock[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            blocks[i] = this.blocks[columns[i]].getLoadedBlock();
+        }
+        return wrapBlocksWithoutCopy(positionCount, blocks);
+    }
+
+    @Override
+    public String toString()
+    {
+        StringBuilder builder = new StringBuilder("Page{");
+        builder.append("positions=").append(positionCount);
+        builder.append(", channels=").append(getChannelCount());
+        builder.append('}');
+        builder.append("@").append(Integer.toHexString(System.identityHashCode(this)));
+        return builder.toString();
+    }
+
+    public static int determinePositionCount(Block... blocks)
+    {
+        requireNonNull(blocks, "blocks is null");
+        if (blocks.length == 0) {
+            throw new IllegalArgumentException("blocks is empty");
+        }
+
+        return blocks[0].getPositionCount();
+    }
+
+    public Page getPositions(int[] retainedPositions, int offset, int length)
+    {
+        requireNonNull(retainedPositions, "retainedPositions is null");
+
+        Block[] blocks = new Block[this.blocks.length];
+        for (int i = 0; i < blocks.length; i++) {
+            blocks[i] = this.blocks[i].getPositions(retainedPositions, offset, length);
+        }
+        return Page.wrapBlocksWithoutCopy(length, blocks);
+    }
+
+    public Page copyPositions(int[] retainedPositions, int offset, int length)
+    {
+        requireNonNull(retainedPositions, "retainedPositions is null");
+
+        Block[] blocks = new Block[this.blocks.length];
+        for (int i = 0; i < blocks.length; i++) {
+            blocks[i] = this.blocks[i].copyPositions(retainedPositions, offset, length);
+        }
+        return Page.wrapBlocksWithoutCopy(length, blocks);
+    }
+
+    public UpdatablePage getColumns(int column)
+    {
+        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[] {this.blocks[column]});
+    }
+
+    public UpdatablePage getColumns(int... columns)
+    {
+        requireNonNull(columns, "columns is null");
+
+        UpdatableBlock[] blocks = new UpdatableBlock[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            blocks[i] = this.blocks[columns[i]];
+        }
+        return wrapBlocksWithoutCopy(positionCount, blocks);
+    }
+
+    public UpdatablePage prependColumn(UpdatableBlock column)
+    {
+        if (column.getPositionCount() != positionCount) {
+            throw new IllegalArgumentException(format("Column does not have same position count (%s) as page (%s)", column.getPositionCount(), positionCount));
+        }
+
+        UpdatableBlock[] result = new UpdatableBlock[blocks.length + 1];
+        result[0] = column;
+        System.arraycopy(blocks, 0, result, 1, blocks.length);
+
+        return wrapBlocksWithoutCopy(positionCount, result);
+    }
+
+    private long updateRetainedSize()
+    {
+        long retainedSizeInBytes = INSTANCE_SIZE + sizeOf(blocks);
+        for (Block block : blocks) {
+            retainedSizeInBytes += block.getRetainedSizeInBytes();
+        }
+        this.retainedSizeInBytes = retainedSizeInBytes;
+        return retainedSizeInBytes;
+    }
+
+    public static class DictionaryBlockIndexes
+    {
+        private final List<DictionaryBlock> blocks = new ArrayList<>();
+        private final List<Integer> indexes = new ArrayList<>();
+
+        public void addBlock(DictionaryBlock block, int index)
+        {
+            blocks.add(block);
+            indexes.add(index);
+        }
+
+        public List<DictionaryBlock> getBlocks()
+        {
+            return blocks;
+        }
+
+        public List<Integer> getIndexes()
+        {
+            return indexes;
+        }
+    }
+
+    public static UpdatableBlock[]  makeUpdatable(Block[] blocks){
+        UpdatableBlock[] uBlocks = new UpdatableBlock[blocks.length];
+        for (int i = 0; i < blocks.length; i++){
+            uBlocks[i] = blocks[i].makeUpdatable();
+        }
+        return uBlocks;
+    }
+
+    public void updateRow(Page row, int position){
+        int cols = getChannelCount();
+        for (int c = 0; c < cols; c++) {
+            updateBlock(this.getBlock(c), row.getBlock(c), position);
+        }
+    }
+
+    public void deleteRow(int position){
+        int cols = getChannelCount();
+        for (int c = 0; c < cols; c++) {
+            deleteBlock(this.getBlock(c), position);
+        }
+    }
+
+
+
+    private void updateBlock(UpdatableBlock target, Block sourceRow, int position){
+        // target and source should only differ in being updatable and not
+        if (target instanceof UpdatableLongArrayBlock){
+            target.updateLong(((LongArrayBlock) sourceRow).getLong(0, 0), position, 0);
+        } else if (target instanceof UpdatableByteArrayBlock){
+
+        }
+    }
+
+    private void deleteBlock(UpdatableBlock target, int position){
+        if (target instanceof UpdatableLongArrayBlock){
+            target.deleteLong(position, 0);
+        }
+    }
+}

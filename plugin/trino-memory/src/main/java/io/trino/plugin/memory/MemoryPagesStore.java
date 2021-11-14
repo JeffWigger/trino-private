@@ -14,22 +14,15 @@
 package io.trino.plugin.memory;
 
 import com.google.common.collect.ImmutableList;
-import io.airlift.slice.BasicSliceOutput;
+import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
-import io.airlift.slice.SliceInput;
-import io.airlift.slice.SliceOutput;
-import io.airlift.slice.Slices;
 import io.trino.spi.DeltaPage;
 import io.trino.spi.DeltaPageBuilder;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
+import io.trino.spi.UpdatablePage;
 import io.trino.spi.block.Block;
-import io.trino.spi.block.ByteArrayBlock;
-import io.trino.spi.block.ByteArrayBlockBuilder;
-import io.trino.spi.block.LongArrayBlock;
-import io.trino.spi.block.UpdatableBlockBuilder;
-import io.trino.spi.block.UpdatableLongArrayBlock;
-import io.trino.spi.block.VariableWidthBlockBuilder;
+import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.type.Type;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 
@@ -38,7 +31,6 @@ import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -105,55 +97,63 @@ public class MemoryPagesStore
 
         for(int i = 0; i < pageSize; i ++){
             Page row = page.getSingleValuePage(i);
-            List<ColumnInfo> indecies = this.indecies.get(tableId);
-            // TODO: For TPC benchmarks this is good enough, but should add resizing if it is too small.
-            // USE DynamicSliceOutput!!!!!!!!!!!!!!!!!!!!!!!
-            Slice keyData =  Slices.allocate(50);
-            SliceOutput key = keyData.getOutput();//Slices.allocate(5);
-            for(ColumnInfo ci : indecies){
-                if(ci.isPrimaryKey()){// should always be the case
-                    Type type = ci.getType();
-                    Block block = page.getBlock(((MemoryColumnHandle)ci.getHandle()).getColumnIndex());
-                    // from RecordPageSource
-                    Class<?> javaType = type.getJavaType();
-                    if (javaType == boolean.class) {
-                        boolean b = type.getBoolean(block, i);
-                        key.writeBoolean(b);
-                    }
-                    else if (javaType == long.class) {
-                        long l = type.getLong(block, i);
-                        key.writeLong(l);
-                    }
-                    else if (javaType == double.class) {
-                        double d = type.getDouble(block, i);
-                        key.writeDouble(d);
-                    }
-                    else if (javaType == Slice.class) {
-                        Slice s = type.getSlice(block, i);
-                        key.writeBytes(s);
-                    }
-                    else {
-                        // TODO: THIS PROBABLY DOES NOT WORK!
-                        Object o = type.getObject(block, i);
-                        key.writeBytes(o.toString());
-                    }
-                }else{
-                    throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
-                }
-            }
-            //.slice only get the part of the slice we have written too!
-            htable.put(key.slice(), new TableDataPosition(pageNr, i));
-        }
-        page = make_updatable(page);
-        page.compact();
+            Slice key = getKey(tableId, row);
 
-        long newSize = currentBytes + page.getRetainedSizeInBytes();
+            //.slice only get the part of the slice we have written too!
+            htable.put(key, new TableDataPosition(pageNr, i));
+        }
+        UpdatablePage updatablePage = make_updatable(page);
+        updatablePage.compact();
+
+        long newSize = currentBytes + updatablePage.getRetainedSizeInBytes();
         if (maxBytes < newSize) {
             throw new TrinoException(MEMORY_LIMIT_EXCEEDED, format("Memory limit [%d] for memory connector exceeded", maxBytes));
         }
         currentBytes = newSize;
 
-        tableData.add(page);
+        tableData.add(updatablePage);
+    }
+
+    /**
+     * row must be the result of page.getSingleValuePage
+     */
+    private Slice getKey(long tableId, Page row){
+        List<ColumnInfo> indecies = this.indecies.get(tableId);
+        // 10 is a good enough estimated size
+        DynamicSliceOutput key =  new DynamicSliceOutput(10);
+        for(ColumnInfo ci : indecies) {
+            if (ci.isPrimaryKey()) {// should always be the case
+                Type type = ci.getType();
+                Block block = row.getBlock(((MemoryColumnHandle) ci.getHandle()).getColumnIndex());
+                // from RecordPageSource
+                Class<?> javaType = type.getJavaType();
+                if (javaType == boolean.class) {
+                    boolean b = type.getBoolean(block, 0);
+                    key.writeBoolean(b);
+                }
+                else if (javaType == long.class) {
+                    long l = type.getLong(block, 0);
+                    key.writeLong(l);
+                }
+                else if (javaType == double.class) {
+                    double d = type.getDouble(block, 0);
+                    key.writeDouble(d);
+                }
+                else if (javaType == Slice.class) {
+                    Slice s = type.getSlice(block, 0);
+                    key.writeBytes(s);
+                }
+                else {
+                    // TODO: THIS PROBABLY DOES NOT WORK!
+                    Object o = type.getObject(block, 0);
+                    key.writeBytes(o.toString());
+                }
+            }
+            else {
+                throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
+            }
+        }
+        return key.slice();
     }
 
     public synchronized void addDelta(Long tableId, DeltaPage page)
@@ -164,8 +164,10 @@ public class MemoryPagesStore
         int cols = page.getChannelCount();
         int size = page.getPositionCount();
 
-        UpdatableBlockBuilder[] insertBlocks = new UpdatableBlockBuilder[cols];
+        UpdatableBlock[] insertBlocks = new UpdatableBlock[cols];
         Type[] types = new Type[cols];
+
+        // extract the types of each column, and create updatableBlocks of the right type
         for (int c = 0; c < cols; c++) {
             ColumnInfo ci = indecies.get(tableId).get(c);
             Type type = ci.getType();
@@ -179,16 +181,18 @@ public class MemoryPagesStore
                 for (int c = 0; c < cols; c++) {
                     Type type = types[c];
                     Class<?> javaType = type.getJavaType();
-                    UpdatableBlockBuilder insertsBlock = insertBlocks[c];
-                    // TODO: what about the other types?
+                    UpdatableBlock insertsBlock = insertBlocks[c];
+                    // TODO: what about the other types? // not needed for LevelDB
 
                     if (javaType == boolean.class) {
+                        // Uses a byte array
                         type.writeBoolean(insertsBlock, type.getBoolean(row.getBlock(c), 0));
                     }
                     else if (javaType == long.class) {
                         type.writeLong(insertsBlock, type.getLong(row.getBlock(c), 0));
                     }
                     else if (javaType == double.class) {
+                        // uses long array
                         type.writeDouble(insertsBlock, type.getDouble(row.getBlock(c), 0));
                     }
                     else if (javaType == Slice.class) {
@@ -196,30 +200,37 @@ public class MemoryPagesStore
                         type.writeSlice(insertsBlock, slice, 0, slice.length());
                     }
                     else {
+                        System.out.println("MemoryPageStore writes an object!");
                         type.writeObject(insertsBlock, type.getObject(row.getBlock(c), 0));
                     }
                 }
             }else{
-                // handle delete and update
+                // assumes the entries actually exist, what if not.
+                TableDataPosition tableDataPosition = hashTables.get(tableId).get(getKey(tableId, row));
+                TableData tableData = tables.get(tableId);
+                UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
+                if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()){
+                    uPage.updateRow(row, tableDataPosition.position);
+                } else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()){ // delete
+                    uPage.deleteRow(tableDataPosition.position);
+                }
+
             }
         }
 
         // Page containing only the inserts
-        Page inserts = new Page(false, insertBlocks[0].getPositionCount(), insertBlocks);
+        UpdatablePage inserts = new UpdatablePage(false, insertBlocks[0].getPositionCount(), insertBlocks);
 
-        return newpage;
+        inserts.compact(); // not needed for leveldb
 
-
-        page.compact();
-
-        long newSize = currentBytes + page.getRetainedSizeInBytes();
+        long newSize = currentBytes + inserts.getRetainedSizeInBytes();
         if (maxBytes < newSize) {
             throw new TrinoException(MEMORY_LIMIT_EXCEEDED, format("Memory limit [%d] for memory connector exceeded", maxBytes));
         }
         currentBytes = newSize;
 
         TableData tableData = tables.get(tableId);
-        tableData.add(page);
+        tableData.add(inserts);
     }
 
     public synchronized List<Page> getPages(
@@ -249,10 +260,11 @@ public class MemoryPagesStore
                 continue;
             }
 
-            Page page = tableData.getPages().get(i);
-            totalRows += page.getPositionCount();
+            UpdatablePage uPage = tableData.getPages().get(i);
+            Page page = null;
+            totalRows += uPage.getPositionCount();
             if (limit.isPresent() && totalRows > limit.getAsLong()) {
-                page = page.getRegion(0, (int) (page.getPositionCount() - (totalRows - limit.getAsLong())));
+                page = uPage.getRegion(0, (int) (uPage.getPositionCount() - (totalRows - limit.getAsLong())));
                 done = true;
             }
             partitionedPages.add(getColumns(page, columnIndexes));
@@ -286,7 +298,7 @@ public class MemoryPagesStore
             Map.Entry<Long, TableData> tablePagesEntry = tableDataIterator.next();
             Long tableId = tablePagesEntry.getKey();
             if (tableId < latestTableId && !activeTableIds.contains(tableId)) {
-                for (Page removedPage : tablePagesEntry.getValue().getPages()) {
+                for (UpdatablePage removedPage : tablePagesEntry.getValue().getPages()) {
                     currentBytes -= removedPage.getRetainedSizeInBytes();
                 }
                 tableDataIterator.remove();
@@ -309,18 +321,18 @@ public class MemoryPagesStore
 
     private static final class TableData
     {
-        private final List<Page> pages = new ArrayList<>();
+        private final List<UpdatablePage> pages = new ArrayList<>();
         private long rows;
 
         // TODO: check that it is synchronized
-        public int add(Page page)
+        public int add(UpdatablePage page)
         {
             pages.add(page);
             rows += page.getPositionCount();
             return pages.size();
         }
 
-        private List<Page> getPages()
+        private List<UpdatablePage> getPages()
         {
             return pages;
         }
@@ -338,24 +350,24 @@ public class MemoryPagesStore
 
     private static final class TableDataPosition
     {
-        public int positon;
+        public int position;
         public int pageNr;
 
         public TableDataPosition(int pageNr, int position){
             this.pageNr = pageNr;
-            this.positon = position;
+            this.position = position;
         }
     }
 
     //UpdatableLongArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, long[] values, int nullCounter, int deleteCounter)
-    static Page make_updatable(Page page){
+    static UpdatablePage make_updatable(Page page){
         int cols = page.getChannelCount();
-        Block[] blocks = new Block[page.getChannelCount()];
+        UpdatableBlock[] blocks = new UpdatableBlock[page.getChannelCount()];
         for (int i =0; i< cols; i++){
             Block b = page.getBlock(i).getLoadedBlock();
             blocks[i]= b.makeUpdatable();
         }
-        Page newpage = new Page(false,blocks[0].getPositionCount(), blocks);
+        UpdatablePage newpage = new UpdatablePage(false,blocks[0].getPositionCount(), blocks);
         return newpage;
     }
 

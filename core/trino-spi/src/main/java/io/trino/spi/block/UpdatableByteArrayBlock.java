@@ -32,7 +32,7 @@ import static io.trino.spi.block.UpdatableUtils.*;
 import static java.lang.Math.max;
 
 public class UpdatableByteArrayBlock
-        implements UpdatableBlockBuilder
+        implements UpdatableBlock
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(UpdatableByteArrayBlock.class).instanceSize();
     private static final Block NULL_VALUE_BLOCK = new ByteArrayBlock(0, 1, new boolean[] {true}, new byte[1]);
@@ -176,7 +176,7 @@ public class UpdatableByteArrayBlock
     }
 
     @Override
-    public UpdatableByteArrayBlock deleteLong(int position, int offset){
+    public UpdatableByteArrayBlock deleteByte(int position, int offset){
         checkReadablePosition(position);
         if (offset != 0) {
             throw new IllegalArgumentException("offset must be zero");
@@ -316,7 +316,7 @@ public class UpdatableByteArrayBlock
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable()
+    public UpdatableBlock makeUpdatable()
     {
         return this;
     }

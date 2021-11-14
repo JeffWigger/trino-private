@@ -142,9 +142,14 @@ public class ByteArrayBlock
     }
 
     @Override
-    public UpdatableBlockBuilder makeUpdatable()
+    public UpdatableBlock makeUpdatable()
     {
-        return new UpdatableByteArrayBlock(null, positionCount, valueIsNull, values);
+        if (arrayOffset == 0){
+            return new UpdatableByteArrayBlock(null, positionCount, valueIsNull, values);
+        }else{
+            return null;
+        }
+
     }
 
     @Override
