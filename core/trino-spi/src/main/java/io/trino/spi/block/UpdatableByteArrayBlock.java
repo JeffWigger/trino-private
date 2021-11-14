@@ -430,6 +430,11 @@ public class UpdatableByteArrayBlock
         return Slices.wrappedBuffer(values, 0, positionCount);
     }
 
+    Slice getValueMarkerSlice()
+    {
+        return Slices.wrappedBuffer(valueMarker, 0, positionCount);
+    }
+
     private void checkReadablePosition(int position)
     {
         if (position < 0 || position >= getPositionCount()) {

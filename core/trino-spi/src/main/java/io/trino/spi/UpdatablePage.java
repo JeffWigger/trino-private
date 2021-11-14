@@ -14,12 +14,15 @@
 package io.trino.spi;
 
 import io.trino.spi.block.Block;
+import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.DictionaryId;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.block.UpdatableByteArrayBlock;
 import io.trino.spi.block.UpdatableLongArrayBlock;
+import io.trino.spi.block.UpdatableVariableWidthBlock;
+import io.trino.spi.block.VariableWidthBlock;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
@@ -86,16 +89,19 @@ public class UpdatablePage
         }
     }
 
+    @Override
     public int getChannelCount()
     {
         return blocks.length;
     }
 
+    @Override
     public int getPositionCount()
     {
         return positionCount;
     }
 
+    @Override
     public long getSizeInBytes()
     {
         long sizeInBytes = this.sizeInBytes;
@@ -109,6 +115,7 @@ public class UpdatablePage
         return sizeInBytes;
     }
 
+    @Override
     public long getLogicalSizeInBytes()
     {
         long logicalSizeInBytes = this.logicalSizeInBytes;
@@ -122,6 +129,7 @@ public class UpdatablePage
         return logicalSizeInBytes;
     }
 
+    @Override
     public long getRetainedSizeInBytes()
     {
         long retainedSizeInBytes = this.retainedSizeInBytes;
@@ -131,6 +139,7 @@ public class UpdatablePage
         return retainedSizeInBytes;
     }
 
+    @Override
     public UpdatableBlock getBlock(int channel)
     {
         return blocks[channel];
@@ -140,6 +149,7 @@ public class UpdatablePage
      * Gets the values at the specified position as a single element page.  The method creates independent
      * copy of the data.
      */
+    @Override
     public Page getSingleValuePage(int position)
     {
         Block[] singleValueBlocks = new UpdatableBlock[this.blocks.length];
@@ -149,6 +159,7 @@ public class UpdatablePage
         return Page.wrapBlocksWithoutCopy(1, singleValueBlocks);
     }
 
+    @Override
     public Page getRegion(int positionOffset, int length)
     {
         if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
@@ -175,6 +186,7 @@ public class UpdatablePage
         return wrapBlocksWithoutCopy(positionCount, newBlocks);
     }
 
+    @Override
     public void compact()
     {
         // currently not supported
@@ -187,6 +199,7 @@ public class UpdatablePage
      * This allows streaming data sources to skip sections that are not
      * accessed in a query.
      */
+    @Override
     public UpdatablePage getLoadedPage()
     {
         for (int i = 0; i < blocks.length; i++) {
@@ -205,11 +218,13 @@ public class UpdatablePage
         return this;
     }
 
+    @Override
     public UpdatablePage getLoadedPage(int column)
     {
         return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[]{this.blocks[column].getLoadedBlock()});
     }
 
+    @Override
     public UpdatablePage getLoadedPage(int... columns)
     {
         requireNonNull(columns, "columns is null");
@@ -242,6 +257,7 @@ public class UpdatablePage
         return blocks[0].getPositionCount();
     }
 
+    @Override
     public Page getPositions(int[] retainedPositions, int offset, int length)
     {
         requireNonNull(retainedPositions, "retainedPositions is null");
@@ -253,6 +269,7 @@ public class UpdatablePage
         return Page.wrapBlocksWithoutCopy(length, blocks);
     }
 
+    @Override
     public Page copyPositions(int[] retainedPositions, int offset, int length)
     {
         requireNonNull(retainedPositions, "retainedPositions is null");
@@ -264,11 +281,13 @@ public class UpdatablePage
         return Page.wrapBlocksWithoutCopy(length, blocks);
     }
 
+    @Override
     public UpdatablePage getColumns(int column)
     {
         return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[] {this.blocks[column]});
     }
 
+    @Override
     public UpdatablePage getColumns(int... columns)
     {
         requireNonNull(columns, "columns is null");
@@ -302,7 +321,6 @@ public class UpdatablePage
         this.retainedSizeInBytes = retainedSizeInBytes;
         return retainedSizeInBytes;
     }
-
     public static class DictionaryBlockIndexes
     {
         private final List<DictionaryBlock> blocks = new ArrayList<>();
@@ -354,7 +372,11 @@ public class UpdatablePage
         if (target instanceof UpdatableLongArrayBlock){
             target.updateLong(((LongArrayBlock) sourceRow).getLong(0, 0), position, 0);
         } else if (target instanceof UpdatableByteArrayBlock){
-
+            target.updateByte((int)((ByteArrayBlock) sourceRow).getByte(0, 0), position, 0);
+        } else if (target instanceof UpdatableVariableWidthBlock){
+            VariableWidthBlock variableWidthBlock = (VariableWidthBlock) sourceRow;
+            int length = variableWidthBlock.getSliceLength(0);
+            target.updateBytes(variableWidthBlock.getSlice(0, 0,length ), 0, length, position, 0);
         }
     }
 

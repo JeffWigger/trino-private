@@ -27,6 +27,9 @@ public class VariableWidthBlockEncoding
 {
     public static final String NAME = "VARIABLE_WIDTH";
 
+    private static final byte STATIC = 1;
+    private static final byte UPDATABLE = 2;
+
     @Override
     public String getName()
     {
@@ -36,40 +39,84 @@ public class VariableWidthBlockEncoding
     @Override
     public void writeBlock(BlockEncodingSerde blockEncodingSerde, SliceOutput sliceOutput, Block block)
     {
-        // The down casts here are safe because it is the block itself the provides this encoding implementation.
-        AbstractVariableWidthBlock variableWidthBlock = (AbstractVariableWidthBlock) block;
+        if (block instanceof UpdatableLongArrayBlock) {
+            // The down casts here are safe because it is the block itself the provides this encoding implementation.
+            UpdatableVariableWidthBlock variableWidthBlock = (UpdatableVariableWidthBlock) block;
 
-        int positionCount = variableWidthBlock.getPositionCount();
-        sliceOutput.appendInt(positionCount);
-
-        // offsets
-        int totalLength = 0;
-        for (int position = 0; position < positionCount; position++) {
-            int length = variableWidthBlock.getSliceLength(position);
-            totalLength += length;
-            sliceOutput.appendInt(totalLength);
+            int positionCount = variableWidthBlock.getPositionCount();
+            sliceOutput.writeByte(UPDATABLE);
+            sliceOutput.appendInt(positionCount);
+            // offsets
+            int totalLength = 0;
+            for (int position = 0; position < positionCount; position++) {
+                int length = variableWidthBlock.getSliceLength(position);
+                totalLength += length;
+                sliceOutput.appendInt(totalLength);
+            }
+            sliceOutput.writeInt(variableWidthBlock.getNullCounter());
+            sliceOutput.writeInt(variableWidthBlock.getDeleteCounter());
+            sliceOutput.writeInt(totalLength);
+            // TODO: for further encoding we would need to write code that filters out the nulls and deleted columns
+            sliceOutput.writeBytes(variableWidthBlock.getValueMarkerSlice());
+            sliceOutput.writeBytes(variableWidthBlock.getRawSlice(0), variableWidthBlock.getPositionOffset(0), totalLength);
         }
+        else {
+            // The down casts here are safe because it is the block itself the provides this encoding implementation.
+            AbstractVariableWidthBlock variableWidthBlock = (AbstractVariableWidthBlock) block;
 
-        encodeNullsAsBits(sliceOutput, variableWidthBlock);
+            sliceOutput.writeByte(STATIC);
 
-        sliceOutput
-                .appendInt(totalLength)
-                .writeBytes(variableWidthBlock.getRawSlice(0), variableWidthBlock.getPositionOffset(0), totalLength);
+            int positionCount = variableWidthBlock.getPositionCount();
+            sliceOutput.appendInt(positionCount);
+
+            // offsets
+            int totalLength = 0;
+            for (int position = 0; position < positionCount; position++) {
+                int length = variableWidthBlock.getSliceLength(position);
+                totalLength += length;
+                sliceOutput.appendInt(totalLength);
+            }
+
+            encodeNullsAsBits(sliceOutput, variableWidthBlock);
+
+            sliceOutput
+                    .appendInt(totalLength)
+                    .writeBytes(variableWidthBlock.getRawSlice(0), variableWidthBlock.getPositionOffset(0), totalLength);
+        }
     }
-
     @Override
     public Block readBlock(BlockEncodingSerde blockEncodingSerde, SliceInput sliceInput)
     {
-        int positionCount = sliceInput.readInt();
 
-        int[] offsets = new int[positionCount + 1];
-        sliceInput.readBytes(Slices.wrappedIntArray(offsets), SIZE_OF_INT, positionCount * SIZE_OF_INT);
+        byte type = sliceInput.readByte();
+        if (type == UPDATABLE) {
+            int positionCount = sliceInput.readInt();
 
-        boolean[] valueIsNull = decodeNullBits(sliceInput, positionCount).orElse(null);
+            int[] offsets = new int[positionCount + 1];
+            sliceInput.readBytes(Slices.wrappedIntArray(offsets), SIZE_OF_INT, positionCount * SIZE_OF_INT);
 
-        int blockSize = sliceInput.readInt();
-        Slice slice = sliceInput.readSlice(blockSize);
+            int nullCounter = sliceInput.readInt();
+            int deleteCounter = sliceInput.readInt();
 
-        return new VariableWidthBlock(0, positionCount, slice, offsets, valueIsNull);
+            int blockSize = sliceInput.readInt();
+            byte[] valueMarker = new byte[positionCount];
+            sliceInput.readBytes(Slices.wrappedBuffer(valueMarker));
+            Slice slice = sliceInput.readSlice(blockSize);
+
+            return new UpdatableVariableWidthBlock(null, positionCount, valueMarker, slice.getOutput(), nullCounter, deleteCounter, offsets);
+        }
+        else {
+            int positionCount = sliceInput.readInt();
+
+            int[] offsets = new int[positionCount + 1];
+            sliceInput.readBytes(Slices.wrappedIntArray(offsets), SIZE_OF_INT, positionCount * SIZE_OF_INT);
+
+            boolean[] valueIsNull = decodeNullBits(sliceInput, positionCount).orElse(null);
+
+            int blockSize = sliceInput.readInt();
+            Slice slice = sliceInput.readSlice(blockSize);
+
+            return new VariableWidthBlock(0, positionCount, slice, offsets, valueIsNull);
+        }
     }
 }

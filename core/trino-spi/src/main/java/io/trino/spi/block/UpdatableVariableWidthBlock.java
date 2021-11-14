@@ -82,11 +82,11 @@ public class UpdatableVariableWidthBlock
         updateArraysDataSize();
     }
 
-    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, SliceOutput sliceOutput){
-        this(blockBuilderStatus, positionCount, UpdatableUtils.toBytes(valueMarker), sliceOutput, UpdatableUtils.getNullCount(valueMarker), 0);
+    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, SliceOutput sliceOutput, int[] offsets){
+        this(blockBuilderStatus, positionCount, UpdatableUtils.toBytes(valueMarker), sliceOutput, UpdatableUtils.getNullCount(valueMarker), 0, offsets);
     }
 
-    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, SliceOutput sliceOutput, int nullCounter, int deleteCounter)
+    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, SliceOutput sliceOutput, int nullCounter, int deleteCounter, int[] offsets)
     {
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
@@ -109,11 +109,13 @@ public class UpdatableVariableWidthBlock
 
         this.valueMarker = Objects.requireNonNullElseGet(valueMarker, () -> new byte[positionCount]);
 
+        this.offsets = offsets;
+
         updateArraysDataSize();
 
         this.blockBuilderStatus = blockBuilderStatus;
 
-        this.initialEntryCount = valueMarker.length;
+        this.initialEntryCount = this.valueMarker.length;
         this.initialSliceOutputSize = sliceOutput.size();
     }
 
@@ -540,5 +542,10 @@ public class UpdatableVariableWidthBlock
             this.markers = markers;
             this.offsets = offsets;
         }
+    }
+
+    Slice getValueMarkerSlice()
+    {
+        return Slices.wrappedBuffer(valueMarker, 0, positions);
     }
 }

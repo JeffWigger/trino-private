@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.memory;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ColumnMetadata;
 import io.trino.spi.type.Type;
@@ -26,7 +28,12 @@ public class ColumnInfo
     private final Type type;
     private final boolean primaryKey;
 
-    public ColumnInfo(ColumnHandle handle, String name, Type type, boolean primaryKey)
+    @JsonCreator
+    public ColumnInfo(
+            @JsonProperty("columnHandle") ColumnHandle handle,
+            @JsonProperty("name") String name,
+            @JsonProperty("type") Type type,
+            @JsonProperty("primaryKey") boolean primaryKey)
     {
         this.handle = requireNonNull(handle, "handle is null");
         this.name = requireNonNull(name, "name is null");
@@ -34,25 +41,30 @@ public class ColumnInfo
         this.primaryKey = primaryKey;
     }
 
+    @JsonProperty
     public ColumnHandle getHandle()
     {
         return handle;
     }
 
+    @JsonProperty
     public String getName()
     {
         return name;
     }
 
+    //@JsonProperty
     public ColumnMetadata getMetadata()
     {
         return new ColumnMetadata(name, type);
     }
 
+    @JsonProperty
     public boolean isPrimaryKey(){
         return primaryKey;
     }
 
+    @JsonProperty
     public  Type getType(){
         return type;
     }

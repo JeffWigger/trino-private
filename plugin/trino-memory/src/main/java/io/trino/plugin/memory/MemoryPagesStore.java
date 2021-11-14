@@ -24,7 +24,6 @@ import io.trino.spi.UpdatablePage;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.type.Type;
-import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
@@ -43,6 +42,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static io.trino.plugin.memory.MemoryErrorCode.MEMORY_LIMIT_EXCEEDED;
 import static io.trino.plugin.memory.MemoryErrorCode.MISSING_DATA;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.lang.String.format;
 
 @ThreadSafe
@@ -59,8 +59,8 @@ public class MemoryPagesStore
     // TODO: chose a good initial capacity
     // This will be unaccounted for in the tracked storage size
     @GuardedBy("this")
-    private Map<Long, Map<Slice, TableDataPosition>> hashTables;
-    private Map<Long, List<ColumnInfo>> indecies;
+    private Map<Long, Map<Slice, TableDataPosition>> hashTables = new HashMap<>();
+    private Map<Long, List<ColumnInfo>> indecies = new HashMap<>();
 
     @Inject
     public MemoryPagesStore(MemoryConfig config)
@@ -89,16 +89,15 @@ public class MemoryPagesStore
 
         // checking the hashTable
         Map<Slice, TableDataPosition> htable = hashTables.get(tableId);
-        if (htable.isEmpty()){
-            htable = new HashMap<Slice, TableDataPosition>(2*pageSize);
+        if (htable.isEmpty()) {
+            htable = new HashMap<Slice, TableDataPosition>((int) (pageSize * 1.3));
             hashTables.put(tableId, htable);
         }
         int pageNr = tableData.getPageNumber() + 1;
 
-        for(int i = 0; i < pageSize; i ++){
+        for (int i = 0; i < pageSize; i++) {
             Page row = page.getSingleValuePage(i);
             Slice key = getKey(tableId, row);
-
             //.slice only get the part of the slice we have written too!
             htable.put(key, new TableDataPosition(pageNr, i));
         }
@@ -117,11 +116,12 @@ public class MemoryPagesStore
     /**
      * row must be the result of page.getSingleValuePage
      */
-    private Slice getKey(long tableId, Page row){
+    private Slice getKey(long tableId, Page row)
+    {
         List<ColumnInfo> indecies = this.indecies.get(tableId);
         // 10 is a good enough estimated size
-        DynamicSliceOutput key =  new DynamicSliceOutput(10);
-        for(ColumnInfo ci : indecies) {
+        DynamicSliceOutput key = new DynamicSliceOutput(10);
+        for (ColumnInfo ci : indecies) {
             if (ci.isPrimaryKey()) {// should always be the case
                 Type type = ci.getType();
                 Block block = row.getBlock(((MemoryColumnHandle) ci.getHandle()).getColumnIndex());
@@ -172,12 +172,23 @@ public class MemoryPagesStore
             ColumnInfo ci = indecies.get(tableId).get(c);
             Type type = ci.getType();
             types[c] = type;
-            insertBlocks[c] = ci.getType().createBlockBuilder(null, 0).makeUpdatable();
+            // TODO: better value expected entries.
+            insertBlocks[c] = ci.getType().createBlockBuilder(null, 2).makeUpdatable();
         }
 
         for (int i = 0; i < size; i++) {
             Page row = page.getSingleValuePage(i);
+            // assumes the entries actually exist, what if not.
+            Map<Slice, TableDataPosition> hashTable = hashTables.get(tableId);
+            Slice key = getKey(tableId, row);
+            TableDataPosition tableDataPosition = hashTable.getOrDefault(key, null);
+
             if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.INS.ordinal()) {
+                if (tableDataPosition != null) {
+                    // The entry with this key value already exists so no insert should happen.
+                    System.out.println("The entry with this key value already exists so no insert should happen.");
+                    continue;
+                }
                 for (int c = 0; c < cols; c++) {
                     Type type = types[c];
                     Class<?> javaType = type.getJavaType();
@@ -204,17 +215,21 @@ public class MemoryPagesStore
                         type.writeObject(insertsBlock, type.getObject(row.getBlock(c), 0));
                     }
                 }
-            }else{
-                // assumes the entries actually exist, what if not.
-                TableDataPosition tableDataPosition = hashTables.get(tableId).get(getKey(tableId, row));
+            }
+            else {
                 TableData tableData = tables.get(tableId);
                 UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
-                if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()){
+                if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()) {
                     uPage.updateRow(row, tableDataPosition.position);
-                } else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()){ // delete
-                    uPage.deleteRow(tableDataPosition.position);
+                    // Do not need to update the hashTables, as neither hash nor the storage position changed.
                 }
-
+                else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
+                    uPage.deleteRow(tableDataPosition.position);
+                    hashTable.remove(key);
+                }
+                else {
+                    throw new TrinoException(GENERIC_INTERNAL_ERROR, "Unkown type of insert for delta updates");
+                }
             }
         }
 
@@ -353,22 +368,23 @@ public class MemoryPagesStore
         public int position;
         public int pageNr;
 
-        public TableDataPosition(int pageNr, int position){
+        public TableDataPosition(int pageNr, int position)
+        {
             this.pageNr = pageNr;
             this.position = position;
         }
     }
 
     //UpdatableLongArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, long[] values, int nullCounter, int deleteCounter)
-    static UpdatablePage make_updatable(Page page){
+    static UpdatablePage make_updatable(Page page)
+    {
         int cols = page.getChannelCount();
         UpdatableBlock[] blocks = new UpdatableBlock[page.getChannelCount()];
-        for (int i =0; i< cols; i++){
+        for (int i = 0; i < cols; i++) {
             Block b = page.getBlock(i).getLoadedBlock();
-            blocks[i]= b.makeUpdatable();
+            blocks[i] = b.makeUpdatable();
         }
-        UpdatablePage newpage = new UpdatablePage(false,blocks[0].getPositionCount(), blocks);
+        UpdatablePage newpage = new UpdatablePage(false, blocks[0].getPositionCount(), blocks);
         return newpage;
     }
-
 }
