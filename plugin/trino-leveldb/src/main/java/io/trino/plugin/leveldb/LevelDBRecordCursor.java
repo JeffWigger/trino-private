@@ -202,7 +202,7 @@ public class LevelDBRecordCursor
             CharType charType = (CharType) type;
             String small = getFieldValue(field);
             if( small.length() < charType.getLength()){
-                small = small + " ".repeat(charType.getLength() - small.length());
+                small = small + "#".repeat(charType.getLength() - small.length());
             }
             return Slices.utf8Slice(small);
         }else if (type instanceof VarcharType){
@@ -210,7 +210,7 @@ public class LevelDBRecordCursor
             VarcharType varcharType = (VarcharType) type;
             String small = getFieldValue(field);
             if( small.length() < varcharType.getBoundedLength()){
-                small = small + " ".repeat(varcharType.getBoundedLength() - small.length());
+                small = small + "#".repeat(varcharType.getBoundedLength() - small.length());
             }
             return Slices.utf8Slice(small);
         }

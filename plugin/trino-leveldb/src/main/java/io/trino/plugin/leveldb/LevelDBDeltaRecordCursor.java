@@ -20,11 +20,13 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.trino.spi.connector.DeltaRecordCursor;
 import io.trino.spi.type.BigintType;
+import io.trino.spi.type.CharType;
 import io.trino.spi.type.DateType;
 import io.trino.spi.type.DecimalParseResult;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Type;
+import io.trino.spi.type.VarcharType;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -102,9 +104,14 @@ public class LevelDBDeltaRecordCursor
     @Override
     public Type getType(int field)
     {
-        checkArgument(field < columnHandles.size(), "Invalid field index");
-        //System.out.println("getType:"+ columnHandles.get(field).getColumnName()+" "+columnHandles.get(field).getColumnType());
-        return columnHandles.get(field).getColumnType();
+        if (field != fieldToColumnIndex.length -1){
+            checkArgument(field < columnHandles.size(), "Invalid field index");
+            //System.out.println("getType:"+ columnHandles.get(field).getColumnName()+" "+columnHandles.get(field).getColumnType());
+            return columnHandles.get(field).getColumnType();
+        }else{
+            // column that handles the mode: Insert, Update, or Delete
+            return CharType.createCharType(3);
+        }
     }
 
     @Override
@@ -195,6 +202,24 @@ public class LevelDBDeltaRecordCursor
     {
         // checkFieldType(field, createUnboundedVarcharType());
         // cannot distinguish bewteen char(25) and varchar
+        Type type = getType(field);
+        if (type instanceof CharType){
+            CharType charType = (CharType) type;
+            String small = getFieldValue(field);
+            if( small.length() < charType.getLength()){
+                small = small + "#".repeat(charType.getLength() - small.length());
+            }
+            return Slices.utf8Slice(small);
+        }else if (type instanceof VarcharType){
+            // Just for simpler updates
+            VarcharType varcharType = (VarcharType) type;
+            String small = getFieldValue(field);
+            if( small.length() < varcharType.getBoundedLength()){
+                small = small + "#".repeat(varcharType.getBoundedLength() - small.length());
+            }
+            return Slices.utf8Slice(small);
+        }
+        //System.out.println("LevelDBRecordCursor: got unecpected slice type");
         return Slices.utf8Slice(getFieldValue(field));
     }
 
