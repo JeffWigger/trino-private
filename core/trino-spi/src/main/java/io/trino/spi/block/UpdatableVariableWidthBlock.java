@@ -45,6 +45,7 @@ import static io.trino.spi.block.BlockUtil.compactSlice;
 import static io.trino.spi.block.UpdatableUtils.DEL;
 import static io.trino.spi.block.UpdatableUtils.NULL;
 import static io.trino.spi.block.UpdatableUtils.toBoolean;
+import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 public class UpdatableVariableWidthBlock
@@ -122,8 +123,12 @@ public class UpdatableVariableWidthBlock
 
         this.blockBuilderStatus = blockBuilderStatus;
 
-        this.initialEntryCount = this.valueMarker.length;
-        this.initialSliceOutputSize = sliceOutput.size();
+        this.initialEntryCount = max(this.valueMarker.length, 1);
+        this.initialSliceOutputSize = max(min(sliceOutput.size(), MAX_ARRAY_SIZE), 1);
+
+        if(positions >0){
+            initialized = true;
+        }
     }
 
     public int getNullCounter()

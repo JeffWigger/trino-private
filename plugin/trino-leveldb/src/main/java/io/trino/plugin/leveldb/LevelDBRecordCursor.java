@@ -204,6 +204,7 @@ public class LevelDBRecordCursor
             if( small.length() < charType.getLength()){
                 small = small + " ".repeat(charType.getLength() - small.length());
             }
+            return Slices.utf8Slice(small);
         }else if (type instanceof VarcharType){
             // Just for simpler updates
             VarcharType varcharType = (VarcharType) type;
@@ -211,6 +212,7 @@ public class LevelDBRecordCursor
             if( small.length() < varcharType.getBoundedLength()){
                 small = small + " ".repeat(varcharType.getBoundedLength() - small.length());
             }
+            return Slices.utf8Slice(small);
         }
         //System.out.println("LevelDBRecordCursor: got unecpected slice type");
         return Slices.utf8Slice(getFieldValue(field));

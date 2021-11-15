@@ -39,7 +39,7 @@ public class UpdatableByteArrayBlock
 
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
-    private boolean initialized;
+    private boolean initialized = true;
     private final int initialEntryCount;
 
     private int positionCount;
@@ -92,7 +92,11 @@ public class UpdatableByteArrayBlock
 
         this.blockBuilderStatus = blockBuilderStatus;
 
-        this.initialEntryCount = values.length;
+        this.initialEntryCount = max(values.length, 1);
+
+        if (values.length == 0){
+            initialized = false;
+        }
 
     }
 

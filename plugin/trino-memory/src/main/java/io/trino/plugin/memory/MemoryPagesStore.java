@@ -60,7 +60,7 @@ public class MemoryPagesStore
     // This will be unaccounted for in the tracked storage size
     @GuardedBy("this")
     private Map<Long, Map<Slice, TableDataPosition>> hashTables = new HashMap<>();
-    private Map<Long, List<ColumnInfo>> indecies = new HashMap<>();
+    private Map<Long, List<ColumnInfo>> indices = new HashMap<>();
 
     @Inject
     public MemoryPagesStore(MemoryConfig config)
@@ -68,12 +68,13 @@ public class MemoryPagesStore
         this.maxBytes = config.getMaxDataPerNode().toBytes();
     }
 
-    public synchronized void initialize(long tableId, List<ColumnInfo> indecies)
+    public synchronized void initialize(long tableId, List<ColumnInfo> indices)
     {
+        // TODO: should update the indices in case a new column was added.
         if (!tables.containsKey(tableId)) {
             tables.put(tableId, new TableData());
             hashTables.put(tableId, new HashMap<>());
-            this.indecies.put(tableId, indecies);
+            this.indices.put(tableId, indices);
         }
     }
 
@@ -127,7 +128,7 @@ public class MemoryPagesStore
      */
     private Slice getKey(long tableId, Page row)
     {
-        List<ColumnInfo> indecies = this.indecies.get(tableId);
+        List<ColumnInfo> indecies = this.indices.get(tableId);
         // 10 is a good enough estimated size
         DynamicSliceOutput key = new DynamicSliceOutput(10);
         for (ColumnInfo ci : indecies) {
@@ -178,7 +179,7 @@ public class MemoryPagesStore
 
         // extract the types of each column, and create updatableBlocks of the right type
         for (int c = 0; c < cols; c++) {
-            ColumnInfo ci = indecies.get(tableId).get(c);
+            ColumnInfo ci = indices.get(tableId).get(c);
             Type type = ci.getType();
             types[c] = type;
             // TODO: better value expected entries.
@@ -351,7 +352,7 @@ public class MemoryPagesStore
                 }
                 tableDataIterator.remove();
                 hashTables.remove(tableId);
-                indecies.remove(tableId);
+                indices.remove(tableId);
             }
         }
     }
