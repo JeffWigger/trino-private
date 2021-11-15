@@ -241,14 +241,10 @@ public class MemoryMetadata
                 columns.build(),
                 new HashMap<>()));
 
-        List<ColumnInfo> indecies = new ArrayList<>();
-        for (ColumnInfo ci : columns.build()){
-            if(ci.isPrimaryKey()){
-                indecies.add(ci);
-            }
-        }
+        //if(ci.isPrimaryKey()){
+        List<ColumnInfo> indices = new ArrayList<>(columns.build());
 
-        return new MemoryOutputTableHandle(tableId, ImmutableSet.copyOf(tableIds.values()), indecies);
+        return new MemoryOutputTableHandle(tableId, ImmutableSet.copyOf(tableIds.values()), indices);
     }
 
     private void checkSchemaExists(String schemaName)
@@ -282,16 +278,15 @@ public class MemoryMetadata
     public synchronized MemoryInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle, List<ColumnHandle> columns)
     {
         MemoryTableHandle memoryTableHandle = (MemoryTableHandle) tableHandle;
-        List<ColumnInfo> indecies = new ArrayList<>();
+        List<ColumnInfo> indices = new ArrayList<>();
         for (ColumnHandle ch : columns){
             MemoryColumnHandle mch = (MemoryColumnHandle) ch ;
             ColumnInfo ci = tables.get(memoryTableHandle.getId()).getColumn(ch);
-            if(ci.isPrimaryKey()){
-                indecies.add(ci);
-            }
+            //if(ci.isPrimaryKey()){
+            indices.add(ci);
         }
 
-        return new MemoryInsertTableHandle(memoryTableHandle.getId(), ImmutableSet.copyOf(tableIds.values()), indecies);
+        return new MemoryInsertTableHandle(memoryTableHandle.getId(), ImmutableSet.copyOf(tableIds.values()), indices);
     }
 
     @Override

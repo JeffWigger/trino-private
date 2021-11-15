@@ -21,6 +21,7 @@ import org.openjdk.jol.info.ClassLayout;
 
 import javax.annotation.Nullable;
 
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.BiConsumer;
@@ -55,7 +56,7 @@ public class UpdatableVariableWidthBlock
     private final int initialEntryCount;
     private int initialSliceOutputSize;
 
-    private SliceOutput sliceOutput = new DynamicSliceOutput(0);
+    private VariableSliceOutput sliceOutput = new VariableSliceOutput(0);
     private int nullCounter = 0;
     private int deleteCounter = 0;
 
@@ -82,11 +83,11 @@ public class UpdatableVariableWidthBlock
         updateArraysDataSize();
     }
 
-    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, SliceOutput sliceOutput, int[] offsets){
+    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, VariableSliceOutput sliceOutput, int[] offsets){
         this(blockBuilderStatus, positionCount, UpdatableUtils.toBytes(valueMarker), sliceOutput, UpdatableUtils.getNullCount(valueMarker), 0, offsets);
     }
 
-    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, SliceOutput sliceOutput, int nullCounter, int deleteCounter, int[] offsets)
+    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, VariableSliceOutput sliceOutput, int nullCounter, int deleteCounter, int[] offsets)
     {
         if (positionCount < 0) {
             throw new IllegalArgumentException("positionCount is negative");
@@ -340,7 +341,8 @@ public class UpdatableVariableWidthBlock
     public UpdatableBlock updateBytes(Slice source, int sourceIndex, int length, int position, int offset){
         // currently, we cannot handle updates that do not exactly match the size
         // we would need another array encoding the size of each entry
-        if(length == this.getSliceLength(position)){
+        if(length != this.getSliceLength(position)){
+            // deletes the current entry, decreases null counter if necessary and increases delete counter
             deleteBytes(position, offset, length);
             if (source != null) {
                 this.writeBytes(source, sourceIndex, length);
@@ -349,9 +351,34 @@ public class UpdatableVariableWidthBlock
                 this.appendNull();
             }
             return this;
+        }else{
+            if (source != null) {
+                if (valueMarker[position] == NULL){
+                    nullCounter--;
+                    valueMarker[position] = 0;
+                }else if (valueMarker[position] == DEL){
+                    deleteCounter--;
+                    valueMarker[position] = 0;
+                }
+                System.out.println("sliceOutput size: "+ this.sliceOutput.size()+ "slice output: "+ this.sliceOutput);
+                this.sliceOutput.slice().setBytes(offsets[position], source, sourceIndex, length);
+                return this;
+            }else{
+                if (valueMarker[position] == NULL){
+                    // no-op
+                    return this;
+                }else if (valueMarker[position] == DEL){
+                    deleteCounter--;
+                    valueMarker[position] = NULL;
+                    nullCounter++;
+                    return this;
+                }else{
+                    valueMarker[position] = NULL;
+                    nullCounter++;
+                    return this;
+                }
+            }
         }
-        this.sliceOutput.slice().setBytes(offsets[position], source, sourceIndex, length);
-        return this;
     }
 
     @Override
@@ -380,7 +407,7 @@ public class UpdatableVariableWidthBlock
         initialized = true;
         valueMarker = new byte[initialEntryCount];
         offsets = new int[initialEntryCount + 1];
-        sliceOutput = new DynamicSliceOutput(initialSliceOutputSize);
+        sliceOutput = new VariableSliceOutput(initialSliceOutputSize);
         updateArraysDataSize();
     }
 
@@ -472,7 +499,7 @@ public class UpdatableVariableWidthBlock
             Core c = compactValues();
             long copy = getSizeInBytes();
             this.valueMarker = c.markers;
-            this.sliceOutput = c.sliceOutput.getOutput();
+            this.sliceOutput = c.sliceOutput;
             this.offsets = c.offsets;
             this.positions = c.markers.length;
             this.deleteCounter = 0;
@@ -486,7 +513,7 @@ public class UpdatableVariableWidthBlock
     private Core compactValues(){
         int start = 0;
         int end = positions;
-        SliceOutput sliceOutput = new DynamicSliceOutput(offsets[end-1] - offsets[start] );
+        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end-1] - offsets[start] );
         byte markers[] = new byte[positions];
         int[] newoffsets = new int[positions];
         int cindex = 0;
@@ -499,15 +526,15 @@ public class UpdatableVariableWidthBlock
                 cindex++;
             }
         }
-        return new Core(sliceOutput.slice(), markers, newoffsets);
+        return new Core(sliceOutput, markers, newoffsets);
     }
 
     private class Core{
-        private Slice sliceOutput;
+        private VariableSliceOutput sliceOutput;
         private byte markers[];
         private int[] offsets;
 
-        public Core(Slice sliceOutput, byte markers[], int[] offsets){
+        public Core(VariableSliceOutput sliceOutput, byte markers[], int[] offsets){
             this.sliceOutput = sliceOutput;
             this.markers = markers;
             this.offsets = offsets;
@@ -515,7 +542,7 @@ public class UpdatableVariableWidthBlock
     }
 
     private CoreBool compactValuesBool(int start, int end){
-        SliceOutput sliceOutput = new DynamicSliceOutput(offsets[end] - offsets[start] );
+        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end] - offsets[start] );
         boolean markers[] = new boolean[end - start];
         int[] newoffsets = new int[end-start];
         int cindex = 0;

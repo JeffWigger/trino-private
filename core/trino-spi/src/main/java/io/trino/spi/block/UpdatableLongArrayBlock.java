@@ -132,19 +132,19 @@ public class UpdatableLongArrayBlock
         }
         if(value != null){
             values[position] = (long) value;
-            if(valueMarker[positionCount] == NULL){
+            if(valueMarker[position] == NULL){
                 nullCounter--;
-            } else if(valueMarker[positionCount] == DEL){
+            } else if(valueMarker[position] == DEL){
                 deleteCounter++;
             }
-            valueMarker[positionCount] = 0;
+            valueMarker[position] = 0;
         }else{
-            if(valueMarker[positionCount] != NULL){
-                if(valueMarker[positionCount] == DEL){
+            if(valueMarker[position] != NULL){
+                if(valueMarker[position] == DEL){
                     deleteCounter--;
                 }
                 nullCounter++;
-                valueMarker[positionCount] = NULL;
+                valueMarker[position] = NULL;
             }
         }
         /*if (blockBuilderStatus != null) {
@@ -439,6 +439,7 @@ public class UpdatableLongArrayBlock
         }
         // TODO: For a certain delete factor compact instead
         CoreBool c = compactValuesBool();
+        // TODO: This can cause an error if after compacting positionOffset + length are larger than the array!
         return new LongArrayBlock(positionOffset, length, mayHaveNull() ? c.markers : null, c.values);
     }
 

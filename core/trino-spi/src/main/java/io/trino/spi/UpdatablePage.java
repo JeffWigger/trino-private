@@ -41,6 +41,7 @@ public class UpdatablePage
     extends Page
 {
     public static final int INSTANCE_SIZE = ClassLayout.parseClass(UpdatablePage.class).instanceSize();
+    private static final int DIFFERENCE_SIZE = INSTANCE_SIZE -  Page.INSTANCE_SIZE;
     private static final UpdatableBlock[] EMPTY_BLOCKS = new UpdatableBlock[0];
 
     /**
@@ -51,12 +52,6 @@ public class UpdatablePage
     {
         return new UpdatablePage(false, positionCount, blocks);
     }
-
-    private UpdatableBlock[] blocks;
-    public int positionCount;
-    private volatile long sizeInBytes = -1;
-    private volatile long retainedSizeInBytes = -1;
-    private volatile long logicalSizeInBytes = -1;
 
     public UpdatablePage(Block... blocks)
     {
@@ -75,103 +70,31 @@ public class UpdatablePage
 
     public UpdatablePage(boolean blocksCopyRequired, int positionCount, UpdatableBlock[] blocks)
     {
-        requireNonNull(blocks, "blocks is null");
-        this.positionCount = positionCount;
-        if (blocks.length == 0) {
-            this.blocks = EMPTY_BLOCKS;
-            this.sizeInBytes = 0;
-            this.logicalSizeInBytes = 0;
-            // Empty blocks are not considered "retained" by any particular page
-            this.retainedSizeInBytes = INSTANCE_SIZE;
-        }
-        else {
-            this.blocks = blocksCopyRequired ? blocks.clone() : blocks;
-        }
-    }
-
-    @Override
-    public int getChannelCount()
-    {
-        return blocks.length;
-    }
-
-    @Override
-    public int getPositionCount()
-    {
-        return positionCount;
+        super(blocksCopyRequired, positionCount, blocks);
     }
 
     @Override
     public long getSizeInBytes()
     {
-        long sizeInBytes = this.sizeInBytes;
-        if (sizeInBytes < 0) {
-            sizeInBytes = 0;
-            for (Block block : blocks) {
-                sizeInBytes += block.getLoadedBlock().getSizeInBytes();
-            }
-            this.sizeInBytes = sizeInBytes;
-        }
-        return sizeInBytes;
+        return super.getSizeInBytes();
     }
 
     @Override
     public long getLogicalSizeInBytes()
     {
-        long logicalSizeInBytes = this.logicalSizeInBytes;
-        if (logicalSizeInBytes < 0) {
-            logicalSizeInBytes = 0;
-            for (Block block : blocks) {
-                logicalSizeInBytes += block.getLogicalSizeInBytes();
-            }
-            this.logicalSizeInBytes = logicalSizeInBytes;
-        }
-        return logicalSizeInBytes;
+        return super.getLogicalSizeInBytes();
     }
 
     @Override
     public long getRetainedSizeInBytes()
     {
-        long retainedSizeInBytes = this.retainedSizeInBytes;
-        if (retainedSizeInBytes < 0) {
-            return updateRetainedSize();
-        }
-        return retainedSizeInBytes;
+        return super.getRetainedSizeInBytes() + DIFFERENCE_SIZE;
     }
 
     @Override
     public UpdatableBlock getBlock(int channel)
     {
-        return blocks[channel];
-    }
-
-    /**
-     * Gets the values at the specified position as a single element page.  The method creates independent
-     * copy of the data.
-     */
-    @Override
-    public Page getSingleValuePage(int position)
-    {
-        Block[] singleValueBlocks = new UpdatableBlock[this.blocks.length];
-        for (int i = 0; i < this.blocks.length; i++) {
-            singleValueBlocks[i] = this.blocks[i].getSingleValueBlock(position);
-        }
-        return Page.wrapBlocksWithoutCopy(1, singleValueBlocks);
-    }
-
-    @Override
-    public Page getRegion(int positionOffset, int length)
-    {
-        if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
-            throw new IndexOutOfBoundsException(format("Invalid position %s and length %s in page with %s positions", positionOffset, length, positionCount));
-        }
-
-        int channelCount = getChannelCount();
-        Block[] slicedBlocks = new Block[channelCount];
-        for (int i = 0; i < channelCount; i++) {
-            slicedBlocks[i] = blocks[i].getRegion(positionOffset, length);
-        }
-        return Page.wrapBlocksWithoutCopy(length, slicedBlocks);
+        return (UpdatableBlock) super.blocks[channel];
     }
 
     public UpdatablePage appendColumn(UpdatableBlock block)
@@ -181,7 +104,10 @@ public class UpdatablePage
             throw new IllegalArgumentException("Block does not have same position count");
         }
 
-        UpdatableBlock[] newBlocks = Arrays.copyOf(blocks, blocks.length + 1);
+        UpdatableBlock[] newBlocks = new UpdatableBlock[blocks.length + 1];
+        for (int i = 0; i < blocks.length; i++){
+            newBlocks[i] = (UpdatableBlock) blocks[i];
+        }
         newBlocks[blocks.length] = block;
         return wrapBlocksWithoutCopy(positionCount, newBlocks);
     }
@@ -202,26 +128,14 @@ public class UpdatablePage
     @Override
     public UpdatablePage getLoadedPage()
     {
-        for (int i = 0; i < blocks.length; i++) {
-            UpdatableBlock loaded = blocks[i].getLoadedBlock();
-            if (loaded != blocks[i]) {
-                // Transition to new block creation mode after the first newly loaded block is encountered
-                UpdatableBlock[] loadedBlocks = blocks.clone();
-                loadedBlocks[i++] = loaded;
-                for (; i < blocks.length; i++) {
-                    loadedBlocks[i] = blocks[i].getLoadedBlock();
-                }
-                return wrapBlocksWithoutCopy(positionCount, loadedBlocks);
-            }
-        }
         // No newly loaded blocks
-        return this;
+        return (UpdatablePage) super.getLoadedPage();
     }
 
     @Override
     public UpdatablePage getLoadedPage(int column)
     {
-        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[]{this.blocks[column].getLoadedBlock()});
+        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[]{(UpdatableBlock) super.blocks[column].getLoadedBlock()});
     }
 
     @Override
@@ -231,7 +145,7 @@ public class UpdatablePage
 
         UpdatableBlock[] blocks = new UpdatableBlock[columns.length];
         for (int i = 0; i < columns.length; i++) {
-            blocks[i] = this.blocks[columns[i]].getLoadedBlock();
+            blocks[i] = (UpdatableBlock) this.blocks[columns[i]].getLoadedBlock();
         }
         return wrapBlocksWithoutCopy(positionCount, blocks);
     }
@@ -239,7 +153,7 @@ public class UpdatablePage
     @Override
     public String toString()
     {
-        StringBuilder builder = new StringBuilder("Page{");
+        StringBuilder builder = new StringBuilder("UpdatablePage{");
         builder.append("positions=").append(positionCount);
         builder.append(", channels=").append(getChannelCount());
         builder.append('}');
@@ -258,33 +172,9 @@ public class UpdatablePage
     }
 
     @Override
-    public Page getPositions(int[] retainedPositions, int offset, int length)
-    {
-        requireNonNull(retainedPositions, "retainedPositions is null");
-
-        Block[] blocks = new Block[this.blocks.length];
-        for (int i = 0; i < blocks.length; i++) {
-            blocks[i] = this.blocks[i].getPositions(retainedPositions, offset, length);
-        }
-        return Page.wrapBlocksWithoutCopy(length, blocks);
-    }
-
-    @Override
-    public Page copyPositions(int[] retainedPositions, int offset, int length)
-    {
-        requireNonNull(retainedPositions, "retainedPositions is null");
-
-        Block[] blocks = new Block[this.blocks.length];
-        for (int i = 0; i < blocks.length; i++) {
-            blocks[i] = this.blocks[i].copyPositions(retainedPositions, offset, length);
-        }
-        return Page.wrapBlocksWithoutCopy(length, blocks);
-    }
-
-    @Override
     public UpdatablePage getColumns(int column)
     {
-        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[] {this.blocks[column]});
+        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[] {(UpdatableBlock) this.blocks[column]});
     }
 
     @Override
@@ -294,7 +184,7 @@ public class UpdatablePage
 
         UpdatableBlock[] blocks = new UpdatableBlock[columns.length];
         for (int i = 0; i < columns.length; i++) {
-            blocks[i] = this.blocks[columns[i]];
+            super.blocks[i] = super.blocks[columns[i]];
         }
         return wrapBlocksWithoutCopy(positionCount, blocks);
     }
@@ -312,15 +202,6 @@ public class UpdatablePage
         return wrapBlocksWithoutCopy(positionCount, result);
     }
 
-    private long updateRetainedSize()
-    {
-        long retainedSizeInBytes = INSTANCE_SIZE + sizeOf(blocks);
-        for (Block block : blocks) {
-            retainedSizeInBytes += block.getRetainedSizeInBytes();
-        }
-        this.retainedSizeInBytes = retainedSizeInBytes;
-        return retainedSizeInBytes;
-    }
     public static class DictionaryBlockIndexes
     {
         private final List<DictionaryBlock> blocks = new ArrayList<>();
@@ -384,5 +265,9 @@ public class UpdatablePage
         if (target instanceof UpdatableLongArrayBlock){
             target.deleteLong(position, 0);
         }
+    }
+
+    public Page wrapBlocksWithoutCopyToPage(){
+        return Page.wrapBlocksWithoutCopy(getPositionCount(), blocks);
     }
 }

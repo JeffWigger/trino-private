@@ -103,7 +103,7 @@ public class VariableWidthBlockEncoding
             sliceInput.readBytes(Slices.wrappedBuffer(valueMarker));
             Slice slice = sliceInput.readSlice(blockSize);
 
-            return new UpdatableVariableWidthBlock(null, positionCount, valueMarker, slice.getOutput(), nullCounter, deleteCounter, offsets);
+            return new UpdatableVariableWidthBlock(null, positionCount, valueMarker, new VariableSliceOutput(slice, blockSize), nullCounter, deleteCounter, offsets);
         }
         else {
             int positionCount = sliceInput.readInt();

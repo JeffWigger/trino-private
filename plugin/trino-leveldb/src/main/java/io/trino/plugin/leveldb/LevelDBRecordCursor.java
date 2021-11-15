@@ -202,17 +202,17 @@ public class LevelDBRecordCursor
             CharType charType = (CharType) type;
             String small = getFieldValue(field);
             if( small.length() < charType.getLength()){
-                small = small + " ".repeat(small.length() - charType.getLength());
+                small = small + " ".repeat(charType.getLength() - small.length());
             }
         }else if (type instanceof VarcharType){
             // Just for simpler updates
             VarcharType varcharType = (VarcharType) type;
             String small = getFieldValue(field);
             if( small.length() < varcharType.getBoundedLength()){
-                small = small + " ".repeat(small.length() - varcharType.getBoundedLength());
+                small = small + " ".repeat(varcharType.getBoundedLength() - small.length());
             }
         }
-        System.out.println("LevelDBRecordCursor: got unecpected slice type");
+        //System.out.println("LevelDBRecordCursor: got unecpected slice type");
         return Slices.utf8Slice(getFieldValue(field));
     }
 

@@ -44,7 +44,7 @@ public class Page
         return new Page(false, positionCount, blocks);
     }
 
-    private final Block[] blocks;
+    protected final Block[] blocks;
     public final int positionCount;
     private volatile long sizeInBytes = -1;
     private volatile long retainedSizeInBytes = -1;

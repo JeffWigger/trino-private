@@ -103,7 +103,8 @@ public class VariableWidthBlock
     public UpdatableBlock makeUpdatable()
     {
         if (arrayOffset == 0){
-            return new UpdatableVariableWidthBlock(null, positionCount, valueIsNull, slice.getOutput(), offsets);
+            return new UpdatableVariableWidthBlock(null, positionCount, valueIsNull, new VariableSliceOutput(slice,
+                    offsets[positionCount] - offsets[0]), offsets);
         }else{
             return null;
         }

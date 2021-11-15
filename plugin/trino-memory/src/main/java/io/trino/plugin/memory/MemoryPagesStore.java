@@ -77,7 +77,7 @@ public class MemoryPagesStore
         }
     }
 
-    public synchronized void add(Long tableId, Page page)
+    public synchronized int add(Long tableId, Page page)
     {
         if (!contains(tableId)) {
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
@@ -93,13 +93,21 @@ public class MemoryPagesStore
             htable = new HashMap<Slice, TableDataPosition>((int) (pageSize * 1.3));
             hashTables.put(tableId, htable);
         }
-        int pageNr = tableData.getPageNumber() + 1;
-
+        int pageNr = tableData.getPageNumber(); // + 1; getPageNumber returns 0 for the first page that gets added.
+        int added = 0;
         for (int i = 0; i < pageSize; i++) {
             Page row = page.getSingleValuePage(i);
             Slice key = getKey(tableId, row);
-            //.slice only get the part of the slice we have written too!
+            TableDataPosition tableDataPosition = htable.getOrDefault(key, null);
+            if (tableDataPosition != null){
+                // entry is already in the DB
+                continue;
+            }
             htable.put(key, new TableDataPosition(pageNr, i));
+            added++;
+        }
+        if (added == 0){
+            return 0;
         }
         UpdatablePage updatablePage = make_updatable(page);
         updatablePage.compact();
@@ -111,6 +119,7 @@ public class MemoryPagesStore
         currentBytes = newSize;
 
         tableData.add(updatablePage);
+        return added;
     }
 
     /**
@@ -149,14 +158,14 @@ public class MemoryPagesStore
                     key.writeBytes(o.toString());
                 }
             }
-            else {
-                throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
-            }
+            //else {
+              //  throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
+            //}
         }
         return key.slice();
     }
 
-    public synchronized void addDelta(Long tableId, DeltaPage page)
+    public synchronized int addDelta(Long tableId, DeltaPage page)
     {
         if (!contains(tableId)) {
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
@@ -175,7 +184,7 @@ public class MemoryPagesStore
             // TODO: better value expected entries.
             insertBlocks[c] = ci.getType().createBlockBuilder(null, 2).makeUpdatable();
         }
-
+        int added =0;
         for (int i = 0; i < size; i++) {
             Page row = page.getSingleValuePage(i);
             // assumes the entries actually exist, what if not.
@@ -189,6 +198,7 @@ public class MemoryPagesStore
                     System.out.println("The entry with this key value already exists so no insert should happen.");
                     continue;
                 }
+                added++;
                 for (int c = 0; c < cols; c++) {
                     Type type = types[c];
                     Class<?> javaType = type.getJavaType();
@@ -226,6 +236,8 @@ public class MemoryPagesStore
                 else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
                     uPage.deleteRow(tableDataPosition.position);
                     hashTable.remove(key);
+                    added--;
+                    tableData.decreaseNumberOfRows(1);
                 }
                 else {
                     throw new TrinoException(GENERIC_INTERNAL_ERROR, "Unkown type of insert for delta updates");
@@ -246,6 +258,7 @@ public class MemoryPagesStore
 
         TableData tableData = tables.get(tableId);
         tableData.add(inserts);
+        return added;
     }
 
     public synchronized List<Page> getPages(
@@ -261,7 +274,7 @@ public class MemoryPagesStore
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
         }
         TableData tableData = tables.get(tableId);
-        if (tableData.getRows() < expectedRows) {
+        if (tableData.getRows() != expectedRows) {
             throw new TrinoException(MISSING_DATA,
                     format("Expected to find [%s] rows on a worker, but found [%s].", expectedRows, tableData.getRows()));
         }
@@ -277,11 +290,17 @@ public class MemoryPagesStore
 
             UpdatablePage uPage = tableData.getPages().get(i);
             Page page = null;
+            // TODO: remove deleted pages
             totalRows += uPage.getPositionCount();
             if (limit.isPresent() && totalRows > limit.getAsLong()) {
+                // TODO: not sure what this will do due to the deleted pags not being included
                 page = uPage.getRegion(0, (int) (uPage.getPositionCount() - (totalRows - limit.getAsLong())));
                 done = true;
+            }else{
+                // creating a genuine Page, not a Updatable page
+                page = uPage.wrapBlocksWithoutCopyToPage();
             }
+            // columns get copied here
             partitionedPages.add(getColumns(page, columnIndexes));
         }
 
@@ -330,7 +349,7 @@ public class MemoryPagesStore
         for (int i = 0; i < columnIndexes.size(); i++) {
             outputBlocks[i] = page.getBlock(columnIndexes.get(i));
         }
-        // TODO: copies the columns
+        // TODO: copies the columns - It should copy them!
         return new Page(page.getPositionCount(), outputBlocks);
     }
 
@@ -345,6 +364,10 @@ public class MemoryPagesStore
             pages.add(page);
             rows += page.getPositionCount();
             return pages.size();
+        }
+
+        public void decreaseNumberOfRows(int decrease){
+            rows -= decrease;
         }
 
         private List<UpdatablePage> getPages()

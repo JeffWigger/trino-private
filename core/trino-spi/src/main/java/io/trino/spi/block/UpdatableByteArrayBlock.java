@@ -131,19 +131,19 @@ public class UpdatableByteArrayBlock
         }
         if(value != null){
             values[position] = (byte)(int) value;
-            if(valueMarker[positionCount] == NULL){
+            if(valueMarker[position] == NULL){
                 nullCounter--;
-            } else if(valueMarker[positionCount] == DEL){
+            } else if(valueMarker[position] == DEL){
                 deleteCounter++;
             }
-            valueMarker[positionCount] = 0;
+            valueMarker[position] = 0;
         }else{
-            if(valueMarker[positionCount] != NULL){
-                if(valueMarker[positionCount] == DEL){
+            if(valueMarker[position] != NULL){
+                if(valueMarker[position] == DEL){
                     deleteCounter--;
                 }
                 nullCounter++;
-                valueMarker[positionCount] = NULL;
+                valueMarker[position] = NULL;
             }
         }
         /*if (blockBuilderStatus != null) {
