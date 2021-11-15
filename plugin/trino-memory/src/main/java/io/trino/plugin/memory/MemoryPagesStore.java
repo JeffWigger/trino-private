@@ -291,15 +291,29 @@ public class MemoryPagesStore
             UpdatablePage uPage = tableData.getPages().get(i);
             Page page = null;
             // TODO: remove deleted pages
-            totalRows += uPage.getPositionCount();
-            if (limit.isPresent() && totalRows > limit.getAsLong()) {
+
+            if (limit.isPresent()) {
                 // TODO: not sure what this will do due to the deleted pags not being included
-                page = uPage.getRegion(0, (int) (uPage.getPositionCount() - (totalRows - limit.getAsLong())));
-                done = true;
+                // && totalRows > limit.getAsLong()
+                if(limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0){
+                    // can savely read everything from the page
+                    page = uPage.getEntriesFrom(0, uPage.getPositionCount());
+                    totalRows += page.getPositionCount();
+                }else{
+                    // Get only what is needed
+                    page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
+                    totalRows += page.getPositionCount();
+                    if (totalRows > limit.getAsLong()){
+                        throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
+                    }
+                }
             }else{
                 // creating a genuine Page, not a Updatable page
-                page = uPage.wrapBlocksWithoutCopyToPage();
+                // this forces a copy, do not want to return the actual data
+                page = uPage.getEntriesFrom(0, uPage.getPositionCount());
+                totalRows += page.getPositionCount();
             }
+
             // columns get copied here
             partitionedPages.add(getColumns(page, columnIndexes));
         }
@@ -349,8 +363,8 @@ public class MemoryPagesStore
         for (int i = 0; i < columnIndexes.size(); i++) {
             outputBlocks[i] = page.getBlock(columnIndexes.get(i));
         }
-        // TODO: copies the columns - It should copy them!
-        return new Page(page.getPositionCount(), outputBlocks);
+        // Do not need to copy the blocks as they were already copied when extracted from the pages
+        return new Page(false, page.getPositionCount(), outputBlocks);
     }
 
     private static final class TableData

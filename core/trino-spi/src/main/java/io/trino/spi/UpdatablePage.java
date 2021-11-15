@@ -172,6 +172,25 @@ public class UpdatablePage
     }
 
     @Override
+    public Page getRegion(int positionOffset, int length){
+        // updatable blocks do not have getRegion, use getEntriesFrom instead.
+        throw new UnsupportedOperationException(this.getClass().getName());
+    }
+
+    public Page getEntriesFrom(int positionOffset, int length){
+        if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
+            throw new IndexOutOfBoundsException(format("Invalid position %s and length %s in page with %s positions", positionOffset, length, positionCount));
+        }
+
+        int channelCount = getChannelCount();
+        Block[] slicedBlocks = new Block[channelCount];
+        for (int i = 0; i < channelCount; i++) {
+            slicedBlocks[i] = ((UpdatableBlock) blocks[i]).getEntriesFrom(positionOffset, length);
+        }
+        return wrapBlocksWithoutCopy(length, slicedBlocks);
+    }
+
+    @Override
     public UpdatablePage getColumns(int column)
     {
         return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[] {(UpdatableBlock) this.blocks[column]});
@@ -246,10 +265,9 @@ public class UpdatablePage
         }
     }
 
-
-
     private void updateBlock(UpdatableBlock target, Block sourceRow, int position){
         // target and source should only differ in being updatable and not
+        // TODO: expand here
         if (target instanceof UpdatableLongArrayBlock){
             target.updateLong(((LongArrayBlock) sourceRow).getLong(0, 0), position, 0);
         } else if (target instanceof UpdatableByteArrayBlock){
@@ -264,6 +282,10 @@ public class UpdatablePage
     private void deleteBlock(UpdatableBlock target, int position){
         if (target instanceof UpdatableLongArrayBlock){
             target.deleteLong(position, 0);
+        }else if (target instanceof UpdatableByteArrayBlock){
+            target.deleteByte(position, 0);
+        } else if (target instanceof UpdatableVariableWidthBlock){
+            target.deleteBytes(position, 0, 0); // length does nothing
         }
     }
 

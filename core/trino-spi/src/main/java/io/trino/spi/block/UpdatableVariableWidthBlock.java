@@ -24,6 +24,7 @@ import javax.annotation.Nullable;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 
 import static io.airlift.slice.SizeOf.SIZE_OF_BYTE;
@@ -41,6 +42,8 @@ import static io.trino.spi.block.BlockUtil.checkValidRegion;
 import static io.trino.spi.block.BlockUtil.compactArray;
 import static io.trino.spi.block.BlockUtil.compactOffsets;
 import static io.trino.spi.block.BlockUtil.compactSlice;
+import static io.trino.spi.block.UpdatableUtils.DEL;
+import static io.trino.spi.block.UpdatableUtils.NULL;
 import static io.trino.spi.block.UpdatableUtils.toBoolean;
 import static java.lang.Math.min;
 
@@ -110,6 +113,9 @@ public class UpdatableVariableWidthBlock
 
         this.valueMarker = Objects.requireNonNullElseGet(valueMarker, () -> new byte[positionCount]);
 
+        if (offsets.length != positionCount + 1){
+            throw new IllegalArgumentException("offsets needs to be one larger than positionCount");
+        }
         this.offsets = offsets;
 
         updateArraysDataSize();
@@ -435,25 +441,19 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public Block getRegion(int positionOffset, int length)
+    public Block getEntriesFrom(int positionOffset, int length)
     {
         int positionCount = getPositionCount();
         checkValidRegion(positionCount, positionOffset, length);
 
-        CoreBool cb = compactValuesBool(positionOffset, positionOffset+length);
-        // TODO does not check if the region has nulls, it looks at the entire array
-        return new VariableWidthBlock(positionOffset, cb.offsets.length, cb.sliceOutput, cb.offsets, mayHaveNull() ? cb.markers : null);
-    }
+        if (deleteCounter == positionCount){
+            return new VariableWidthBlock(0, Slices.allocate(0), new int[1], Optional.empty());
+        }
+        //CoreBool c = compactValuesBool();
+        //return new ByteArrayBlock(positionOffset, length, mayHaveNull() ? c.markers : null, c.values);
 
-    @Override
-    public Block copyRegion(int positionOffset, int length)
-    {
-        int positionCount = getPositionCount();
-        checkValidRegion(positionCount, positionOffset, length);
-
-        CoreBool cb = compactValuesBool(positionOffset, positionOffset+length);
-        // TODO does not check if the region has nulls, it looks at the entire array
-        return new VariableWidthBlock(positionOffset, cb.offsets.length, cb.sliceOutput, cb.offsets, mayHaveNull() ? cb.markers : null);
+        CoreBool cb = compactValuesBool(positionOffset, length);
+        return new VariableWidthBlock(0, cb.markers.length, cb.sliceOutput, cb.offsets, cb.hasNull ? cb.markers : null);
     }
 
     @Override
@@ -513,17 +513,20 @@ public class UpdatableVariableWidthBlock
     private Core compactValues(){
         int start = 0;
         int end = positions;
-        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end-1] - offsets[start] );
+        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end+1] - offsets[start] );
         byte markers[] = new byte[positions];
-        int[] newoffsets = new int[positions];
+        int[] newoffsets = new int[positions+1];
         int cindex = 0;
         // TODO: not sure if inclusive is correct
         for (int i=start; i < end; i++){
             if(valueMarker[i] != DEL){
-                sliceOutput.writeBytes(this.sliceOutput.slice().getBytes(offsets[i], this.getSliceLength(i)));
-                markers[cindex] =  NULL;
-                newoffsets[cindex] = sliceOutput.size();
+                if (valueMarker[i] == NULL) {
+                    markers[cindex] = NULL;
+                }else{
+                    sliceOutput.writeBytes(this.sliceOutput.slice().getBytes(offsets[i], this.getSliceLength(i)));
+                }
                 cindex++;
+                newoffsets[cindex] = sliceOutput.size();
             }
         }
         return new Core(sliceOutput, markers, newoffsets);
@@ -541,33 +544,41 @@ public class UpdatableVariableWidthBlock
         }
     }
 
-    private CoreBool compactValuesBool(int start, int end){
-        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end] - offsets[start] );
-        boolean markers[] = new boolean[end - start];
-        int[] newoffsets = new int[end-start];
+    private CoreBool compactValuesBool(int start, int length){
+        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[start + length] - offsets[start] );
+        boolean markers[] = new boolean[length];
+        int[] newoffsets = new int[length+1];
         int cindex = 0;
-        // TODO: not sure if inclusive is correct
-        for (int i=start; i < end; i++){
+        boolean hasNulll = false;
+        for (int i = start; cindex < length &&  i < positions; i++) {
             if(valueMarker[i] != DEL){
-                sliceOutput.writeBytes(this.sliceOutput.slice().getBytes(offsets[i], this.getSliceLength(i)));
-                markers[cindex] = valueMarker[i] == NULL;
-                newoffsets[cindex] = sliceOutput.size();
+                if (valueMarker[i] == NULL){
+                    markers[cindex] = true;
+                    hasNulll = true;
+                }else{
+                    sliceOutput.writeBytes(this.sliceOutput.slice().getBytes(offsets[i], this.getSliceLength(i)));
+                }
                 cindex++;
+                newoffsets[cindex] = sliceOutput.size();
+
             }
         }
-        return new CoreBool( compactSlice(sliceOutput.getUnderlyingSlice(),0, offsets[cindex-1]), compactArray(markers, 0, cindex), compactOffsets(offsets, 0, cindex));
+        // one too long in compatc Array markers
+        return new CoreBool(compactSlice(sliceOutput.getUnderlyingSlice(), 0, newoffsets[cindex]), compactArray(markers, 0, cindex), compactOffsets(newoffsets, 0, cindex), hasNulll);
     }
 
 
-    private class CoreBool{
-        private Slice sliceOutput;
-        private boolean markers[];
-        private int[] offsets;
+    private static class CoreBool{
+        private final Slice sliceOutput;
+        private final boolean[] markers;
+        private final int[] offsets;
+        private final boolean hasNull;
 
-        public CoreBool(Slice sliceOutput, boolean markers[], int[] offsets){
+        public CoreBool(Slice sliceOutput, boolean[] markers, int[] offsets, boolean hasNull){
             this.sliceOutput = sliceOutput;
             this.markers = markers;
             this.offsets = offsets;
+            this.hasNull = hasNull;
         }
     }
 

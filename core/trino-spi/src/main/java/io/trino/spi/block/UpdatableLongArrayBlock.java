@@ -357,7 +357,7 @@ public class UpdatableLongArrayBlock
     public boolean isNull(int position)
     {
         checkReadablePosition(position);
-        return valueMarker[position] == DEL;
+        return valueMarker[position] == NULL;
     }
 
     @Override
@@ -374,6 +374,9 @@ public class UpdatableLongArrayBlock
         blockBuilder.closeEntry();
     }
 
+    /**
+     * Returns an empty block if the position was deleted
+     */
     @Override
     public Block getSingleValueBlock(int position)
     {
@@ -427,7 +430,7 @@ public class UpdatableLongArrayBlock
     }
 
     @Override
-    public Block getRegion(int positionOffset, int length)
+    public Block getEntriesFrom(int positionOffset, int length)
     {
         checkValidRegion(getPositionCount(), positionOffset, length);
 
@@ -437,24 +440,29 @@ public class UpdatableLongArrayBlock
         if (deleteCounter == positionCount){
             return new LongArrayBlock(0, 0, null, new long[0]);
         }
-        // TODO: For a certain delete factor compact instead
-        CoreBool c = compactValuesBool();
-        // TODO: This can cause an error if after compacting positionOffset + length are larger than the array!
-        return new LongArrayBlock(positionOffset, length, mayHaveNull() ? c.markers : null, c.values);
-    }
-
-    @Override
-    public Block copyRegion(int positionOffset, int length)
-    {
-        checkValidRegion(getPositionCount(), positionOffset, length);
-        if (deleteCounter == 0 && nullCounter == positionCount) {
-            return new RunLengthEncodedBlock(NULL_VALUE_BLOCK, length);
+        //CoreBool c = compactValuesBool();
+        //return new ByteArrayBlock(positionOffset, length, mayHaveNull() ? c.markers : null, c.values);
+        boolean[] newValueIsNull = null;
+        boolean mayhavenull = mayHaveNull();
+        if (mayhavenull) {
+            newValueIsNull = new boolean[length];
         }
-        if (deleteCounter == positionCount){
-            return new LongArrayBlock(0, 0, null, new long[0]);
+        long[] newValues = new long[length];
+        int acctualSize = 0;
+        for (int i = positionOffset; acctualSize < length &&  i < positionCount; i++) {
+            if (valueMarker[i] == DEL){
+                continue;
+            }
+            checkReadablePosition(i);
+            if (mayhavenull) {
+                newValueIsNull[acctualSize] = valueMarker[i] == NULL;
+            }
+            newValues[acctualSize] = values[i];
+            acctualSize++;
         }
-        CoreBool c = compactValuesBool();
-        return new LongArrayBlock(0, length, mayHaveNull() ? c.markers : null, c.values);
+        // TODO: check if it has actually a null value in that interval!
+        // could use unsafe methods to make the arrays smaller?
+        return new LongArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull,0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
     }
 
     @Override

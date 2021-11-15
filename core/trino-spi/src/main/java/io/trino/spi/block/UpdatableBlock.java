@@ -204,4 +204,19 @@ public interface UpdatableBlock
     {
         return this;
     }
+
+    @Override
+    default public Block getRegion(int positionOffset, int length){
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+    @Override
+    default public Block copyRegion(int positionOffset, int length){
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+    /**
+     * Returns length number of rows that start from positionOffset.
+     * If there are less then length rows it will return all available ones
+     * It does not return deleted rows
+     */
+    public Block getEntriesFrom(int positionOffset, int length);
 }

@@ -312,7 +312,7 @@ public class UpdatableByteArrayBlock
     public boolean isNull(int position)
     {
         checkReadablePosition(position);
-        return valueMarker[position] == DEL;
+        return valueMarker[position] == NULL;
     }
 
     @Override
@@ -378,11 +378,11 @@ public class UpdatableByteArrayBlock
             newValues[i] = values[position];
         }
         // could use unsafe methods to make the arrays smaller?
-        return new ByteArrayBlock(0, acctualSize, Arrays.copyOfRange(newValueIsNull,0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
+        return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull,0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
     }
 
     @Override
-    public Block getRegion(int positionOffset, int length)
+    public Block getEntriesFrom(int positionOffset, int length)
     {
         checkValidRegion(getPositionCount(), positionOffset, length);
 
@@ -392,22 +392,28 @@ public class UpdatableByteArrayBlock
         if (deleteCounter == positionCount){
             return new LongArrayBlock(0, 0, null, new long[0]);
         }
-        CoreBool c = compactValuesBool();
-        return new ByteArrayBlock(positionOffset, length, mayHaveNull() ? c.markers : null, c.values);
-    }
-
-    @Override
-    public Block copyRegion(int positionOffset, int length)
-    {
-        checkValidRegion(getPositionCount(), positionOffset, length);
-        if (deleteCounter == 0 && nullCounter == positionCount) {
-            return new RunLengthEncodedBlock(NULL_VALUE_BLOCK, length);
+        //CoreBool c = compactValuesBool();
+        //return new ByteArrayBlock(positionOffset, length, mayHaveNull() ? c.markers : null, c.values);
+        boolean[] newValueIsNull = null;
+        boolean mayhavenull = mayHaveNull();
+        if (mayhavenull) {
+            newValueIsNull = new boolean[length];
         }
-        if (deleteCounter == positionCount){
-            return new ByteArrayBlock(0, 0, null, new byte[0]);
+        byte[] newValues = new byte[length];
+        int acctualSize = 0;
+        for (int i = positionOffset; acctualSize < length &&  i < positionCount; i++) {
+            if (valueMarker[i] == DEL){
+                continue;
+            }
+            checkReadablePosition(i);
+            if (mayhavenull) {
+                newValueIsNull[acctualSize] = valueMarker[i] == NULL;
+            }
+            newValues[acctualSize] = values[i];
+            acctualSize++;
         }
-        CoreBool c = compactValuesBool();
-        return new ByteArrayBlock(0, length, mayHaveNull() ? c.markers : null, c.values);
+        // could use unsafe methods to make the arrays smaller?
+        return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull,0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
     }
 
     @Override
