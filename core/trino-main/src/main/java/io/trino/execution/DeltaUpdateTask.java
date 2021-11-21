@@ -43,7 +43,7 @@ import io.trino.metadata.TableSchema;
 import io.trino.operator.ExchangeClient;
 import io.trino.operator.ExchangeClientSupplier;
 import io.trino.security.AccessControl;
-import io.trino.server.DeltaFlagRequest;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.server.SessionContext;
 import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
@@ -74,6 +74,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -197,19 +198,22 @@ public class DeltaUpdateTask
         // Transforming the source and target to Qualified names,
         // since the table name does not need to be defined we us QualifiedTablePrefixes
         processSourceAndTarget();
-        ListenableFuture<Void> phaseI =  ExecuteInserts(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
-
-        addSuccessCallback(phaseI, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
-        return phaseIIFuture;
+        ExecuteInserts(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
+        return phaseIFuture;
+        //addSuccessCallback(phaseI, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
+        //return phaseIIFuture;
     }
 
     public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
     {
-        //outputConsumer.accept(Optional.empty());
-        markDeltaUpdate(outputConsumer);
+        outputConsumer.accept(Optional.empty());
     }
 
-    public void markDeltaUpdate( Consumer<Optional<Output>> outputConsumer){
+    /**
+     * Sets a flag on all the nodes that use the memory connector.
+     * By setting that flag all regular MemoryPagesStore::getPages are blocked until the delta update is finished.
+     */
+    public void markDeltaUpdate(SettableFuture<Void> future){
         // Could add a flag or state to QueryState / StateMachine indicating that a delta update is going on
         // splits will already be on the nodes, so this is mute unless we inform first all queries and have them
         // then inform all their tasks
@@ -222,7 +226,7 @@ public class DeltaUpdateTask
         DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(true);
         List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
         for (InternalNode node : memoryNodes){
-            System.out.println("sending deltaUpdate to: "+ node.getNodeIdentifier());
+            System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
             URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
             Request request = preparePost()
                     .setUri(flagSignalPoint)
@@ -248,7 +252,7 @@ public class DeltaUpdateTask
                             success = false;
                         }
                         if (res.getStatusCode() != OK.code()) {
-                            System.out.println("Setting the delta Flag failed with error code: " + res.getStatusCode());
+                            System.out.println("Setting the delta flag failed with error code: " + res.getStatusCode());
                             success = false;
                         }
                     }
@@ -257,8 +261,12 @@ public class DeltaUpdateTask
                 }
                 if(success){
                     // start next part of execution
-                    outputConsumer.accept(Optional.empty());
-                    phaseIIFuture.set(null);
+                    //outputConsumer.accept(Optional.empty());
+                    //phaseIIFuture.set(null);
+                    System.out.println("SUCCESSFULLY set the delta update flag on all nodes");
+                    future.set(null);
+                }else{
+                    future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
                 }
 
             }
@@ -267,13 +275,13 @@ public class DeltaUpdateTask
             public void onFailure(Throwable throwable)
             {
                 System.out.println("Setting the deltaFlag failed");
-                System.out.println(throwable);
+                future.setException(throwable);
             }
         }, directExecutor());
     }
 
 
-    ListenableFuture<Void> ExecuteInserts(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
+    private void ExecuteInserts(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
     {
         // doing what they do in visitInsert of StatementAnalyzer
         List<TableHandle> sourceTableH;
@@ -311,6 +319,11 @@ public class DeltaUpdateTask
             TableSchema tableSchema = metadata.getTableSchema(session, target);
             targetMap.put(tableSchema.getTable().getTableName(), target);
         }
+
+        // Before we add the Delta data to the tables we need to switch the deltaData flag
+        // Need to do it before the loop as it is otherwise executed on every iteration
+        SettableFuture<Void> settableFuture = SettableFuture.create();
+        markDeltaUpdate(settableFuture);
 
         for (TableHandle source : sourceTableH) {
             System.out.println("LOOP");
@@ -385,90 +398,92 @@ public class DeltaUpdateTask
             //example of a querry
             //INSERT INTO memory.d1.test
             //SELECT * FROM memory.d2.test;
-            // TODO: Porbably not where I should add this!
-            QualifiedObjectName tQON = targetSchema.getQualifiedName();
-            QualifiedObjectName sQON = sourceSchema.getQualifiedName();
-            //SqlParser sqlParser = new SqlParser();
-            String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString());
-            QueryId queryId = dispatchManager.createQueryId();
-            // TODO: Save the slug?
-            Slug slug = Slug.createNew();
-            ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, slug, context, query);
-            queryFutures.put(queryId, queryFuture);
-            synchronized (this) {
-                allDone.put(queryId, false);
-            }
-
-            //System.out.println("state is "+dispatchManager.getFullQueryInfo(queryId).get().getState());
-
-            // addSuccessCallback uses the Thread that calls the the executable to run the callback, not suited for long running functions.
-            // but is used everywhere in dispatch query.
-            // if weird errors appear change this.
-            addSuccessCallback(queryFuture, () -> dispatchManager.getQuery(queryId).addStateChangeListener(state ->
+            // TODO: Does this work for every loop iteration or only on the first one?
+            Futures.addCallback(settableFuture,  new FutureCallback<>()
             {
-                System.out.println(state);
-                if (state.equals(QueryState.RUNNING)){
-                    // based on code from Query.java and ExecutingStatementResource.java
-                    // Flushing does not exist as a query state it only exists as a task state
-                    ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
 
-                    queryManager.addOutputInfoListener(queryId, outputInfo -> {
-                        System.out.println(outputInfo.getColumnNames());
-                        for (URI outputLocation : outputInfo.getBufferLocations()) {
-                            exchangeClient.addLocation(outputLocation);
-                        }
-                        if (outputInfo.isNoMoreBufferLocations()) {
-                            exchangeClient.noMoreLocations();
-                        }
-                        // if ((!queryInfo.isFinalQueryInfo() && queryInfo.getState() != FAILED) || !exchangeClient.isClosed()) {
-                        if (!exchangeClient.isClosed()) {
-                            // TODO: to handle failure:
+                @Override
+                public void onSuccess(@Nullable Void result)
+                {
+                    QualifiedObjectName tQON = targetSchema.getQualifiedName();
+                    QualifiedObjectName sQON = sourceSchema.getQualifiedName();
+                    //SqlParser sqlParser = new SqlParser();
+                    String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString());
+                    QueryId queryId = dispatchManager.createQueryId();
+                    Slug slug = Slug.createNew();
+                    ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, slug, context, query);
+                    queryFutures.put(queryId, queryFuture);
+                    synchronized (this) {
+                        allDone.put(queryId, false);
+                    }
+                    // TODO: replcace successCallback, with Futures.addCallback
+                    addSuccessCallback(queryFuture, () -> exitFlushing(queryId, outputConsumer));
+                }
+
+                @Override
+                public void onFailure(Throwable t)
+                {
+
+                }
+            }, directExecutor());
+        }
+    }
+
+    private void exitFlushing(QueryId queryId,  Consumer<Optional<Output>> outputConsumer){
+        // addSuccessCallback uses the Thread that calls the executable to run the callback, not suited for long running functions.
+        // but is used everywhere in dispatch query.
+        // if weird errors appear change this.
+
+        dispatchManager.getQuery(queryId).addStateChangeListener(state ->
+        {
+            System.out.println(state);
+            if (state.equals(QueryState.RUNNING)){
+                // based on code from Query.java and ExecutingStatementResource.java
+                // Flushing does not exist as a query state it only exists as a task state
+                ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
+
+                queryManager.addOutputInfoListener(queryId, outputInfo -> {
+                    System.out.println(outputInfo.getColumnNames());
+                    for (URI outputLocation : outputInfo.getBufferLocations()) {
+                        exchangeClient.addLocation(outputLocation);
+                    }
+                    if (outputInfo.isNoMoreBufferLocations()) {
+                        exchangeClient.noMoreLocations();
+                    }
+                    // if ((!queryInfo.isFinalQueryInfo() && queryInfo.getState() != FAILED) || !exchangeClient.isClosed()) {
+                    if (!exchangeClient.isClosed()) {
+                        // TODO: to handle failure:
                             /*Futures.addCallback(future, new FutureCallback<>()
                             {@Override public void onSuccess(@Nullable Void result){}
                             @Override public void onFailure(Throwable throwable){fail(throwable);}}, directExecutor());
                              */
 
-                            // Once the current lock holder in the exchangeClient gets unlocked all blocked ones get notified
-                            // need chained blocking else we will spin
-                            // they are also notified when a new page is added
-                            // TODO: Here we should definately use a different executor
-                            addSuccessCallback(exchangeClient.isBlocked(), () -> {
-                                nextIsBlocked(exchangeClient, queryId);
-                            });
+                        // Once the current lock holder in the exchangeClient gets unlocked all blocked ones get notified
+                        // need chained blocking else we will spin
+                        // they are also notified when a new page is added
+                        // TODO: Here we should definately use a different executor
+                        addSuccessCallback(exchangeClient.isBlocked(), () -> {
+                            nextIsBlocked(exchangeClient, queryId);
+                        });
 
-                        } // else failure?
-                    });
-                }
+                    } // else failure?
+                });
+            }
 
-                if (state.isDone()){
-                    synchronized (this){
-                        allDone.put(queryId, true);
-                        if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
-                            // documentation warns of not doing this when holding a lock
-                            //outputConsumer.accept(Optional.empty());
-                            boolean tvalue = phaseIFuture.set(null);
-                            System.out.println("Queries finished: " + tvalue);
-                        }
+            if (state.isDone()){
+                synchronized (this){
+                    allDone.put(queryId, true);
+                    if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
+                        // documentation warns of not doing this when holding a lock
+                        outputConsumer.accept(Optional.empty());
+                        boolean tvalue = phaseIFuture.set(null);
+                        System.out.println("Queries finished: " + tvalue);
                     }
                 }
-            }));
-        }
-
-
-        // look into FluentFuture.from(query.waitForDispatched()) used in QueuedStatementResource
-        // it waits for it to finish?
-
-        // In TestFlushingStageState they do:
-        // queryRunner.getCoordinator().getFullQueryInfo(queryId).getOutputStage().get().getState(), FLUSHING)
-
-
-        //future.set(null);
-        // outputConsumer.accept(Optional.empty());
-
-        // TODO add a call back that indicates failure if one of the subqueries fails
-        // TDOO: How to get back to a consistent state when one fails an the others succeed.
-        return phaseIFuture;
+            }
+        });
     }
+
 
     /*
      * This function polls pages from the output exchangeClient. This is normally done by the client that executes the query.

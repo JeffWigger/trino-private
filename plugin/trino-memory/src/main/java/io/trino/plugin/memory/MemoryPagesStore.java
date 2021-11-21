@@ -16,6 +16,7 @@ package io.trino.plugin.memory;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.DeltaPage;
 import io.trino.spi.DeltaPageBuilder;
 import io.trino.spi.Page;
@@ -262,7 +263,7 @@ public class MemoryPagesStore
         return added;
     }
 
-    public synchronized List<Page> getPages(
+    public List<Page> getPages(
             Long tableId,
             int partNumber,
             int totalParts,
@@ -271,53 +272,91 @@ public class MemoryPagesStore
             OptionalLong limit,
             OptionalDouble sampleRatio)
     {
-        if (!contains(tableId)) {
-            throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
-        }
-        TableData tableData = tables.get(tableId);
-        if (tableData.getRows() != expectedRows) {
-            throw new TrinoException(MISSING_DATA,
-                    format("Expected to find [%s] rows on a worker, but found [%s].", expectedRows, tableData.getRows()));
-        }
-
-        ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
-
-        boolean done = false;
-        long totalRows = 0;
-        for (int i = partNumber; i < tableData.getPages().size() && !done; i += totalParts) {
-            if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
-                continue;
-            }
-
-            UpdatablePage uPage = tableData.getPages().get(i);
-            Page page = null;
-
-            if (limit.isPresent()) {
-                // && totalRows > limit.getAsLong()
-                if(limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0){
-                    // can safely read everything from the page
-                    page = uPage.getEntriesFrom(0, uPage.getPositionCount());
-                    totalRows += page.getPositionCount();
-                }else{
-                    // Get only what is needed
-                    page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
-                    totalRows += page.getPositionCount();
-                    if (totalRows > limit.getAsLong()){
-                        throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
-                    }
+        long sleepTime = 1; //sleep for 1 ms
+        while(true){
+            // replace DeltaFlagRequest.globalDeltaUpdateInProcess with atomic
+            boolean sleep = false;
+            synchronized (DeltaFlagRequest.class){
+                if (DeltaFlagRequest.globalDeltaUpdateInProcess){
+                    sleep = true;
+                    sleepTime *= 2;
                 }
-            }else{
-                // creating a genuine Page, not a Updatable page
-                // this forces a copy, do not want to return the actual data
-                page = uPage.getEntriesFrom(0, uPage.getPositionCount());
-                totalRows += page.getPositionCount();
             }
-
-            // columns get copied here
-            partitionedPages.add(getColumns(page, columnIndexes));
+            try {
+                if (sleep) {
+                    Thread.sleep(Math.min(sleepTime, 1000));
+                }else{
+                    break;
+                }
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+                return null;
+            }
         }
+        // Problems that could arise due to the locking:
+        // in TaskSource::setDeltaUpdateFlag the request may timeout if this process here takes too long
+        // -> change the timeout times in CoordinatorModule httpClientBinder(binder).bindHttpClient for ForDeltaUpdate
 
-        return partitionedPages.build();
+        // Also the engine might be working on the results of splits gotten before the delta update synchronization was activated
+        // We must sure that all the tasks working on this data finish their derived splits before derivations of the delta split reach
+        // them as new input
+        
+        // it takes the DeltaFlagRequest lock such that TaskSource::setDeltaUpdateFlag must wait for the current split to be processed
+        synchronized (DeltaFlagRequest.class) {
+            synchronized (this) {
+                if (!contains(tableId)) {
+                    throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
+                }
+                TableData tableData = tables.get(tableId);
+                if (tableData.getRows() != expectedRows) {
+                    throw new TrinoException(MISSING_DATA,
+                            format("Expected to find [%s] rows on a worker, but found [%s].", expectedRows, tableData.getRows()));
+                }
+
+                ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
+
+                boolean done = false;
+                long totalRows = 0;
+                for (int i = partNumber; i < tableData.getPages().size() && !done; i += totalParts) {
+                    if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
+                        continue;
+                    }
+
+                    UpdatablePage uPage = tableData.getPages().get(i);
+                    Page page = null;
+
+                    if (limit.isPresent()) {
+                        // && totalRows > limit.getAsLong()
+                        if (limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0) {
+                            // can safely read everything from the page
+                            page = uPage.getEntriesFrom(0, uPage.getPositionCount());
+                            totalRows += page.getPositionCount();
+                        }
+                        else {
+                            // Get only what is needed
+                            page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
+                            totalRows += page.getPositionCount();
+                            if (totalRows > limit.getAsLong()) {
+                                throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
+                            }
+                        }
+                    }
+                    else {
+                        // creating a genuine Page, not a Updatable page
+                        // this forces a copy, do not want to return the actual data
+                        page = uPage.getEntriesFrom(0, uPage.getPositionCount());
+                        totalRows += page.getPositionCount();
+                    }
+
+                    // columns get copied here
+                    partitionedPages.add(getColumns(page, columnIndexes));
+                }
+                return partitionedPages.build();
+            }
+        }
+           
+        
     }
 
     public synchronized boolean contains(Long tableId)

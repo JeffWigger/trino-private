@@ -81,6 +81,7 @@ import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.remotetask.RemoteTaskStats;
 import io.trino.server.ui.WebUiModule;
 import io.trino.server.ui.WorkerResource;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.VersionEmbedder;
 import io.trino.spi.memory.ClusterMemoryPoolManager;
 import io.trino.sql.analyzer.QueryExplainer;
@@ -251,7 +252,7 @@ public class CoordinatorModule
                 .toInstance(newSingleThreadScheduledExecutor(threadsNamed("stage-scheduler")));
 
 
-        httpClientBinder(binder).bindHttpClient("scheduler", ForDeltaUpdate.class)
+        httpClientBinder(binder).bindHttpClient("deltaUpdater", ForDeltaUpdate.class)
                 .withTracing()
                 .withFilter(GenerateTraceTokenRequestFilter.class)
                 .withConfigDefaults(config -> {

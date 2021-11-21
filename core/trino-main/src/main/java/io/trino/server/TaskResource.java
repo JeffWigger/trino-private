@@ -32,6 +32,7 @@ import io.trino.execution.buffer.OutputBuffers.OutputBufferId;
 import io.trino.execution.buffer.SerializedPage;
 import io.trino.metadata.SessionPropertyManager;
 import io.trino.server.security.ResourceSecurity;
+import io.trino.spi.DeltaFlagRequest;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
 

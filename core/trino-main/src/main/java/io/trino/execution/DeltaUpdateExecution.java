@@ -33,7 +33,7 @@ import io.trino.operator.ExchangeClientSupplier;
 import io.trino.operator.ForDeltaUpdate;
 import io.trino.security.AccessControl;
 import io.trino.server.BasicQueryInfo;
-import io.trino.server.DeltaFlagRequest;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.server.ForStatementResource;
 import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
