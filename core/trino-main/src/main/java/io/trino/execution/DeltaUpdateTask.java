@@ -199,14 +199,85 @@ public class DeltaUpdateTask
         // since the table name does not need to be defined we us QualifiedTablePrefixes
         processSourceAndTarget();
         ExecuteInserts(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
-        return phaseIFuture;
-        //addSuccessCallback(phaseI, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
-        //return phaseIIFuture;
+        // return phaseIFuture;
+        addSuccessCallback(phaseIFuture, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
+        return phaseIIFuture;
     }
 
     public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
     {
-        outputConsumer.accept(Optional.empty());
+        System.out.println("Current delta flag value: "+ DeltaFlagRequest.globalDeltaUpdateInProcess);
+        // last step of the execution flow
+        // unset the delta flag on all the nodes
+        unmarkDeltaUpdate(phaseIIFuture, outputConsumer);
+    }
+
+    /**
+     * Unsets flag on all the nodes that use the memory connector.
+     * By setting that flag to false all regular MemoryPagesStore::getPages are again free to continue.
+     */
+    public void unmarkDeltaUpdate(SettableFuture<Void> future, Consumer<Optional<Output>> outputConsumer){
+
+        // TODO: make sure we unmark all that were active when we marked them
+        Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
+        if(memoryNodes.isEmpty()){
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
+        }
+        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(false);
+        List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
+        for (InternalNode node : memoryNodes){
+            System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
+            URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
+            Request request = preparePost()
+                    .setUri(flagSignalPoint)
+                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.JSON_UTF_8.toString())
+                    .setBodyGenerator(createStaticBodyGenerator(deltaFlagRequestCodec.toJsonBytes(deltaFlagRequest)))
+                    .build();
+            HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>> responseFuture = httpClient.executeAsync(request, createFullJsonResponseHandler(deltaFlagRequestCodec));
+
+            responseFutures.add(responseFuture);
+        }
+        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture= Futures.successfulAsList(responseFutures);
+        Futures.addCallback(allAsListFuture, new FutureCallback<>()
+        {
+            @Override
+            public void onSuccess(@Nullable List<JsonResponse<DeltaFlagRequest>> result)
+            {
+                System.out.println("Unsetting the deltaFlag succeeded");
+                boolean success = true;
+                if (result != null) {
+                    for (JsonResponse<DeltaFlagRequest> res : result) {
+                        if (!res.hasValue()) {
+                            System.out.println("A response from setting the delta flag does not have a result");
+                            success = false;
+                        }
+                        if (res.getStatusCode() != OK.code()) {
+                            System.out.println("Unsetting the delta flag failed with error code: " + res.getStatusCode());
+                            success = false;
+                        }
+                    }
+                }else{
+                    success = false;
+                }
+                if(success){
+                    // start next part of execution
+                    outputConsumer.accept(Optional.empty());
+                    phaseIIFuture.set(null);
+                    System.out.println("SUCCESSFULLY unset the delta update flag on all nodes");
+                    future.set(null);
+                }else{
+                    future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
+                }
+
+            }
+
+            @Override
+            public void onFailure(Throwable throwable)
+            {
+                System.out.println("Setting the deltaFlag failed");
+                future.setException(throwable);
+            }
+        }, directExecutor());
     }
 
     /**
@@ -219,6 +290,7 @@ public class DeltaUpdateTask
         // then inform all their tasks
 
         // Or we inform all nodes that run a memoryDB that they need to block further page polls
+        //TODO: Need to store them such that we can check in unmarkDeltaUpdate that we unmarked all of them successfully
         Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
         if(memoryNodes.isEmpty()){
             throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
