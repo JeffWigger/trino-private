@@ -18,6 +18,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Provider;
 import io.airlift.concurrent.BoundedExecutor;
+import io.airlift.json.JsonCodec;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.Session;
@@ -26,10 +27,13 @@ import io.trino.execution.QueryPreparer.PreparedQuery;
 import io.trino.execution.StateMachine.StateChangeListener;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.memory.VersionedMemoryPoolId;
+import io.trino.metadata.InternalNodeManager;
 import io.trino.metadata.Metadata;
 import io.trino.operator.ExchangeClientSupplier;
+import io.trino.operator.ForDeltaUpdate;
 import io.trino.security.AccessControl;
 import io.trino.server.BasicQueryInfo;
+import io.trino.server.DeltaFlagRequest;
 import io.trino.server.ForStatementResource;
 import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
@@ -40,9 +44,11 @@ import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.Statement;
 import io.trino.transaction.TransactionManager;
 import org.joda.time.DateTime;
+import io.airlift.http.client.HttpClient;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+
 
 import java.util.List;
 import java.util.Optional;
@@ -310,6 +316,10 @@ public class DeltaUpdateExecution<T extends Statement>
         private final QueryInfoUrlFactory queryInfoUrlFactory;
         private final ScheduledExecutorService timeoutExecutor;
         private final BlockEncodingSerde blockEncodingSerde;
+        private final InternalNodeManager internalNodeManager;
+        private final HttpClient httpClient;
+        private final LocationFactory locationFactory;
+        private final JsonCodec<DeltaFlagRequest> deltaFlagRequestCodec;
 
         @Inject
         public DeltaUpdateExecutionFactory(
@@ -322,7 +332,11 @@ public class DeltaUpdateExecution<T extends Statement>
                 @ForStatementResource BoundedExecutor responseExecutor,
                 @ForStatementResource ScheduledExecutorService timeoutExecutor,
                 QueryInfoUrlFactory queryInfoUrlFactory,
-                BlockEncodingSerde blockEncodingSerde)
+                BlockEncodingSerde blockEncodingSerde,
+                InternalNodeManager internalNodeManager,
+                @ForDeltaUpdate HttpClient httpClient,
+                LocationFactory locationFactory,
+                JsonCodec<DeltaFlagRequest> deltaFlagRequestCodec)
         {
             this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
             this.metadata = requireNonNull(metadata, "metadata is null");
@@ -334,6 +348,10 @@ public class DeltaUpdateExecution<T extends Statement>
             this.queryInfoUrlFactory = queryInfoUrlFactory;
             this.timeoutExecutor = timeoutExecutor;
             this.blockEncodingSerde = blockEncodingSerde;
+            this.internalNodeManager = internalNodeManager;
+            this.httpClient = httpClient;
+            this.locationFactory = locationFactory;
+            this.deltaFlagRequestCodec = deltaFlagRequestCodec;
 
         }
 
@@ -356,7 +374,8 @@ public class DeltaUpdateExecution<T extends Statement>
         {
             @SuppressWarnings("unchecked")
             DataDefinitionTask<T> task = (DataDefinitionTask<T>) new DeltaUpdateTask(dispatchManagerProvider.get(), queryManager, queryInfoUrlFactory,
-                    exchangeClientSupplier, responseExecutor, timeoutExecutor, blockEncodingSerde);
+                    exchangeClientSupplier, responseExecutor, timeoutExecutor, blockEncodingSerde, internalNodeManager, httpClient, locationFactory,
+                    deltaFlagRequestCodec);
 
             stateMachine.setUpdateType(task.getName());
             return new DeltaUpdateExecution<>(task, statement, slug, transactionManager, metadata, accessControl, stateMachine, parameters, warningCollector);

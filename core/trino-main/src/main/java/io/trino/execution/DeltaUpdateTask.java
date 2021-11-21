@@ -15,22 +15,25 @@ package io.trino.execution;
 
 // based on CreateTableTask
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HttpHeaders;
+import com.google.common.net.MediaType;
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.BoundedExecutor;
-import io.airlift.jaxrs.testing.MockUriInfo;
-import io.airlift.units.DataSize;
-import io.airlift.units.Duration;
+import io.airlift.http.client.Request;
+import io.airlift.json.JsonCodec;
 import io.trino.Session;
-import io.trino.client.QueryResults;
+import io.trino.connector.CatalogName;
 import io.trino.dispatcher.DispatchManager;
 import io.trino.execution.buffer.SerializedPage;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.memory.context.SimpleLocalMemoryContext;
+import io.trino.metadata.InternalNode;
+import io.trino.metadata.InternalNodeManager;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.NewTableLayout;
 import io.trino.metadata.QualifiedObjectName;
@@ -40,11 +43,10 @@ import io.trino.metadata.TableSchema;
 import io.trino.operator.ExchangeClient;
 import io.trino.operator.ExchangeClientSupplier;
 import io.trino.security.AccessControl;
+import io.trino.server.DeltaFlagRequest;
 import io.trino.server.SessionContext;
-import io.trino.server.protocol.Query;
 import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
-import io.trino.spi.Page;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.BlockEncodingSerde;
@@ -55,28 +57,35 @@ import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.Expression;
 import io.trino.transaction.TransactionManager;
 
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
+import static io.airlift.http.client.FullJsonResponseHandler.createFullJsonResponseHandler;
+import static io.airlift.http.client.HttpStatus.OK;
+import static io.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
+import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
+import io.airlift.http.client.HttpClient;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
 import javax.annotation.concurrent.GuardedBy;
 
 import java.net.URI;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
+import static io.airlift.http.client.Request.Builder.preparePost;
 import static io.trino.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.trino.spi.StandardErrorCode.COLUMN_NOT_FOUND;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.MISSING_TABLE;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -84,7 +93,6 @@ import static io.trino.spi.StandardErrorCode.SYNTAX_ERROR;
 import static io.trino.spi.StandardErrorCode.TYPE_MISMATCH;
 import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 import static java.lang.String.format;
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -99,6 +107,10 @@ public class DeltaUpdateTask
     private final BoundedExecutor responseExecutor;
     private final ScheduledExecutorService timeoutExecutor;
     private final BlockEncodingSerde blockEncodingSerde;
+    private final InternalNodeManager internalNodeManager;
+    private final HttpClient httpClient;
+    private final LocationFactory locationFactory;
+    private final JsonCodec<DeltaFlagRequest> deltaFlagRequestCodec;
 
     private QualifiedTablePrefix source;
     private QualifiedTablePrefix target;
@@ -112,11 +124,14 @@ public class DeltaUpdateTask
     // based on QueuedStatementResource Query
     // @GuardedBy("this")
     private ConcurrentMap<QueryId, ListenableFuture<Void>> queryFutures = new ConcurrentHashMap<>();
+
     @GuardedBy("this")
     private Map<QueryId, Boolean> allDone = new HashMap<>();
 
 
-    private SettableFuture<Void> future = SettableFuture.create();
+    private SettableFuture<Void> phaseIFuture = SettableFuture.create();
+
+    private SettableFuture<Void> phaseIIFuture = SettableFuture.create();
 
 
     public DeltaUpdateTask(DispatchManager dispatchManager,
@@ -125,7 +140,11 @@ public class DeltaUpdateTask
             ExchangeClientSupplier exchangeClientSupplier,
             BoundedExecutor responseExecutor,
             ScheduledExecutorService timeoutExecutor,
-            BlockEncodingSerde blockEncodingSerde)
+            BlockEncodingSerde blockEncodingSerde,
+            InternalNodeManager internalNodeManager,
+            HttpClient httpClient,
+            LocationFactory locationFactory,
+            JsonCodec<DeltaFlagRequest> deltaFlagRequestCodec)
     {
         // super();
         this.dispatchManager = checkNotNull(dispatchManager, "dispatchManager is null");
@@ -136,6 +155,10 @@ public class DeltaUpdateTask
         this.responseExecutor = responseExecutor;
         this.timeoutExecutor = timeoutExecutor;
         this.blockEncodingSerde = blockEncodingSerde;
+        this.internalNodeManager = internalNodeManager;
+        this.httpClient = httpClient;
+        this.locationFactory = locationFactory;
+        this.deltaFlagRequestCodec = deltaFlagRequestCodec;
 
     }
 
@@ -174,11 +197,83 @@ public class DeltaUpdateTask
         // Transforming the source and target to Qualified names,
         // since the table name does not need to be defined we us QualifiedTablePrefixes
         processSourceAndTarget();
-        return internalExecute(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
+        ListenableFuture<Void> phaseI =  ExecuteInserts(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
+
+        addSuccessCallback(phaseI, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
+        return phaseIIFuture;
     }
 
-    @VisibleForTesting
-    ListenableFuture<Void> internalExecute(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
+    public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
+    {
+        //outputConsumer.accept(Optional.empty());
+        markDeltaUpdate(outputConsumer);
+    }
+
+    public void markDeltaUpdate( Consumer<Optional<Output>> outputConsumer){
+        // Could add a flag or state to QueryState / StateMachine indicating that a delta update is going on
+        // splits will already be on the nodes, so this is mute unless we inform first all queries and have them
+        // then inform all their tasks
+
+        // Or we inform all nodes that run a memoryDB that they need to block further page polls
+        Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
+        if(memoryNodes.isEmpty()){
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
+        }
+        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(true);
+        List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
+        for (InternalNode node : memoryNodes){
+            System.out.println("sending deltaUpdate to: "+ node.getNodeIdentifier());
+            URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
+            Request request = preparePost()
+                    .setUri(flagSignalPoint)
+                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.JSON_UTF_8.toString())
+                    .setBodyGenerator(createStaticBodyGenerator(deltaFlagRequestCodec.toJsonBytes(deltaFlagRequest)))
+                    .build();
+            HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>> responseFuture = httpClient.executeAsync(request, createFullJsonResponseHandler(deltaFlagRequestCodec));
+
+            responseFutures.add(responseFuture);
+        }
+        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture= Futures.successfulAsList(responseFutures);
+        Futures.addCallback(allAsListFuture, new FutureCallback<>()
+        {
+            @Override
+            public void onSuccess(@Nullable List<JsonResponse<DeltaFlagRequest>> result)
+            {
+                System.out.println("Setting the deltaFlag succeeded");
+                boolean success = true;
+                if (result != null) {
+                    for (JsonResponse<DeltaFlagRequest> res : result) {
+                        if (!res.hasValue()) {
+                            System.out.println("A response from setting the delta flag does not have a result");
+                            success = false;
+                        }
+                        if (res.getStatusCode() != OK.code()) {
+                            System.out.println("Setting the delta Flag failed with error code: " + res.getStatusCode());
+                            success = false;
+                        }
+                    }
+                }else{
+                    success = false;
+                }
+                if(success){
+                    // start next part of execution
+                    outputConsumer.accept(Optional.empty());
+                    phaseIIFuture.set(null);
+                }
+
+            }
+
+            @Override
+            public void onFailure(Throwable throwable)
+            {
+                System.out.println("Setting the deltaFlag failed");
+                System.out.println(throwable);
+            }
+        }, directExecutor());
+    }
+
+
+    ListenableFuture<Void> ExecuteInserts(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
     {
         // doing what they do in visitInsert of StatementAnalyzer
         List<TableHandle> sourceTableH;
@@ -350,8 +445,8 @@ public class DeltaUpdateTask
                         allDone.put(queryId, true);
                         if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
                             // documentation warns of not doing this when holding a lock
-                            outputConsumer.accept(Optional.empty());
-                            boolean tvalue = future.set(null);
+                            //outputConsumer.accept(Optional.empty());
+                            boolean tvalue = phaseIFuture.set(null);
                             System.out.println("Queries finished: " + tvalue);
                         }
                     }
@@ -372,14 +467,19 @@ public class DeltaUpdateTask
 
         // TODO add a call back that indicates failure if one of the subqueries fails
         // TDOO: How to get back to a consistent state when one fails an the others succeed.
-        return future;
+        return phaseIFuture;
     }
 
+    /*
+     * This function polls pages from the output exchangeClient. This is normally done by the client that executes the query.
+     * If the pages are not polled then the output stage is stuck in the FLUSHING state
+     */
     private void nextIsBlocked(ExchangeClient exchangeClient, QueryId id){
          if (!exchangeClient.isClosed()) {
             //TODO: in the ExchangeOperator::getOutput, they do operatorContext.recordProcessedInput for stats?
              int i = 0;
-             while(!exchangeClient.isFinished()){ // it looks like this doeds not always work, sometimes we make an extra loop when we get the page in the previous round
+             while(!exchangeClient.isFinished()){
+                 // it looks like this does not always work, sometimes we make an extra loop when we get the page in the previous round
                  SerializedPage p = exchangeClient.pollPage();
                  // should I again call is blocked here? - In Query they don't
                  if (p != null) {
@@ -393,7 +493,6 @@ public class DeltaUpdateTask
                      // for these queries it is good enough
                      // in Query::removePagesFromExchange they break when it returns null
                      // If query is not yet finished it starts a new callback
-                     //System.out.println("TODO: should check if blocked at each iteration.");
                      if(!exchangeClient.isFinished() ||!exchangeClient.isClosed()){
                          System.out.println("Page was null: " + " id: " + id+ " i: "+i);
                          addSuccessCallback(exchangeClient.isBlocked(), () -> {nextIsBlocked(exchangeClient, id);});

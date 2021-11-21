@@ -80,4 +80,12 @@ public class HttpLocationFactory
         return uriBuilderFrom(node.getInternalUri())
                 .appendPath("/v1/memory").build();
     }
+
+    @Override
+    public URI createDeltaFlagLocation(InternalNode node)
+    {
+        requireNonNull(node, "node is null");
+        return uriBuilderFrom(node.getInternalUri())
+                .appendPath("/v1/task/deltaflag").build();
+    }
 }

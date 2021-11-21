@@ -334,7 +334,7 @@ public class SqlQueryScheduler
                         stageSchedulers,
                         stageLinkages);
                 stages.addAll(subTree);
-
+                // SqlStageExecution of the child, the other entries are from the children of the child
                 SqlStageExecution childStage = subTree.get(0);
                 childStagesBuilder.add(childStage);
             }
@@ -365,7 +365,7 @@ public class SqlQueryScheduler
                     dynamicFilterService,
                     () -> childStages.stream().anyMatch(SqlStageExecution::isAnyTaskBlocked)));
         }
-        else if (partitioningHandle.equals(SCALED_WRITER_DISTRIBUTION)) {
+        else if (partitioningHandle.equals(SCALED_WRITER_DISTRIBUTION)) { // TODO: uses round-robin so we should make sure this is never used
             childStages = createChildStages.apply(Optional.of(new int[1]));
             Supplier<Collection<TaskStatus>> sourceTasksProvider = () -> childStages.stream()
                     .map(SqlStageExecution::getTaskStatuses)

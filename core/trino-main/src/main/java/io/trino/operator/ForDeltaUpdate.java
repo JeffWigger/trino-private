@@ -11,24 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.execution;
+package io.trino.operator;
 
-import io.trino.metadata.InternalNode;
-import io.trino.spi.QueryId;
+import javax.inject.Qualifier;
 
-import java.net.URI;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
 
-public interface LocationFactory
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Retention(RUNTIME)
+@Target({FIELD, PARAMETER, METHOD})
+@Qualifier
+public @interface ForDeltaUpdate
 {
-    URI createQueryLocation(QueryId queryId);
-
-    URI createLocalTaskLocation(TaskId taskId);
-
-    URI createTaskLocation(InternalNode node, TaskId taskId);
-
-    URI createMemoryInfoLocation(InternalNode node);
-
-    default URI createDeltaFlagLocation(InternalNode node){
-        throw new UnsupportedOperationException(getClass().getName());
-    }
 }

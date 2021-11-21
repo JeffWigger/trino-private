@@ -127,7 +127,6 @@ public class TaskResource
     public Response createOrUpdateTask(@PathParam("taskId") TaskId taskId, TaskUpdateRequest taskUpdateRequest, @Context UriInfo uriInfo)
     {
         requireNonNull(taskUpdateRequest, "taskUpdateRequest is null");
-
         Session session = taskUpdateRequest.getSession().toSession(sessionPropertyManager, taskUpdateRequest.getExtraCredentials());
         TaskInfo taskInfo = taskManager.updateTask(session,
                 taskId,
@@ -141,6 +140,23 @@ public class TaskResource
         }
 
         return Response.ok().entity(taskInfo).build();
+    }
+
+    @ResourceSecurity(INTERNAL_ONLY)
+    @POST
+    @Path("deltaflag")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response setDeltaUpdateFlag(DeltaFlagRequest deltaFlagRequest)
+    {
+        requireNonNull(deltaFlagRequest, "taskUpdateRequest is null");
+        System.out.println("In setDeltaUpdateFlag");
+        synchronized (DeltaFlagRequest.class){
+            DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
+            System.out.println("Set globalDeltaUpdateInProcess to: "+deltaFlagRequest.getDeltaUpdateInProcess());
+        }
+        // just sending back the same thing
+        return Response.ok().entity(deltaFlagRequest).build();
     }
 
     @ResourceSecurity(INTERNAL_ONLY)

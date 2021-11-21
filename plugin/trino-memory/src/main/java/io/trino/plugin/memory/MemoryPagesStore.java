@@ -291,13 +291,11 @@ public class MemoryPagesStore
 
             UpdatablePage uPage = tableData.getPages().get(i);
             Page page = null;
-            // TODO: remove deleted pages
 
             if (limit.isPresent()) {
-                // TODO: not sure what this will do due to the deleted pags not being included
                 // && totalRows > limit.getAsLong()
                 if(limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0){
-                    // can savely read everything from the page
+                    // can safely read everything from the page
                     page = uPage.getEntriesFrom(0, uPage.getPositionCount());
                     totalRows += page.getPositionCount();
                 }else{
