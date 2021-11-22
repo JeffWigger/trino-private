@@ -43,6 +43,7 @@ import io.trino.metadata.TableSchema;
 import io.trino.operator.ExchangeClient;
 import io.trino.operator.ExchangeClientSupplier;
 import io.trino.security.AccessControl;
+import io.trino.server.BasicQueryInfo;
 import io.trino.spi.DeltaFlagRequest;
 import io.trino.server.SessionContext;
 import io.trino.server.protocol.QueryInfoUrlFactory;
@@ -51,10 +52,12 @@ import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.BlockEncodingSerde;
 import io.trino.spi.connector.ColumnSchema;
+import io.trino.spi.eventlistener.TableInfo;
 import io.trino.spi.type.Type;
 import io.trino.sql.analyzer.Output;
 import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.Expression;
+import io.trino.sql.tree.Table;
 import io.trino.transaction.TransactionManager;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
@@ -74,7 +77,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -121,6 +123,7 @@ public class DeltaUpdateTask
     private DeltaUpdate deltaUpdate;
     private Metadata metadata;
     private SessionContext context;
+    private List<TableSchema> updatedTables = new ArrayList<>();
 
     // based on QueuedStatementResource Query
     // @GuardedBy("this")
@@ -206,7 +209,41 @@ public class DeltaUpdateTask
 
     public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
     {
+        List<QualifiedObjectName> updatedTablesNames = this.updatedTables.stream().map(TableSchema::getQualifiedName).collect(toImmutableList());
         System.out.println("Current delta flag value: "+ DeltaFlagRequest.globalDeltaUpdateInProcess);
+        SqlQueryManager queryManager = (SqlQueryManager) this.queryManager;
+        Map<QueryId, List<QualifiedObjectName>> perQueryTablesToUpdate = new HashMap<>();
+        for( BasicQueryInfo bqi : this.dispatchManager.getQueries() ){
+            QueryId queryId = bqi.getQueryId();
+            if(bqi.getState() == QueryState.RUNNING) { //What about Starting, Queued, waiting_for_Resources
+                QueryInfo fqi = this.dispatchManager.getFullQueryInfo(bqi.getQueryId()).get();
+                //List<TableInfo> tiList = fqi.getReferencedTables();
+                Set<Input> inputs =  fqi.getInputs();
+                /*for (TableInfo ti : tiList){
+                    QualifiedObjectName referencedTableName = new QualifiedObjectName(ti.getCatalog(), ti.getSchema(), ti.getTable());
+                    System.out.println(queryId.toString()+ ": gets referenced Tables: " + referencedTableName);
+                    if(updatedTablesNames.contains(referencedTableName)){
+
+                    }
+                }*/
+                List<QualifiedObjectName> tablesToUpdate = new ArrayList<>();
+                for(Input i : inputs){
+                    QualifiedObjectName referencedTableName = new QualifiedObjectName(i.getCatalogName(), i.getSchema(), i.getTable());
+                    System.out.println(queryId.toString()+ ": gets referenced Tables: " + referencedTableName);
+                    if(updatedTablesNames.contains(referencedTableName)){
+                        // get SqlQueryExecution
+                        tablesToUpdate.add(referencedTableName);
+                    }
+                }
+                if (!tablesToUpdate.isEmpty()){
+                    perQueryTablesToUpdate.putIfAbsent(queryId, tablesToUpdate);
+                }
+            }
+            //queryManager.queryTracker.getQuery();
+
+        }
+
+
         // last step of the execution flow
         // unset the delta flag on all the nodes
         unmarkDeltaUpdate(phaseIIFuture, outputConsumer);
@@ -409,7 +446,9 @@ public class DeltaUpdateTask
 
             TableHandle targetTableHandle = targetMap.get(tableName);
             TableSchema targetSchema = metadata.getTableSchema(session, targetTableHandle);
-            ;
+
+            updatedTables.add(targetSchema);
+
 
             // check for the columns to be matching
 

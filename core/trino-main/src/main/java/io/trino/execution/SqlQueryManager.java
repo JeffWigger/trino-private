@@ -67,7 +67,7 @@ public class SqlQueryManager
     private static final Logger log = Logger.get(SqlQueryManager.class);
 
     private final ClusterMemoryManager memoryManager;
-    private final QueryTracker<QueryExecution> queryTracker;
+    public final QueryTracker<QueryExecution> queryTracker;
 
     private final Duration maxQueryCpuTime;
     private final Optional<DataSize> maxQueryScanPhysicalBytes;
