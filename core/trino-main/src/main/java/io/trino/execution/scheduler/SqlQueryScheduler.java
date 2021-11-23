@@ -348,6 +348,8 @@ public class SqlQueryScheduler
             Entry<PlanNodeId, SplitSource> entry = Iterables.getOnlyElement(plan.getSplitSources().entrySet());
             PlanNodeId planNodeId = entry.getKey();
             SplitSource splitSource = entry.getValue();
+            Entry<PlanNodeId, SplitSource> entry2 = Iterables.getOnlyElement(plan.getSplitDeltaSources().entrySet());
+            SplitSource splitDeltaSource = entry.getValue(); // could be null
             Optional<CatalogName> catalogName = Optional.of(splitSource.getCatalogName())
                     .filter(catalog -> !isInternalSystemConnector(catalog));
             NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, catalogName);
@@ -356,14 +358,26 @@ public class SqlQueryScheduler
             checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution());
 
             childStages = createChildStages.apply(Optional.of(new int[1]));
-            stageSchedulers.put(stageId, newSourcePartitionedSchedulerAsStageScheduler(
-                    stage,
-                    planNodeId,
-                    splitSource,
-                    placementPolicy,
-                    splitBatchSize,
-                    dynamicFilterService,
-                    () -> childStages.stream().anyMatch(SqlStageExecution::isAnyTaskBlocked)));
+            if (splitDeltaSource == null){
+                stageSchedulers.put(stageId, newSourcePartitionedSchedulerAsStageScheduler(
+                        stage,
+                        planNodeId,
+                        splitSource,
+                        placementPolicy,
+                        splitBatchSize,
+                        dynamicFilterService,
+                        () -> childStages.stream().anyMatch(SqlStageExecution::isAnyTaskBlocked)));
+            }else{
+                stageSchedulers.put(stageId, newSourcePartitionedSchedulerAsStageSchedulerDelta(
+                        stage,
+                        planNodeId,
+                        splitSource,
+                        splitDeltaSource,
+                        placementPolicy,
+                        splitBatchSize,
+                        dynamicFilterService,
+                        () -> childStages.stream().anyMatch(SqlStageExecution::isAnyTaskBlocked)));
+            }
         }
         else if (partitioningHandle.equals(SCALED_WRITER_DISTRIBUTION)) { // TODO: uses round-robin so we should make sure this is never used
             childStages = createChildStages.apply(Optional.of(new int[1]));

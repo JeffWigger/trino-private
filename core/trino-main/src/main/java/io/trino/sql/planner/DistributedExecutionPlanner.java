@@ -100,8 +100,9 @@ public class DistributedExecutionPlanner
     public StageExecutionPlan plan(SubPlan root, Session session)
     {
         ImmutableList.Builder<SplitSource> allSplitSources = ImmutableList.builder();
+        ImmutableList.Builder<SplitSource> allSplitDeltaSources = ImmutableList.builder();
         try {
-            return doPlan(root, session, allSplitSources);
+            return doPlan(root, session, allSplitSources, allSplitDeltaSources);
         }
         catch (Throwable t) {
             allSplitSources.build().forEach(DistributedExecutionPlanner::closeSplitSource);
@@ -119,19 +120,19 @@ public class DistributedExecutionPlanner
         }
     }
 
-    private StageExecutionPlan doPlan(SubPlan root, Session session, ImmutableList.Builder<SplitSource> allSplitSources)
+    private StageExecutionPlan doPlan(SubPlan root, Session session, ImmutableList.Builder<SplitSource> allSplitSources, ImmutableList.Builder<SplitSource> allSplitDeltaSources)
     {
         PlanFragment currentFragment = root.getFragment();
 
         // get splits for this fragment, this is lazy so split assignments aren't actually calculated here
-        Map<PlanNodeId, SplitSource> splitSources = currentFragment.getRoot().accept(
-                new Visitor(session, currentFragment.getStageExecutionDescriptor(), TypeProvider.copyOf(currentFragment.getSymbols()), allSplitSources),
+        CombinedSources splitSources = currentFragment.getRoot().accept(
+                new Visitor(session, currentFragment.getStageExecutionDescriptor(), TypeProvider.copyOf(currentFragment.getSymbols()), allSplitSources, allSplitDeltaSources),
                 null);
 
         // create child stages
         ImmutableList.Builder<StageExecutionPlan> dependencies = ImmutableList.builder();
         for (SubPlan childPlan : root.getChildren()) {
-            dependencies.add(doPlan(childPlan, session, allSplitSources));
+            dependencies.add(doPlan(childPlan, session, allSplitSources, allSplitDeltaSources));
         }
 
         // extract TableInfo
@@ -144,7 +145,8 @@ public class DistributedExecutionPlanner
 
         return new StageExecutionPlan(
                 currentFragment,
-                splitSources,
+                splitSources.splitSources,
+                splitSources.splitDeltaSources,
                 dependencies.build(),
                 tables);
     }
@@ -157,38 +159,41 @@ public class DistributedExecutionPlanner
     }
 
     private final class Visitor
-            extends PlanVisitor<Map<PlanNodeId, SplitSource>, Void>
+            extends PlanVisitor<CombinedSources, Void>
     {
         private final Session session;
         private final StageExecutionDescriptor stageExecutionDescriptor;
         private final TypeProvider typeProvider;
         private final ImmutableList.Builder<SplitSource> splitSources;
+        public final ImmutableList.Builder<SplitSource> splitDeltaSources;
 
         private Visitor(
                 Session session,
                 StageExecutionDescriptor stageExecutionDescriptor,
                 TypeProvider typeProvider,
-                ImmutableList.Builder<SplitSource> allSplitSources)
+                ImmutableList.Builder<SplitSource> allSplitSources,
+                ImmutableList.Builder<SplitSource> allSplitDeltaSources)
         {
             this.session = session;
             this.stageExecutionDescriptor = stageExecutionDescriptor;
             this.typeProvider = typeProvider;
             this.splitSources = allSplitSources;
+            this.splitDeltaSources = allSplitDeltaSources;
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitExplainAnalyze(ExplainAnalyzeNode node, Void context)
+        public CombinedSources visitExplainAnalyze(ExplainAnalyzeNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitTableScan(TableScanNode node, Void context)
+        public CombinedSources visitTableScan(TableScanNode node, Void context)
         {
             return visitScanAndFilter(node, Optional.empty());
         }
 
-        private Map<PlanNodeId, SplitSource> visitScanAndFilter(TableScanNode node, Optional<FilterNode> filter)
+        private CombinedSources visitScanAndFilter(TableScanNode node, Optional<FilterNode> filter)
         {
             List<DynamicFilters.Descriptor> dynamicFilters = filter
                     .map(FilterNode::getPredicate)
@@ -211,64 +216,84 @@ public class DistributedExecutionPlanner
 
             splitSources.add(splitSource);
 
-            return ImmutableMap.of(node.getId(), splitSource);
+            SplitSource splitDeltaSource = splitManager.getDeltaSplits(
+                    session,
+                    node.getTable(),
+                    stageExecutionDescriptor.isScanGroupedExecution(node.getId()) ? GROUPED_SCHEDULING : UNGROUPED_SCHEDULING,
+                    dynamicFilter);
+
+            splitDeltaSources.add(splitDeltaSource);
+
+            return new CombinedSources(ImmutableMap.of(node.getId(), splitSource), ImmutableMap.of(node.getId(), splitDeltaSource));
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitJoin(JoinNode node, Void context)
+        public CombinedSources visitJoin(JoinNode node, Void context)
         {
-            Map<PlanNodeId, SplitSource> leftSplits = node.getLeft().accept(this, context);
-            Map<PlanNodeId, SplitSource> rightSplits = node.getRight().accept(this, context);
-            return ImmutableMap.<PlanNodeId, SplitSource>builder()
-                    .putAll(leftSplits)
-                    .putAll(rightSplits)
-                    .build();
+            CombinedSources leftSplits = node.getLeft().accept(this, context);
+            CombinedSources rightSplits = node.getRight().accept(this, context);
+            return new CombinedSources(ImmutableMap.<PlanNodeId, SplitSource>builder()
+                    .putAll(leftSplits.splitSources)
+                    .putAll(rightSplits.splitSources)
+                    .build(),
+                    ImmutableMap.<PlanNodeId, SplitSource>builder()
+                            .putAll(leftSplits.splitDeltaSources)
+                            .putAll(rightSplits.splitDeltaSources)
+                            .build());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitSemiJoin(SemiJoinNode node, Void context)
+        public CombinedSources visitSemiJoin(SemiJoinNode node, Void context)
         {
-            Map<PlanNodeId, SplitSource> sourceSplits = node.getSource().accept(this, context);
-            Map<PlanNodeId, SplitSource> filteringSourceSplits = node.getFilteringSource().accept(this, context);
-            return ImmutableMap.<PlanNodeId, SplitSource>builder()
-                    .putAll(sourceSplits)
-                    .putAll(filteringSourceSplits)
-                    .build();
+            CombinedSources sourceSplits = node.getSource().accept(this, context);
+            CombinedSources filteringSourceSplits = node.getFilteringSource().accept(this, context);
+            return new CombinedSources(ImmutableMap.<PlanNodeId, SplitSource>builder()
+                    .putAll(sourceSplits.splitSources)
+                    .putAll(filteringSourceSplits.splitSources)
+                    .build(),
+                    ImmutableMap.<PlanNodeId, SplitSource>builder()
+                            .putAll(sourceSplits.splitDeltaSources)
+                            .putAll(filteringSourceSplits.splitDeltaSources)
+                            .build());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitSpatialJoin(SpatialJoinNode node, Void context)
+        public CombinedSources visitSpatialJoin(SpatialJoinNode node, Void context)
         {
-            Map<PlanNodeId, SplitSource> leftSplits = node.getLeft().accept(this, context);
-            Map<PlanNodeId, SplitSource> rightSplits = node.getRight().accept(this, context);
-            return ImmutableMap.<PlanNodeId, SplitSource>builder()
-                    .putAll(leftSplits)
-                    .putAll(rightSplits)
-                    .build();
+            CombinedSources leftSplits = node.getLeft().accept(this, context);
+            CombinedSources rightSplits = node.getRight().accept(this, context);
+            return new CombinedSources(ImmutableMap.<PlanNodeId, SplitSource>builder()
+                    .putAll(leftSplits.splitSources)
+                    .putAll(rightSplits.splitSources)
+                    .build(),
+                    ImmutableMap.<PlanNodeId, SplitSource>builder()
+                            .putAll(leftSplits.splitDeltaSources)
+                            .putAll(rightSplits.splitDeltaSources)
+                            .build());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitIndexJoin(IndexJoinNode node, Void context)
+        public CombinedSources visitIndexJoin(IndexJoinNode node, Void context)
         {
             return node.getProbeSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitRemoteSource(RemoteSourceNode node, Void context)
+        public CombinedSources visitRemoteSource(RemoteSourceNode node, Void context)
         {
             // remote source node does not have splits
-            return ImmutableMap.of();
+            return new CombinedSources(ImmutableMap.of(), ImmutableMap.of());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitValues(ValuesNode node, Void context)
+        public CombinedSources visitValues(ValuesNode node, Void context)
         {
             // values node does not have splits
-            return ImmutableMap.of();
+            return new CombinedSources(ImmutableMap.of(), ImmutableMap.of());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitFilter(FilterNode node, Void context)
+        public CombinedSources visitFilter(FilterNode node, Void context)
         {
             if (node.getSource() instanceof TableScanNode) {
                 TableScanNode scan = (TableScanNode) node.getSource();
@@ -279,18 +304,19 @@ public class DistributedExecutionPlanner
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitSample(SampleNode node, Void context)
+        public CombinedSources visitSample(SampleNode node, Void context)
         {
             switch (node.getSampleType()) {
                 case BERNOULLI:
                     return node.getSource().accept(this, context);
                 case SYSTEM:
-                    Map<PlanNodeId, SplitSource> nodeSplits = node.getSource().accept(this, context);
+                    CombinedSources nodeSplits = node.getSource().accept(this, context);
                     // TODO: when this happens we should switch to either BERNOULLI or page sampling
-                    if (nodeSplits.size() == 1) {
-                        PlanNodeId planNodeId = getOnlyElement(nodeSplits.keySet());
-                        SplitSource sampledSplitSource = new SampledSplitSource(nodeSplits.get(planNodeId), node.getSampleRatio());
-                        return ImmutableMap.of(planNodeId, sampledSplitSource);
+                    if (nodeSplits.splitSources.size() == 1) {
+                        PlanNodeId planNodeId = getOnlyElement(nodeSplits.splitSources.keySet());
+                        SplitSource sampledSplitSource = new SampledSplitSource(nodeSplits.splitSources.get(planNodeId), node.getSampleRatio());
+                        // no delta support for sampling
+                        return new CombinedSources(ImmutableMap.of(planNodeId, sampledSplitSource), ImmutableMap.of());
                     }
                     // table sampling on a sub query without splits is meaningless
                     return nodeSplits;
@@ -299,171 +325,186 @@ public class DistributedExecutionPlanner
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitAggregation(AggregationNode node, Void context)
+        public CombinedSources visitAggregation(AggregationNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitGroupId(GroupIdNode node, Void context)
+        public CombinedSources visitGroupId(GroupIdNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitMarkDistinct(MarkDistinctNode node, Void context)
+        public CombinedSources visitMarkDistinct(MarkDistinctNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitWindow(WindowNode node, Void context)
+        public CombinedSources visitWindow(WindowNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitPatternRecognition(PatternRecognitionNode node, Void context)
+        public CombinedSources visitPatternRecognition(PatternRecognitionNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitRowNumber(RowNumberNode node, Void context)
+        public CombinedSources visitRowNumber(RowNumberNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitTopNRanking(TopNRankingNode node, Void context)
+        public CombinedSources visitTopNRanking(TopNRankingNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitProject(ProjectNode node, Void context)
+        public CombinedSources visitProject(ProjectNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitUnnest(UnnestNode node, Void context)
+        public CombinedSources visitUnnest(UnnestNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitTopN(TopNNode node, Void context)
+        public CombinedSources visitTopN(TopNNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitOutput(OutputNode node, Void context)
+        public CombinedSources visitOutput(OutputNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitEnforceSingleRow(EnforceSingleRowNode node, Void context)
+        public CombinedSources visitEnforceSingleRow(EnforceSingleRowNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitAssignUniqueId(AssignUniqueId node, Void context)
+        public CombinedSources visitAssignUniqueId(AssignUniqueId node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitLimit(LimitNode node, Void context)
+        public CombinedSources visitLimit(LimitNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitDistinctLimit(DistinctLimitNode node, Void context)
+        public CombinedSources visitDistinctLimit(DistinctLimitNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitSort(SortNode node, Void context)
+        public CombinedSources visitSort(SortNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitRefreshMaterializedView(RefreshMaterializedViewNode node, Void context)
+        public CombinedSources visitRefreshMaterializedView(RefreshMaterializedViewNode node, Void context)
         {
             // RefreshMaterializedViewNode does not have splits
-            return ImmutableMap.of();
+            return new CombinedSources(ImmutableMap.of(), ImmutableMap.of());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitTableWriter(TableWriterNode node, Void context)
+        public CombinedSources visitTableWriter(TableWriterNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitTableFinish(TableFinishNode node, Void context)
+        public CombinedSources visitTableFinish(TableFinishNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitStatisticsWriterNode(StatisticsWriterNode node, Void context)
+        public CombinedSources visitStatisticsWriterNode(StatisticsWriterNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitDelete(DeleteNode node, Void context)
+        public CombinedSources visitDelete(DeleteNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitUpdate(UpdateNode node, Void context)
+        public CombinedSources visitUpdate(UpdateNode node, Void context)
         {
             return node.getSource().accept(this, context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitTableDelete(TableDeleteNode node, Void context)
+        public CombinedSources visitTableDelete(TableDeleteNode node, Void context)
         {
             // node does not have splits
-            return ImmutableMap.of();
+            return new CombinedSources(ImmutableMap.of(), ImmutableMap.of());
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitUnion(UnionNode node, Void context)
+        public CombinedSources visitUnion(UnionNode node, Void context)
         {
             return processSources(node.getSources(), context);
         }
 
         @Override
-        public Map<PlanNodeId, SplitSource> visitExchange(ExchangeNode node, Void context)
+        public CombinedSources visitExchange(ExchangeNode node, Void context)
         {
             return processSources(node.getSources(), context);
         }
 
-        private Map<PlanNodeId, SplitSource> processSources(List<PlanNode> sources, Void context)
+        private CombinedSources processSources(List<PlanNode> sources, Void context)
         {
             ImmutableMap.Builder<PlanNodeId, SplitSource> result = ImmutableMap.builder();
+            ImmutableMap.Builder<PlanNodeId, SplitSource> resultDelta = ImmutableMap.builder();
             for (PlanNode child : sources) {
-                result.putAll(child.accept(this, context));
+                CombinedSources combinedSources = child.accept(this, context);
+                result.putAll(combinedSources.splitSources);
+                resultDelta.putAll(combinedSources.splitDeltaSources);
             }
 
-            return result.build();
+            return new CombinedSources(result.build(), resultDelta.build());
         }
 
         @Override
-        protected Map<PlanNodeId, SplitSource> visitPlan(PlanNode node, Void context)
+        protected CombinedSources visitPlan(PlanNode node, Void context)
         {
             throw new UnsupportedOperationException("not yet implemented: " + node.getClass().getName());
+        }
+    }
+
+    private class CombinedSources
+    {
+        public final Map<PlanNodeId, SplitSource> splitSources;
+        public final Map<PlanNodeId, SplitSource> splitDeltaSources;
+
+        CombinedSources(Map<PlanNodeId, SplitSource> splitSources,  Map<PlanNodeId, SplitSource> splitDeltaSources){
+            this.splitSources = splitSources;
+            this.splitDeltaSources = splitDeltaSources;
+
         }
     }
 }

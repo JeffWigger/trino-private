@@ -15,6 +15,7 @@ package io.trino.plugin.memory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.google.common.collect.ImmutableList;
 import io.trino.spi.HostAddress;
 import io.trino.spi.connector.ConnectorSplit;
@@ -35,6 +36,7 @@ public class MemorySplit
     private final int partNumber; // part of the pages on one worker that this splits is responsible
     private final HostAddress address;
     private final long expectedRows;
+    private final boolean isDeltaSplit;
     private final OptionalLong limit;
 
     @JsonCreator
@@ -44,6 +46,7 @@ public class MemorySplit
             @JsonProperty("totalPartsPerWorker") int totalPartsPerWorker,
             @JsonProperty("address") HostAddress address,
             @JsonProperty("expectedRows") long expectedRows,
+            @JsonProperty("isDeltaSplit") boolean isDeltaSplit,
             @JsonProperty("limit") OptionalLong limit)
     {
         checkState(partNumber >= 0, "partNumber must be >= 0");
@@ -55,6 +58,7 @@ public class MemorySplit
         this.totalPartsPerWorker = totalPartsPerWorker;
         this.address = requireNonNull(address, "address is null");
         this.expectedRows = expectedRows;
+        this.isDeltaSplit = isDeltaSplit;
         this.limit = limit;
     }
 
@@ -110,6 +114,13 @@ public class MemorySplit
     public OptionalLong getLimit()
     {
         return limit;
+    }
+
+    @JsonProperty
+    @Override
+    public boolean getIsDeltaSplit()
+    {
+        return isDeltaSplit;
     }
 
     @Override
