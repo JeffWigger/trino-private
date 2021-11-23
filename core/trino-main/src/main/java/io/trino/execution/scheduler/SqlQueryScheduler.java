@@ -113,7 +113,7 @@ public class SqlQueryScheduler
 {
     private final QueryStateMachine queryStateMachine;
     private final ExecutionPolicy executionPolicy;
-    private final Map<StageId, SqlStageExecution> stages;
+    public final Map<StageId, SqlStageExecution> stages;
     private final ExecutorService executor;
     private final StageId rootStageId;
     private final Map<StageId, StageScheduler> stageSchedulers;

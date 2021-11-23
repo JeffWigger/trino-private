@@ -30,6 +30,7 @@ import io.trino.Session;
 import io.trino.connector.CatalogName;
 import io.trino.dispatcher.DispatchManager;
 import io.trino.execution.buffer.SerializedPage;
+import io.trino.execution.scheduler.SqlQueryScheduler;
 import io.trino.execution.warnings.WarningCollector;
 import io.trino.memory.context.SimpleLocalMemoryContext;
 import io.trino.metadata.InternalNode;
@@ -55,6 +56,9 @@ import io.trino.spi.connector.ColumnSchema;
 import io.trino.spi.eventlistener.TableInfo;
 import io.trino.spi.type.Type;
 import io.trino.sql.analyzer.Output;
+import io.trino.sql.planner.InputExtractor;
+import io.trino.sql.planner.PlanFragment;
+import io.trino.sql.planner.SubPlan;
 import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.Table;
@@ -239,9 +243,44 @@ public class DeltaUpdateTask
                     perQueryTablesToUpdate.putIfAbsent(queryId, tablesToUpdate);
                 }
             }
-            //queryManager.queryTracker.getQuery();
-
         }
+        for (QueryId qid : perQueryTablesToUpdate.keySet()){
+            QueryExecution queryExecution = queryManager.queryTracker.getQuery(qid);
+            // could be an update/dataDefinitionExecution
+            if (!(queryExecution instanceof SqlQueryExecution)){
+                continue;
+            }
+            SqlQueryExecution sqlQueryExecution = (SqlQueryExecution) queryExecution;
+            //sqlQueryExecution.getQueryPlan().getRoot().getSources()
+            // get all stages that that use a table that is being updated
+            SqlQueryScheduler sqlQueryScheduler = sqlQueryExecution.queryScheduler.get();
+            // should not change after the scheduling is finished, and we work on Running queries.
+            Map<StageId, SqlStageExecution> stages = sqlQueryScheduler.stages;
+            for(Map.Entry<StageId, SqlStageExecution> entry : stages.entrySet()){
+                // todo figure out which stages to update
+                // the SqlStageExecution stateMachine holds the fragment
+                // entry.getValue().stateMachine.getFragment().getRoot();
+                PlanFragment stageRoot = entry.getValue().stateMachine.getFragment();
+                // TODO check if this is correct
+                // need to creat a SubPlan, because extract input requires it
+                // this would return the input of the entire query, but I am only interested in this stage, hence the
+                // list of subPlans that would be the children stages are empty.
+                List<Input> inputs = new InputExtractor(metadata, sqlQueryExecution.stateMachine.getSession()).extractInputs(new SubPlan(stageRoot, new ArrayList<>()));
+                List<QualifiedObjectName> stagesToUpdate = new ArrayList<>();
+                for(Input i : inputs){
+                    QualifiedObjectName referencedTableName = new QualifiedObjectName(i.getCatalogName(), i.getSchema(), i.getTable());
+                    System.out.println("StageID: " + entry.getKey().toString()+ ": gets referenced Tables: " + referencedTableName);
+                    if(updatedTablesNames.contains(referencedTableName)){
+                        stagesToUpdate.add(referencedTableName);
+                    }
+                }
+                if (!stagesToUpdate.isEmpty()){
+                    // todo: create delta splits and create an update mechanism to SqlStageExecution.
+                }
+                // todo
+            }
+        }
+        //queryManager.queryTracker.getQuery();
 
 
         // last step of the execution flow
