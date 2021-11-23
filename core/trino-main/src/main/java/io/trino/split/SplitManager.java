@@ -19,6 +19,7 @@ import io.trino.execution.QueryManagerConfig;
 import io.trino.metadata.Metadata;
 import io.trino.metadata.TableHandle;
 import io.trino.spi.connector.ConnectorSession;
+import io.trino.spi.connector.ConnectorSplitDeltaSource;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy;
 import io.trino.spi.connector.ConnectorSplitSource;
@@ -94,6 +95,40 @@ public class SplitManager
         SplitSource splitSource = new ConnectorAwareSplitSource(catalogName, source);
         if (minScheduleSplitBatchSize > 1) {
             splitSource = new BufferingSplitSource(splitSource, minScheduleSplitBatchSize);
+        }
+        return splitSource;
+    }
+
+    public SplitSource getDeltaSplits(Session session, TableHandle table, SplitSchedulingStrategy splitSchedulingStrategy, DynamicFilter dynamicFilter)
+    {
+        CatalogName catalogName = table.getCatalogName();
+        ConnectorSplitManager splitManager = getConnectorSplitManager(catalogName);
+
+        ConnectorSession connectorSession = session.toConnectorSession(catalogName);
+
+        // the splits that the splitSource will contain are deltaSplit, but we reuse this structure
+        ConnectorSplitSource source;
+        if (metadata.usesLegacyTableLayouts(session, table)) {
+            ConnectorTableLayoutHandle layout = table.getLayout()
+                    .orElseGet(() -> metadata.getLayout(session, table, Constraint.alwaysTrue(), Optional.empty())
+                            .get()
+                            .getNewTableHandle()
+                            .getLayout().get());
+
+            source = splitManager.getDeltaSplits(table.getTransaction(), connectorSession, layout, splitSchedulingStrategy);
+        }
+        else {
+            source = splitManager.getDeltaSplits(
+                    table.getTransaction(),
+                    connectorSession,
+                    table.getConnectorHandle(),
+                    splitSchedulingStrategy,
+                    dynamicFilter);
+        }
+
+        SplitDeltaSource splitSource = new ConnectorAwareSplitDeltaSource(catalogName, source);
+        if (minScheduleSplitBatchSize > 1) {
+            splitSource = new BufferingSplitDeltaSource(splitSource, minScheduleSplitBatchSize);
         }
         return splitSource;
     }

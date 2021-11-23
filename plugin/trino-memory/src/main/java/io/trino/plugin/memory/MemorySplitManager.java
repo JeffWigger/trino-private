@@ -16,6 +16,7 @@ package io.trino.plugin.memory;
 import com.google.common.collect.ImmutableList;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplit;
+import io.trino.spi.connector.ConnectorSplitDeltaSource;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.ConnectorTableHandle;
@@ -43,6 +44,40 @@ public final class MemorySplitManager
 
     @Override
     public ConnectorSplitSource getSplits(
+            ConnectorTransactionHandle transactionHandle,
+            ConnectorSession session,
+            ConnectorTableHandle handle,
+            SplitSchedulingStrategy splitSchedulingStrategy,
+            DynamicFilter dynamicFilter)
+    {
+        MemoryTableHandle table = (MemoryTableHandle) handle;
+
+        List<MemoryDataFragment> dataFragments = metadata.getDataFragments(table.getId());
+
+        int totalRows = 0;
+
+        ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
+
+        for (MemoryDataFragment dataFragment : dataFragments) {
+            long rows = dataFragment.getRows();
+            totalRows += rows;
+
+            if (table.getLimit().isPresent() && totalRows > table.getLimit().getAsLong()) {
+                rows -= totalRows - table.getLimit().getAsLong();
+                splits.add(new MemorySplit(table.getId(), 0, 1, dataFragment.getHostAddress(), rows, OptionalLong.of(rows)));
+                break;
+            }
+
+            for (int i = 0; i < splitsPerNode; i++) {
+                splits.add(new MemorySplit(table.getId(), i, splitsPerNode, dataFragment.getHostAddress(), rows, OptionalLong.empty()));
+            }
+        }
+        return new FixedSplitSource(splits.build());
+    }
+
+
+    @Override
+    public ConnectorSplitSource getDeltaSplits(
             ConnectorTransactionHandle transactionHandle,
             ConnectorSession session,
             ConnectorTableHandle handle,

@@ -17,12 +17,13 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
-public interface ConnectorSplitSource
-        extends Closeable
+public interface ConnectorSplitDeltaSource
+        extends ConnectorSplitSource
 {
-    CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize);
+    CompletableFuture<ConnectorSplitDeltaBatch> getNextDeltaBatch(ConnectorPartitionHandle partitionHandle, int maxSize);
 
     @Override
     void close();
@@ -37,20 +38,20 @@ public interface ConnectorSplitSource
      */
     boolean isFinished();
 
-    class ConnectorSplitBatch
+    class ConnectorSplitDeltaBatch
+        extends ConnectorSplitBatch
     {
-        final List<ConnectorSplit> splits;
-        final boolean noMoreSplits;
 
-        public ConnectorSplitBatch(List<ConnectorSplit> splits, boolean noMoreSplits)
+
+        public ConnectorSplitDeltaBatch(List<ConnectorDeltaSplit> splits, boolean noMoreSplits)
         {
-            this.splits = requireNonNull(splits, "splits is null");
-            this.noMoreSplits = noMoreSplits;
+            super(splits.stream().map(ConnectorSplit.class::cast).collect(toImmutableList()), noMoreSplits);
+
         }
 
-        public List<ConnectorSplit> getSplits()
+        public List<ConnectorDeltaSplit> getDeltaSplits()
         {
-            return splits;
+            return splits.stream().map(ConnectorDeltaSplit.class::cast).collect(toImmutableList());
         }
 
         public boolean isNoMoreSplits()

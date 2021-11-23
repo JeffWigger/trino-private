@@ -38,7 +38,7 @@ public interface SplitSource
 
     class SplitBatch
     {
-        private final List<Split> splits;
+        final List<Split> splits;
         private final boolean lastBatch;
 
         public SplitBatch(List<Split> splits, boolean lastBatch)

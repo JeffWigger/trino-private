@@ -18,6 +18,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.connector.CatalogName;
 import io.trino.execution.Lifespan;
 import io.trino.spi.HostAddress;
+import io.trino.spi.connector.ConnectorDeltaSplit;
 import io.trino.spi.connector.ConnectorSplit;
 
 import java.util.List;
@@ -25,54 +26,24 @@ import java.util.List;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
-public class Split
+public final class DeltaSplit
+    extends Split
 {
-    final CatalogName catalogName;
-    final ConnectorSplit connectorSplit;
-    final Lifespan lifespan;
 
     @JsonCreator
-    public Split(
+    public DeltaSplit(
             @JsonProperty("catalogName") CatalogName catalogName,
-            @JsonProperty("connectorSplit") ConnectorSplit connectorSplit,
+            @JsonProperty("connectorSplit") ConnectorDeltaSplit connectorSplit,
             @JsonProperty("lifespan") Lifespan lifespan)
     {
-        this.catalogName = requireNonNull(catalogName, "catalogName is null");
-        this.connectorSplit = requireNonNull(connectorSplit, "connectorSplit is null");
-        this.lifespan = requireNonNull(lifespan, "lifespan is null");
+        super(catalogName, connectorSplit, lifespan);
+
     }
 
     @JsonProperty
-    public CatalogName getCatalogName()
+    public ConnectorDeltaSplit getConnectorDeltaSplit()
     {
-        return catalogName;
-    }
-
-    @JsonProperty
-    public ConnectorSplit getConnectorSplit()
-    {
-        return connectorSplit;
-    }
-
-    @JsonProperty
-    public Lifespan getLifespan()
-    {
-        return lifespan;
-    }
-
-    public Object getInfo()
-    {
-        return connectorSplit.getInfo();
-    }
-
-    public List<HostAddress> getAddresses()
-    {
-        return connectorSplit.getAddresses();
-    }
-
-    public boolean isRemotelyAccessible()
-    {
-        return connectorSplit.isRemotelyAccessible();
+        return (ConnectorDeltaSplit) this.connectorSplit;
     }
 
     @Override
@@ -80,7 +51,7 @@ public class Split
     {
         return toStringHelper(this)
                 .add("catalogName", catalogName)
-                .add("connectorSplit", connectorSplit)
+                .add("connectorDeltaSplit", connectorSplit)
                 .add("lifespan", lifespan)
                 .toString();
     }
