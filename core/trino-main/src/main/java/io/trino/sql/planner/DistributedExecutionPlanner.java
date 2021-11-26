@@ -221,10 +221,13 @@ public class DistributedExecutionPlanner
                     node.getTable(),
                     stageExecutionDescriptor.isScanGroupedExecution(node.getId()) ? GROUPED_SCHEDULING : UNGROUPED_SCHEDULING,
                     dynamicFilter);
+            if (splitDeltaSource != null){
+                splitDeltaSources.add(splitDeltaSource);
+                return new CombinedSources(ImmutableMap.of(node.getId(), splitSource), ImmutableMap.of(node.getId(), splitDeltaSource));
+            }
 
-            splitDeltaSources.add(splitDeltaSource);
 
-            return new CombinedSources(ImmutableMap.of(node.getId(), splitSource), ImmutableMap.of(node.getId(), splitDeltaSource));
+            return new CombinedSources(ImmutableMap.of(node.getId(), splitSource), ImmutableMap.of());
         }
 
         @Override

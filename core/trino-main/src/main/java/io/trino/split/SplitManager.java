@@ -123,7 +123,9 @@ public class SplitManager
                     splitSchedulingStrategy,
                     dynamicFilter);
         }
-
+        if (source == null){
+            return null;
+        }
         SplitSource splitSource = new ConnectorAwareSplitSource(catalogName, source);
         if (minScheduleSplitBatchSize > 1) {
             splitSource = new BufferingSplitSource(splitSource, minScheduleSplitBatchSize);

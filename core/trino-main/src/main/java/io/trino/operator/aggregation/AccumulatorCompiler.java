@@ -601,7 +601,7 @@ public final class AccumulatorCompiler
             ParameterMetadata parameterMetadata = parameterMetadatas.get(i);
             switch (parameterMetadata.getParameterType()) {
                 case STATE:
-                    block.append(scope.getThis().getField(stateField.get(stateIndex)));
+                    block.append(scope.getThis().getField(stateField.get(stateIndex))); // I think this is the state field of the aggregator function
                     stateIndex++;
                     break;
                 case BLOCK_INDEX:

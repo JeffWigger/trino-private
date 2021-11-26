@@ -39,7 +39,7 @@ public class FixedCountScheduler
     public FixedCountScheduler(SqlStageExecution stage, List<InternalNode> partitionToNode)
     {
         requireNonNull(stage, "stage is null");
-        this.taskScheduler = stage::scheduleTask;
+        this.taskScheduler = stage::scheduleTask; // turns the function into the above interface TaskScheduler
         this.partitionToNode = requireNonNull(partitionToNode, "partitionToNode is null");
     }
 

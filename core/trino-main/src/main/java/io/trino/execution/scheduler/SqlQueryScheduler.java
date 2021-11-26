@@ -42,6 +42,7 @@ import io.trino.execution.buffer.OutputBuffers.OutputBufferId;
 import io.trino.failuredetector.FailureDetector;
 import io.trino.metadata.InternalNode;
 import io.trino.server.DynamicFilterService;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorPartitionHandle;
 import io.trino.split.SplitSource;
@@ -52,17 +53,22 @@ import io.trino.sql.planner.StageExecutionPlan;
 import io.trino.sql.planner.plan.PlanFragmentId;
 import io.trino.sql.planner.plan.PlanNodeId;
 
+import javax.annotation.concurrent.GuardedBy;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -88,12 +94,14 @@ import static io.trino.execution.BasicStageStats.aggregateBasicStageStats;
 import static io.trino.execution.SqlStageExecution.createSqlStageExecution;
 import static io.trino.execution.StageState.ABORTED;
 import static io.trino.execution.StageState.CANCELED;
+import static io.trino.execution.StageState.COMPLETED;
 import static io.trino.execution.StageState.FAILED;
 import static io.trino.execution.StageState.FINISHED;
 import static io.trino.execution.StageState.FLUSHING;
 import static io.trino.execution.StageState.RUNNING;
 import static io.trino.execution.StageState.SCHEDULED;
 import static io.trino.execution.scheduler.SourcePartitionedScheduler.newSourcePartitionedSchedulerAsStageScheduler;
+import static io.trino.execution.scheduler.SourcePartitionedSchedulerDelta.newSourcePartitionedSchedulerAsStageSchedulerDelta;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.NO_NODES_AVAILABLE;
 import static io.trino.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
@@ -114,6 +122,8 @@ public class SqlQueryScheduler
     private final QueryStateMachine queryStateMachine;
     private final ExecutionPolicy executionPolicy;
     public final Map<StageId, SqlStageExecution> stages;
+    @GuardedBy("this")
+    public final List<SqlStageExecution> scheduledStages = new LinkedList<>(); // TODO are there any reference / GC implications of this
     private final ExecutorService executor;
     private final StageId rootStageId;
     private final Map<StageId, StageScheduler> stageSchedulers;
@@ -122,6 +132,9 @@ public class SqlQueryScheduler
     private final boolean summarizeTaskInfo;
     private final DynamicFilterService dynamicFilterService;
     private final AtomicBoolean started = new AtomicBoolean();
+    @GuardedBy("this")
+    // ConcurrentHashMap does not work for streaming
+    private final Map<StageId, Boolean> stageIsFinished = new HashMap<>();
 
     public static SqlQueryScheduler createSqlQueryScheduler(
             QueryStateMachine queryStateMachine,
@@ -240,6 +253,29 @@ public class SqlQueryScheduler
 
         for (SqlStageExecution stage : stages.values()) {
             stage.addStateChangeListener(state -> {
+                if(state == COMPLETED || state == FINISHED || state == CANCELED){ // || state == FAILED || state == ABORTED ||
+                    synchronized (this){
+                        this.stageIsFinished.put(stage.getStageId(), Boolean.TRUE);
+                        if (this.stageIsFinished.values().stream().allMatch(s -> s == Boolean.TRUE)){
+                            // TODO: if delta updates comes simultaneously then other stages might be reset
+                            // synchronized (DeltaFlagRequest.class) {
+                            // Problem Delta update might technically still be ongoing
+                            // TODO: must start from leaves as otherwise there is a run condition with the cancel code in createStages
+                            for (SqlStageExecution stageInner : stages.values()) {
+                                if (state == COMPLETED) {
+                                    stageInner.stateMachine.transitionToFinished();
+                                }
+                            }
+
+                            return;
+                        }
+                    }
+                }else{
+                    // In case the stage gets reset due to delta update
+                    synchronized (this) {
+                        this.stageIsFinished.put(stage.getStageId(), Boolean.FALSE);
+                    }
+                }
                 if (queryStateMachine.isDone()) {
                     return;
                 }
@@ -348,8 +384,11 @@ public class SqlQueryScheduler
             Entry<PlanNodeId, SplitSource> entry = Iterables.getOnlyElement(plan.getSplitSources().entrySet());
             PlanNodeId planNodeId = entry.getKey();
             SplitSource splitSource = entry.getValue();
-            Entry<PlanNodeId, SplitSource> entry2 = Iterables.getOnlyElement(plan.getSplitDeltaSources().entrySet());
-            SplitSource splitDeltaSource = entry.getValue(); // could be null
+            SplitSource splitDeltaSource = null;
+            if(!plan.getSplitDeltaSources().isEmpty()) {
+                Entry<PlanNodeId, SplitSource> entry2 = Iterables.getOnlyElement(plan.getSplitDeltaSources().entrySet());
+                splitDeltaSource = entry.getValue(); // could be null
+            }
             Optional<CatalogName> catalogName = Optional.of(splitSource.getCatalogName())
                     .filter(catalog -> !isInternalSystemConnector(catalog));
             NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, catalogName);
@@ -375,6 +414,7 @@ public class SqlQueryScheduler
                         splitDeltaSource,
                         placementPolicy,
                         splitBatchSize,
+                        splitBatchSize, // is some constant
                         dynamicFilterService,
                         () -> childStages.stream().anyMatch(SqlStageExecution::isAnyTaskBlocked)));
             }
@@ -557,9 +597,23 @@ public class SqlQueryScheduler
             while (!executionSchedule.isFinished()) {
                 List<ListenableFuture<Void>> blockedStages = new ArrayList<>();
                 for (SqlStageExecution stage : executionSchedule.getStagesToSchedule()) {
-                    stage.beginScheduling();
+                    synchronized (DeltaFlagRequest.class) {
+                        // do not make any progress during a delta update
+                        if(DeltaFlagRequest.globalDeltaUpdateInProcess){
+                            break;
+                        }
+                    }
+                    stage.beginScheduling(); // just causes stateMachine to transition from Planning to scheduled
+
+                    // state should now be scheduled
+                    synchronized (this) {
+                        if (!scheduledStages.contains(stage)) {
+                            scheduledStages.add(stage);
+                        }
+                    }
 
                     // perform some scheduling work
+                    // Schedules that were created in createStages
                     ScheduleResult result = stageSchedulers.get(stage.getStageId())
                             .schedule();
 
@@ -608,8 +662,119 @@ public class SqlQueryScheduler
                         tryGetFutureValue(whenAnyComplete(blockedStages), 1, SECONDS);
                     }
                     for (ListenableFuture<Void> blockedStage : blockedStages) {
-                        blockedStage.cancel(true);
+                        blockedStage.cancel(true); // cancels just the outher future
                     }
+                }
+                boolean sleep = false;
+                synchronized (DeltaFlagRequest.class) {
+                    if(DeltaFlagRequest.globalDeltaUpdateInProcess){
+                        sleep = true;
+                    }
+                }
+                if(sleep){
+                    try{
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+            }
+
+            for (SqlStageExecution stage : stages.values()) {
+                StageState state = stage.getState();
+                if (state != SCHEDULED && state != RUNNING && state != FLUSHING && !state.isDone()) {
+                    throw new TrinoException(GENERIC_INTERNAL_ERROR, format("Scheduling is complete, but stage %s is in state %s", stage.getStageId(), state));
+                }
+            }
+        }
+        catch (Throwable t) {
+            queryStateMachine.transitionToFailed(t);
+            throw t;
+        }
+        finally {
+            RuntimeException closeError = new RuntimeException();
+            for (StageScheduler scheduler : stageSchedulers.values()) {
+                try {
+                    scheduler.close();
+                }
+                catch (Throwable t) {
+                    queryStateMachine.transitionToFailed(t);
+                    // Self-suppression not permitted
+                    if (closeError != t) {
+                        closeError.addSuppressed(t);
+                    }
+                }
+            }
+            if (closeError.getSuppressed().length > 0) {
+                throw closeError;
+            }
+        }
+    }
+
+    private void scheduleDelta()
+    {
+        try (SetThreadName ignored = new SetThreadName("Query-Delta-%s", queryStateMachine.getQueryId())) {
+            Set<StageId> completedStages = new HashSet<>();
+            List<ListenableFuture<Void>> blockedStages = new ArrayList<>();
+            synchronized (this) {
+                for (SqlStageExecution stage : scheduledStages) {
+                    stage.beginDeltaScheduling(); // just causes stateMachine to transition from Planning to scheduled
+
+                    // only should happen once, if an additional outer-loop is re-added then move it there
+                    stageSchedulers.get(stage.getStageId()).resetDelta();
+                    // perform some scheduling work
+                    // Schedules that were created in createStages
+                    ScheduleResult result = stageSchedulers.get(stage.getStageId())
+                            .scheduleDelta();
+
+                    // modify parent and children based on the results of the scheduling
+                    if (result.isFinished()) {
+                        stage.schedulingComplete();
+                    }
+                    else if (!result.getBlocked().isDone()) {
+                        blockedStages.add(result.getBlocked());
+                    }
+                    stageLinkages.get(stage.getStageId())
+                            .processScheduleResults(stage.getState(), result.getNewTasks());
+                    schedulerStats.getSplitsScheduledPerIteration().add(result.getSplitsScheduled());
+                    if (result.getBlockedReason().isPresent()) {
+                        switch (result.getBlockedReason().get()) {
+                            case WRITER_SCALING:
+                                // no-op
+                                break;
+                            case WAITING_FOR_SOURCE:
+                                schedulerStats.getWaitingForSource().update(1);
+                                break;
+                            case SPLIT_QUEUES_FULL:
+                                schedulerStats.getSplitQueuesFull().update(1);
+                                break;
+                            case MIXED_SPLIT_QUEUES_FULL_AND_WAITING_FOR_SOURCE:
+                            case NO_ACTIVE_DRIVER_GROUP:
+                                break;
+                            default:
+                                throw new UnsupportedOperationException("Unknown blocked reason: " + result.getBlockedReason().get());
+                        }
+                    }
+                }
+            }
+
+            // make sure to update stage linkage at least once per loop to catch async state changes (e.g., partial cancel)
+            for (SqlStageExecution stage : stages.values()) {
+                if (!completedStages.contains(stage.getStageId()) && stage.getState().isDone()) {
+                    stageLinkages.get(stage.getStageId())
+                            .processScheduleResults(stage.getState(), ImmutableSet.of());
+                    completedStages.add(stage.getStageId());
+                }
+            }
+
+            // wait for a state change and then schedule again
+            if (!blockedStages.isEmpty()) {
+                try (TimeStat.BlockTimer timer = schedulerStats.getSleepTime().time()) {
+                    tryGetFutureValue(whenAnyComplete(blockedStages), 1, SECONDS);
+                }
+                for (ListenableFuture<Void> blockedStage : blockedStages) {
+                    blockedStage.cancel(true);
                 }
             }
 

@@ -49,6 +49,10 @@ public enum StageState
      */
     FLUSHING(false, false),
     /**
+     * Stage has completed executing and all output has been consumed. But It might still be reset for Delta updates.
+     */
+    COMPLETED(false, false), // changed doneState to false
+    /**
      * Stage has finished executing and all output has been consumed.
      */
     FINISHED(true, false),
@@ -105,6 +109,7 @@ public enum StageState
             case SCHEDULED:
             case RUNNING:
             case FLUSHING:
+            case COMPLETED:
             case FINISHED:
             case CANCELED:
                 // no more workers will be added to the query

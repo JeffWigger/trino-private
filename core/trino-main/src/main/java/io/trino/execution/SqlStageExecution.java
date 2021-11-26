@@ -240,6 +240,11 @@ public final class SqlStageExecution
         stateMachine.transitionToScheduling();
     }
 
+    public void beginDeltaScheduling()
+    {
+        stateMachine.transitionToScheduling();
+    }
+
     public synchronized void transitionToSchedulingSplits()
     {
         stateMachine.transitionToSchedulingSplits();
@@ -255,7 +260,7 @@ public final class SqlStageExecution
             stateMachine.transitionToFlushing();
         }
         if (finishedTasks.containsAll(allTasks)) {
-            stateMachine.transitionToFinished();
+            stateMachine.transitionToCompleted();
         }
 
         for (PlanNodeId partitionedSource : stateMachine.getFragment().getPartitionedSources()) {
@@ -543,7 +548,7 @@ public final class SqlStageExecution
                     stateMachine.transitionToFlushing();
                 }
                 if (finishedTasks.containsAll(allTasks)) {
-                    stateMachine.transitionToFinished();
+                    stateMachine.transitionToCompleted();
                 }
             }
         }
@@ -568,6 +573,7 @@ public final class SqlStageExecution
 
     private synchronized void checkAllTaskFinal()
     {
+        // TODO needs this to change too?
         if (stateMachine.getState().isDone() && tasksWithFinalInfo.containsAll(allTasks)) {
             List<TaskInfo> finalTaskInfos = getAllTasks().stream()
                     .map(RemoteTask::getTaskInfo)

@@ -275,7 +275,7 @@ public class DeltaUpdateTask
                     }
                 }
                 if (!stagesToUpdate.isEmpty()){
-                    // todo: create delta splits and create an update mechanism to SqlStageExecution.
+                    // todo: call sheduleDelta in SqlQueryScheduler, using its executor and a listener!
                 }
                 // todo
             }
