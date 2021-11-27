@@ -35,12 +35,11 @@ public class TaskSource
     private final Set<Lifespan> noMoreDeltaSplitsForLifespan;
     private final boolean noMoreDeltaSplits;
 
-    @JsonCreator
     public TaskSource(
-            @JsonProperty("planNodeId") PlanNodeId planNodeId,
-            @JsonProperty("splits") Set<ScheduledSplit> splits,
-            @JsonProperty("noMoreSplitsForLifespan") Set<Lifespan> noMoreSplitsForLifespan,
-            @JsonProperty("noMoreSplits") boolean noMoreSplits)
+            PlanNodeId planNodeId,
+            Set<ScheduledSplit> splits,
+            Set<Lifespan> noMoreSplitsForLifespan,
+            boolean noMoreSplits)
     {
         this(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits, ImmutableSet.of(), ImmutableSet.of(), false);
     }

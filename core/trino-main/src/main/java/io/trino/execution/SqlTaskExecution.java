@@ -1262,6 +1262,14 @@ public class SqlTaskExecution
             closeDriverFactoryIfFullyCreated();
         }
 
+        public void noMoreDriverRunnerDelta(Iterable<Lifespan> lifespans)
+        {
+            for (Lifespan lifespan : lifespans) {
+                status.setNoMoreDriverRunner(pipelineContext.getPipelineId(), lifespan);
+            }
+            closeDriverFactoryIfFullyCreated();
+        }
+
         public boolean isNoMoreDriverRunner()
         {
             return status.isNoMoreDriverRunners(pipelineContext.getPipelineId());
@@ -1478,6 +1486,21 @@ public class SqlTaskExecution
         }
 
         public synchronized void setNoMoreDriverRunner(int pipelineId, Lifespan lifespan)
+        {
+            if (per(pipelineId, lifespan).noMoreDriverRunner) {
+                return;
+            }
+            per(pipelineId, lifespan).noMoreDriverRunner = true;
+            if (per(pipelineId, lifespan).pendingCreation == 0) {
+                per(pipelineId).unacknowledgedLifespansWithNoMoreDrivers.add(lifespan);
+            }
+            per(pipelineId).lifespansWithNoMoreDriverRunners++;
+            per(lifespan).pipelinesWithNoMoreDriverRunners++;
+            checkLifespanCompletion(lifespan);
+        }
+
+
+        public synchronized void setNoMoreDriverRunnerDelta(int pipelineId, Lifespan lifespan)
         {
             if (per(pipelineId, lifespan).noMoreDriverRunner) {
                 return;
