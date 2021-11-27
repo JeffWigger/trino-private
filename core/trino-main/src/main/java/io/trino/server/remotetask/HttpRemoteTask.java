@@ -16,6 +16,7 @@ package io.trino.server.remotetask;
 import com.google.common.base.Ticker;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.net.HttpHeaders;
@@ -451,13 +452,27 @@ public final class HttpRemoteTask
     @Override
     public void noMoreDeltaSplits(PlanNodeId sourceId)
     {
+        if (noMoreDeltaSplits.containsKey(sourceId)) {
+            return;
+        }
+
+        noMoreDeltaSplits.put(sourceId, true);
+        triggerUpdate();
 
     }
 
     @Override
     public void noMoreDeltaSplits(PlanNodeId sourceId, Lifespan lifespan)
     {
+        if (pendingNoMoreDeltaSplitsForLifespan.put(sourceId, lifespan)) {
+            triggerUpdate();
+        }
 
+    }
+
+    @Override
+    public void resetStateDelta(){
+        // TODO: implement and call this function
     }
 
     @Override
@@ -500,6 +515,7 @@ public final class HttpRemoteTask
     }
 
     @SuppressWarnings("FieldAccessNotGuarded")
+    // TODO: maybe split up into two functions, this is confusing
     private int getPendingSourceSplitCount()
     {
         return pendingSourceSplitCount + pendingSourceDeltaSplitCount;
@@ -691,12 +707,12 @@ public final class HttpRemoteTask
 
     private synchronized TaskSource getSource(PlanNodeId planNodeId, boolean onlyDelta)
     {
+
+        boolean pendingNoMoreSplits = Boolean.TRUE.equals(this.noMoreSplits.get(planNodeId));
+        boolean noMoreSplits = this.noMoreSplits.containsKey(planNodeId);
+        Set<Lifespan> noMoreSplitsForLifespan = pendingNoMoreSplitsForLifespan.get(planNodeId);
         if (!onlyDelta){
             Set<ScheduledSplit> splits = pendingSplits.get(planNodeId);
-            boolean pendingNoMoreSplits = Boolean.TRUE.equals(this.noMoreSplits.get(planNodeId));
-            boolean noMoreSplits = this.noMoreSplits.containsKey(planNodeId);
-            Set<Lifespan> noMoreSplitsForLifespan = pendingNoMoreSplitsForLifespan.get(planNodeId);
-
             TaskSource element = null;
             if (!splits.isEmpty() || !noMoreSplitsForLifespan.isEmpty() || pendingNoMoreSplits) {
                 element = new TaskSource(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits);
@@ -704,14 +720,15 @@ public final class HttpRemoteTask
             return element;
         }else{
             Set<ScheduledSplit> splits = pendingDeltaSplits.get(planNodeId);
-            boolean pendingNoMoreSplits = Boolean.TRUE.equals(this.noMoreDeltaSplits.get(planNodeId));
-            boolean noMoreSplits = this.noMoreDeltaSplits.containsKey(planNodeId);
+            boolean pendingNoMoreDeltaSplits = Boolean.TRUE.equals(this.noMoreDeltaSplits.get(planNodeId));
+            boolean noMoreDeltaSplits = this.noMoreDeltaSplits.containsKey(planNodeId);
             // lifespans are currently reused
-            Set<Lifespan> noMoreSplitsForLifespan = pendingNoMoreDeltaSplitsForLifespan.get(planNodeId);
+            Set<Lifespan> noMoreDeltaSplitsForLifespan = pendingNoMoreDeltaSplitsForLifespan.get(planNodeId);
 
             TaskSource element = null;
-            if (!splits.isEmpty() || !noMoreSplitsForLifespan.isEmpty() || pendingNoMoreSplits) {
-                element = new TaskSource(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits);
+            if (!splits.isEmpty() || !noMoreDeltaSplitsForLifespan.isEmpty() || pendingNoMoreDeltaSplits) {
+                // it should not contain any updates to normal splits
+                element = new TaskSource(planNodeId, ImmutableSet.of(), ImmutableSet.of(), false, splits, noMoreDeltaSplitsForLifespan, noMoreDeltaSplits);
             }
             return element;
         }

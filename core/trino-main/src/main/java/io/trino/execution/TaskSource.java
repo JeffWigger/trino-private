@@ -31,6 +31,9 @@ public class TaskSource
     private final Set<ScheduledSplit> splits;
     private final Set<Lifespan> noMoreSplitsForLifespan;
     private final boolean noMoreSplits;
+    private final Set<ScheduledSplit> deltaSplits;
+    private final Set<Lifespan> noMoreDeltaSplitsForLifespan;
+    private final boolean noMoreDeltaSplits;
 
     @JsonCreator
     public TaskSource(
@@ -39,10 +42,27 @@ public class TaskSource
             @JsonProperty("noMoreSplitsForLifespan") Set<Lifespan> noMoreSplitsForLifespan,
             @JsonProperty("noMoreSplits") boolean noMoreSplits)
     {
+        this(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits, ImmutableSet.of(), ImmutableSet.of(), false);
+    }
+
+    @JsonCreator
+    public TaskSource(
+            @JsonProperty("planNodeId") PlanNodeId planNodeId,
+            @JsonProperty("splits") Set<ScheduledSplit> splits,
+            @JsonProperty("noMoreSplitsForLifespan") Set<Lifespan> noMoreSplitsForLifespan,
+            @JsonProperty("noMoreSplits") boolean noMoreSplits,
+            @JsonProperty("deltaSplits") Set<ScheduledSplit> deltaSplits,
+            @JsonProperty("noMoreDeltaSplitsForLifespan") Set<Lifespan> noMoreDeltaSplitsForLifespan,
+            @JsonProperty("noMoreDeltaSplits") boolean noMoreDeltaSplits
+            )
+    {
         this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
         this.splits = ImmutableSet.copyOf(requireNonNull(splits, "splits is null"));
         this.noMoreSplitsForLifespan = ImmutableSet.copyOf(noMoreSplitsForLifespan);
         this.noMoreSplits = noMoreSplits;
+        this.deltaSplits = ImmutableSet.copyOf(requireNonNull(deltaSplits, "deltaSplits is null"));
+        this.noMoreDeltaSplitsForLifespan = ImmutableSet.copyOf(noMoreDeltaSplitsForLifespan);
+        this.noMoreDeltaSplits = noMoreDeltaSplits;
     }
 
     public TaskSource(PlanNodeId planNodeId, Set<ScheduledSplit> splits, boolean noMoreSplits)
@@ -74,6 +94,25 @@ public class TaskSource
         return noMoreSplits;
     }
 
+
+    @JsonProperty
+    public Set<ScheduledSplit> getDeltaSplits()
+    {
+        return deltaSplits;
+    }
+
+    @JsonProperty
+    public Set<Lifespan> getNoMoreDeltaSplitsForLifespan()
+    {
+        return noMoreDeltaSplitsForLifespan;
+    }
+
+    @JsonProperty
+    public boolean isNoMoreDeltaSplits()
+    {
+        return noMoreDeltaSplits;
+    }
+
     public TaskSource update(TaskSource source)
     {
         checkArgument(planNodeId.equals(source.getPlanNodeId()), "Expected source %s, but got source %s", planNodeId, source.getPlanNodeId());
@@ -92,25 +131,77 @@ public class TaskSource
                     .addAll(source.getNoMoreSplitsForLifespan())
                     .build();
 
+            ImmutableSet.Builder<ScheduledSplit> newDeltaSplits = ImmutableSet.<ScheduledSplit>builder()
+                    .addAll(deltaSplits);
+            ImmutableSet.Builder<Lifespan> newNoMoreDeltaSplitsForDriverGroup = ImmutableSet.<Lifespan>builder()
+                    .addAll(noMoreSplitsForLifespan);
+            boolean isNoMoreDeltaSplits = this.isNoMoreDeltaSplits();
+            if(isNewerDelta(source)){
+                newDeltaSplits.addAll(source.getDeltaSplits());
+                newNoMoreDeltaSplitsForDriverGroup.addAll(source.getNoMoreDeltaSplitsForLifespan());
+                isNoMoreDeltaSplits = source.isNoMoreDeltaSplits();
+            }
+
             return new TaskSource(
                     planNodeId,
                     newSplits,
                     newNoMoreSplitsForDriverGroup,
-                    source.isNoMoreSplits());
+                    source.isNoMoreSplits(),
+                    newDeltaSplits.build(),
+                    newNoMoreDeltaSplitsForDriverGroup.build(),
+                    isNoMoreDeltaSplits
+                    );
         }
-        else {
-            // the specified source is older than this one
-            return this;
+        if(isNewerDelta(source)){
+            ImmutableSet.Builder<ScheduledSplit> newDeltaSplits = ImmutableSet.<ScheduledSplit>builder()
+                    .addAll(deltaSplits);
+            ImmutableSet.Builder<Lifespan> newNoMoreDeltaSplitsForDriverGroup = ImmutableSet.<Lifespan>builder()
+                    .addAll(noMoreSplitsForLifespan);
+
+            newDeltaSplits.addAll(source.getDeltaSplits());
+            newNoMoreDeltaSplitsForDriverGroup.addAll(source.getNoMoreDeltaSplitsForLifespan());
+            boolean isNoMoreDeltaSplits = source.isNoMoreDeltaSplits();
+
+
+            return new TaskSource(
+                    planNodeId,
+                    this.splits,
+                    this.noMoreSplitsForLifespan,
+                    this.isNoMoreSplits(),
+                    newDeltaSplits.build(),
+                    newNoMoreDeltaSplitsForDriverGroup.build(),
+                    isNoMoreDeltaSplits
+            );
         }
+
+        // the specified source is older than this one
+        return this;
+
     }
 
     private boolean isNewer(TaskSource source)
     {
+        // case when a delta update is created. isNoMoreSplits is set to false, this should not be wrongly copied
+        if (source.getSplits().isEmpty() && source.getNoMoreSplitsForLifespan().isEmpty() && !source.isNoMoreSplits()){
+            return false;
+        }
         // the specified source is newer if it changes the no more
         // splits flag or if it contains new splits
         return (!noMoreSplits && source.isNoMoreSplits()) ||
                 (!noMoreSplitsForLifespan.containsAll(source.getNoMoreSplitsForLifespan())) ||
                 (!splits.containsAll(source.getSplits()));
+    }
+
+    private boolean isNewerDelta(TaskSource source)
+    {
+        if (source.getDeltaSplits().isEmpty() && source.getNoMoreDeltaSplitsForLifespan().isEmpty() && !source.isNoMoreDeltaSplits()){
+            return false;
+        }
+        // the specified source is newer if it changes the no more
+        // splits flag or if it contains new splits
+        return (!noMoreDeltaSplits && source.isNoMoreDeltaSplits()) ||
+                (!noMoreDeltaSplitsForLifespan.containsAll(source.getNoMoreDeltaSplitsForLifespan())) ||
+                (!deltaSplits.containsAll(source.getDeltaSplits()));
     }
 
     public boolean isDeltaSource(){
@@ -124,6 +215,8 @@ public class TaskSource
                 .add("planNodeId", planNodeId)
                 .add("splits", splits)
                 .add("noMoreSplits", noMoreSplits)
+                .add("deltaSplits", deltaSplits)
+                .add("noMoreDeltaSplits", noMoreDeltaSplits)
                 .toString();
     }
 }

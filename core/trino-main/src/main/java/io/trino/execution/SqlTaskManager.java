@@ -476,6 +476,7 @@ public class SqlTaskManager
                 .filter(Objects::nonNull)
                 .forEach(taskInfo -> {
                     TaskId taskId = taskInfo.getTaskStatus().getTaskId();
+                    //taskId.getQueryId()
                     try {
                         DateTime endTime = taskInfo.getStats().getEndTime();
                         if (endTime != null && endTime.isBefore(oldestAllowedTask)) {

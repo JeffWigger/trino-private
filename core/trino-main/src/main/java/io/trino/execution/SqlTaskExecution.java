@@ -29,6 +29,7 @@ import io.trino.execution.buffer.BufferState;
 import io.trino.execution.buffer.OutputBuffer;
 import io.trino.execution.executor.TaskExecutor;
 import io.trino.execution.executor.TaskHandle;
+import io.trino.metadata.DeltaSplit;
 import io.trino.operator.Driver;
 import io.trino.operator.DriverContext;
 import io.trino.operator.DriverFactory;
@@ -133,6 +134,9 @@ public class SqlTaskExecution
 
     @GuardedBy("this")
     private long maxAcknowledgedSplit = Long.MIN_VALUE;
+    // deltasplits use their own squence id
+    @GuardedBy("this")
+    private long maxAcknowledgedDeltaSplit = Long.MIN_VALUE;
 
     @GuardedBy("this")
     private final SchedulingLifespanManager schedulingLifespanManager;
@@ -194,6 +198,7 @@ public class SqlTaskExecution
             ImmutableMap.Builder<PlanNodeId, DriverSplitRunnerFactory> driverRunnerFactoriesWithSplitLifeCycle = ImmutableMap.builder();
             ImmutableList.Builder<DriverSplitRunnerFactory> driverRunnerFactoriesWithTaskLifeCycle = ImmutableList.builder();
             ImmutableList.Builder<DriverSplitRunnerFactory> driverRunnerFactoriesWithDriverGroupLifeCycle = ImmutableList.builder();
+            // driverFactories correspond to a representation of the pipeline
             for (DriverFactory driverFactory : localExecutionPlan.getDriverFactories()) {
                 Optional<PlanNodeId> sourceId = driverFactory.getSourceId();
                 if (sourceId.isPresent() && partitionedSources.contains(sourceId.get())) {
@@ -364,6 +369,7 @@ public class SqlTaskExecution
 
         // first remove any split that was already acknowledged
         long currentMaxAcknowledgedSplit = this.maxAcknowledgedSplit;
+        long currentMaxAcknowledgedDeltaSplit = this.maxAcknowledgedDeltaSplit;
         sources = sources.stream()
                 .map(source -> new TaskSource(
                         source.getPlanNodeId(),
@@ -373,7 +379,14 @@ public class SqlTaskExecution
                         // Like splits, noMoreSplitsForLifespan could be pruned so that only new items will be processed.
                         // This is not happening here because correctness won't be compromised due to duplicate events for noMoreSplitsForLifespan.
                         source.getNoMoreSplitsForLifespan(),
-                        source.isNoMoreSplits()))
+                        source.isNoMoreSplits(),
+                        source.getDeltaSplits().stream()
+                                .filter(scheduledSplit -> scheduledSplit.getSequenceId() > currentMaxAcknowledgedDeltaSplit)
+                                .collect(Collectors.toSet()),
+                        // Like splits, noMoreSplitsForLifespan could be pruned so that only new items will be processed.
+                        // This is not happening here because correctness won't be compromised due to duplicate events for noMoreSplitsForLifespan.
+                        source.getNoMoreDeltaSplitsForLifespan(),
+                        source.isNoMoreDeltaSplits()))
                 .collect(toList());
 
         // update task with new sources
@@ -397,6 +410,67 @@ public class SqlTaskExecution
                 .mapToLong(ScheduledSplit::getSequenceId)
                 .max()
                 .orElse(maxAcknowledgedSplit);
+        // update maxAcknowledgedDeltaSplit
+        maxAcknowledgedDeltaSplit = sources.stream()
+                .flatMap(source -> source.getDeltaSplits().stream())
+                .mapToLong(ScheduledSplit::getSequenceId)
+                .max()
+                .orElse(maxAcknowledgedDeltaSplit);
+        return updatedUnpartitionedSources;
+    }
+
+    private synchronized Map<PlanNodeId, TaskSource> updateDeltaSources(List<TaskSource> sources)
+    {
+        Map<PlanNodeId, TaskSource> updatedUnpartitionedSources = new HashMap<>();
+
+        // first remove any split that was already acknowledged
+        long currentMaxAcknowledgedSplit = this.maxAcknowledgedSplit;
+        long currentMaxAcknowledgedDeltaSplit = this.maxAcknowledgedDeltaSplit;
+        sources = sources.stream()
+                .map(source -> new TaskSource(
+                        source.getPlanNodeId(),
+                        source.getSplits().stream()
+                                .filter(scheduledSplit -> scheduledSplit.getSequenceId() > currentMaxAcknowledgedSplit)
+                                .collect(Collectors.toSet()),
+                        // Like splits, noMoreSplitsForLifespan could be pruned so that only new items will be processed.
+                        // This is not happening here because correctness won't be compromised due to duplicate events for noMoreSplitsForLifespan.
+                        source.getNoMoreSplitsForLifespan(),
+                        source.isNoMoreSplits(),
+                        source.getDeltaSplits().stream()
+                                .filter(scheduledSplit -> scheduledSplit.getSequenceId() > currentMaxAcknowledgedDeltaSplit)
+                                .collect(Collectors.toSet()),
+                        // Like splits, noMoreSplitsForLifespan could be pruned so that only new items will be processed.
+                        // This is not happening here because correctness won't be compromised due to duplicate events for noMoreSplitsForLifespan.
+                        source.getNoMoreDeltaSplitsForLifespan(),
+                        source.isNoMoreDeltaSplits()))
+                .collect(toList());
+
+        // update task with new sources
+        for (TaskSource source : sources) {
+            if (driverRunnerFactoriesWithSplitLifeCycle.containsKey(source.getPlanNodeId())) {
+                schedulePartitionedSourceDelta(source);
+            }
+            else {
+                scheduleUnpartitionedSource(source, updatedUnpartitionedSources);
+            }
+        }
+
+        for (DriverSplitRunnerFactory driverSplitRunnerFactory :
+                Iterables.concat(driverRunnerFactoriesWithSplitLifeCycle.values(), driverRunnerFactoriesWithTaskLifeCycle, driverRunnerFactoriesWithDriverGroupLifeCycle)) {
+            driverSplitRunnerFactory.closeDriverFactoryIfFullyCreated();
+        }
+        // update maxAcknowledgedSplit
+        maxAcknowledgedSplit = sources.stream()
+                .flatMap(source -> source.getSplits().stream())
+                .mapToLong(ScheduledSplit::getSequenceId)
+                .max()
+                .orElse(maxAcknowledgedSplit);
+        // update maxAcknowledgedDeltaSplit
+        maxAcknowledgedDeltaSplit = sources.stream()
+                .flatMap(source -> source.getDeltaSplits().stream())
+                .mapToLong(ScheduledSplit::getSequenceId)
+                .max()
+                .orElse(maxAcknowledgedDeltaSplit);
         return updatedUnpartitionedSources;
     }
 
@@ -422,6 +496,31 @@ public class SqlTaskExecution
         }
         if (noMoreSplits) {
             pendingSplitsForPlanNode.setNoMoreSplits();
+        }
+    }
+
+    @GuardedBy("this")
+    private void mergeIntoPendingDeltaSplits(PlanNodeId planNodeId, Set<ScheduledSplit> scheduledSplits, Set<Lifespan> noMoreSplitsForLifespan, boolean noMoreSplits)
+    {
+        checkHoldsLock();
+
+        DriverSplitRunnerFactory partitionedDriverFactory = driverRunnerFactoriesWithSplitLifeCycle.get(planNodeId);
+        PendingSplitsForPlanNode pendingSplitsForPlanNode = pendingSplitsByPlanNode.get(planNodeId);
+
+        partitionedDriverFactory.splitsAdded(scheduledSplits.size());
+        for (ScheduledSplit scheduledSplit : scheduledSplits) {
+            Lifespan lifespan = scheduledSplit.getSplit().getLifespan();
+            checkLifespan(partitionedDriverFactory.getPipelineExecutionStrategy(), lifespan);
+            pendingSplitsForPlanNode.getLifespan(lifespan).addDeltaSplit(scheduledSplit);
+            schedulingLifespanManager.addLifespanIfAbsent(lifespan);
+        }
+        for (Lifespan lifespanWithNoMoreSplits : noMoreSplitsForLifespan) {
+            checkLifespan(partitionedDriverFactory.getPipelineExecutionStrategy(), lifespanWithNoMoreSplits);
+            pendingSplitsForPlanNode.getLifespan(lifespanWithNoMoreSplits).noMoreDeltaSplits();
+            schedulingLifespanManager.addLifespanIfAbsent(lifespanWithNoMoreSplits);
+        }
+        if (noMoreSplits) {
+            pendingSplitsForPlanNode.setNoMoreDeltaSplits();
         }
     }
 
@@ -471,6 +570,7 @@ public class SqlTaskExecution
                 // one lifespan has finished scheduling pipeline A.
                 // This is why getSchedulingPlanNode returns an Optional.
                 while (true) {
+                    // getSchedulingPlanNode decides if the current lifespan can get scheduled
                     Optional<PlanNodeId> optionalSchedulingPlanNode = schedulingLifespan.getSchedulingPlanNode();
                     if (optionalSchedulingPlanNode.isEmpty()) {
                         break;
@@ -512,6 +612,105 @@ public class SqlTaskExecution
 
             if (!madeProgress) {
                 break;
+            }
+        }
+
+        if (sourceUpdate.isNoMoreSplits()) {
+            schedulingLifespanManager.noMoreSplits(sourceUpdate.getPlanNodeId());
+        }
+    }
+
+    private synchronized void schedulePartitionedSourceDelta(TaskSource sourceUpdate)
+    {
+        mergeIntoPendingDeltaSplits(sourceUpdate.getPlanNodeId(), sourceUpdate.getDeltaSplits(), sourceUpdate.getNoMoreDeltaSplitsForLifespan(), sourceUpdate.isNoMoreDeltaSplits());
+
+        while (true) {
+            // SchedulingLifespanManager tracks how far each Lifespan has been scheduled. Here is an example.
+            // Let's say there are 4 source pipelines/nodes: A, B, C, and D, in scheduling order.
+            // And we're processing 3 concurrent lifespans at a time. In this case, we could have
+            //
+            // * Lifespan 10:  A   B  [C]  D; i.e. Pipeline A and B has finished scheduling (but not necessarily finished running).
+            // * Lifespan 20: [A]  B   C   D
+            // * Lifespan 30:  A  [B]  C   D
+            //
+            // To recap, SchedulingLifespanManager records the next scheduling source node for each lifespan.
+            Iterator<SchedulingLifespan> activeLifespans = schedulingLifespanManager.getActiveLifespans();
+
+            boolean madeProgress = false;
+
+            while (activeLifespans.hasNext()) {
+                SchedulingLifespan schedulingLifespan = activeLifespans.next();
+                Lifespan lifespan = schedulingLifespan.getLifespan();
+
+                // Continue using the example from above. Let's say the sourceUpdate adds some new splits for source node B.
+                //
+                // For lifespan 30, it could start new drivers and assign a pending split to each.
+                // Pending splits could include both pre-existing pending splits, and the new ones from sourceUpdate.
+                // If there is enough driver slots to deplete pending splits, one of the below would happen.
+                // * If it is marked that all splits for node B in lifespan 30 has been received, SchedulingLifespanManager
+                //   will be updated so that lifespan 30 now processes source node C. It will immediately start processing them.
+                // * Otherwise, processing of lifespan 30 will be shelved for now.
+                //
+                // It is possible that the following loop would be a no-op for a particular lifespan.
+                // It is also possible that a single lifespan can proceed through multiple source nodes in one run.
+                //
+                // When different drivers in the task has different pipelineExecutionStrategy, it adds additional complexity.
+                // For example, when driver B is ungrouped and driver A, C, D is grouped, you could have something like this:
+                //     TaskWide   :     [B]
+                //     Lifespan 10:  A  [ ]  C   D
+                //     Lifespan 20: [A]      C   D
+                //     Lifespan 30:  A  [ ]  C   D
+                // In this example, Lifespan 30 cannot start executing drivers in pipeline C because pipeline B
+                // hasn't finished scheduling yet (albeit in a different lifespan).
+                // Similarly, it wouldn't make sense for TaskWide to start executing drivers in pipeline B until at least
+                // one lifespan has finished scheduling pipeline A.
+                // This is why getSchedulingPlanNode returns an Optional.
+                while (true) {
+                    // getSchedulingPlanNode decides if the current lifespan can get scheduled
+                    Optional<PlanNodeId> optionalSchedulingPlanNode = schedulingLifespan.getSchedulingPlanNode();
+                    if (optionalSchedulingPlanNode.isEmpty()) {
+                        break;
+                    }
+                    PlanNodeId schedulingPlanNode = optionalSchedulingPlanNode.get();
+
+                    DriverSplitRunnerFactory partitionedDriverRunnerFactory = driverRunnerFactoriesWithSplitLifeCycle.get(schedulingPlanNode);
+
+                    PendingSplits pendingSplits = pendingSplitsByPlanNode.get(schedulingPlanNode).getLifespan(lifespan);
+
+                    // Enqueue driver runners with driver group lifecycle for this driver life cycle, if not already enqueued.
+                    if (!lifespan.isTaskWide() && !schedulingLifespan.getAndSetDriversForDriverGroupLifeCycleScheduled()) {
+                        scheduleDriversForDriverGroupLifeCycle(lifespan);
+                    }
+
+                    // Enqueue driver runners with split lifecycle for this plan node and driver life cycle combination.
+                    ImmutableList.Builder<DriverSplitRunner> runners = ImmutableList.builder();
+                    for (ScheduledSplit scheduledSplit : pendingSplits.removeAllDeltaSplits()) {
+                        // create a new driver for the split
+                        assert (scheduledSplit.getSplit() instanceof DeltaSplit); // if not then we need to add an argument to createDriverRunner
+                        runners.add(partitionedDriverRunnerFactory.createDriverRunner(scheduledSplit, lifespan));
+                    }
+                    enqueueDriverSplitRunner(false, runners.build());
+
+                    // If all driver runners have been enqueued for this plan node and driver life cycle combination,
+                    // move on to the next plan node.
+                    if (pendingSplits.getDeltaState() != NO_MORE_SPLITS) {
+                        break;
+                    }
+                    partitionedDriverRunnerFactory.noMoreDriverRunner(ImmutableList.of(lifespan));
+                    pendingSplits.markAsCleanedUpDelta();
+
+                    schedulingLifespan.nextPlanNode();
+                    madeProgress = true;
+                    if (schedulingLifespan.isDone()) {
+                        break;
+                    }
+                }
+            }
+
+            if (!madeProgress) {
+                break;
+            } else{
+                System.out.println("WARNING: schedulePartitionedSourceDelta could not make progress, maybe it is blocked due to many normal splits");
             }
         }
 
@@ -726,6 +925,7 @@ public class SqlTaskExecution
     {
         private final Map<Lifespan, PendingSplits> splitsByLifespan = new HashMap<>();
         private boolean noMoreSplits;
+        private boolean noMoreDeltaSplits;
 
         public PendingSplits getLifespan(Lifespan lifespan)
         {
@@ -742,6 +942,17 @@ public class SqlTaskExecution
                 splitsForLifespan.noMoreSplits();
             }
         }
+
+        public void setNoMoreDeltaSplits()
+        {
+            if (noMoreDeltaSplits) {
+                return;
+            }
+            noMoreDeltaSplits = true;
+            for (PendingSplits splitsForLifespan : splitsByLifespan.values()) {
+                splitsForLifespan.noMoreDeltaSplits();
+            }
+        }
     }
 
     // Splits for a particular plan node and driver group combination
@@ -750,6 +961,8 @@ public class SqlTaskExecution
     {
         private Set<ScheduledSplit> splits = new HashSet<>();
         private SplitsState state = ADDING_SPLITS;
+        private Set<ScheduledSplit> deltaSplits = new HashSet<>();
+        private SplitsState deltaState = ADDING_SPLITS;
 
         public SplitsState getState()
         {
@@ -760,6 +973,17 @@ public class SqlTaskExecution
         {
             checkState(state == ADDING_SPLITS);
             splits.add(scheduledSplit);
+        }
+
+        public SplitsState getDeltaState()
+        {
+            return deltaState;
+        }
+
+        public void addDeltaSplit(ScheduledSplit scheduledSplit)
+        {
+            checkState(deltaState == ADDING_SPLITS);
+            deltaSplits.add(scheduledSplit);
         }
 
         public Set<ScheduledSplit> removeAllSplits()
@@ -777,11 +1001,33 @@ public class SqlTaskExecution
             }
         }
 
+        public Set<ScheduledSplit> removeAllDeltaSplits()
+        {
+            checkState(deltaState == ADDING_SPLITS || deltaState == NO_MORE_SPLITS);
+            Set<ScheduledSplit> result = deltaSplits;
+            deltaSplits = new HashSet<>();
+            return result;
+        }
+
+        public void noMoreDeltaSplits()
+        {
+            if (deltaState == ADDING_SPLITS) {
+                deltaState = NO_MORE_SPLITS;
+            }
+        }
+
         public void markAsCleanedUp()
         {
             checkState(splits.isEmpty());
             checkState(state == NO_MORE_SPLITS);
             state = FINISHED;
+        }
+
+        public void markAsCleanedUpDelta()
+        {
+            checkState(deltaSplits.isEmpty());
+            checkState(deltaState == NO_MORE_SPLITS);
+            deltaState = FINISHED;
         }
     }
 
@@ -984,14 +1230,20 @@ public class SqlTaskExecution
 
             if (partitionedSplit != null) {
                 // TableScanOperator requires partitioned split to be added before the first call to process
-                driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
+                if (partitionedSplit.getSplit() instanceof DeltaSplit){
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true,  ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
+                }else{
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
+                }
             }
 
             // add unpartitioned sources
             Optional<PlanNodeId> sourceId = driver.getSourceId();
             if (sourceId.isPresent()) {
+                // todo: where are completed TaskSources removed??????????
                 TaskSource taskSource = unpartitionedSources.get(sourceId.get());
                 if (taskSource != null) {
+                    // TODO::make sure they can be delta / are only delta if delta
                     driver.updateSource(taskSource);
                 }
             }
