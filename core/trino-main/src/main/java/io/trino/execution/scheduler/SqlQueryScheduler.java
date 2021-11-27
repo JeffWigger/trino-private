@@ -717,6 +717,7 @@ public class SqlQueryScheduler
         try (SetThreadName ignored = new SetThreadName("Query-Delta-%s", queryStateMachine.getQueryId())) {
             Set<StageId> completedStages = new HashSet<>();
             List<ListenableFuture<Void>> blockedStages = new ArrayList<>();
+            // this needs a second loop that only finishes when all stages are finished with scheduling
             synchronized (this) {
                 for (SqlStageExecution stage : scheduledStages) {
                     stage.beginDeltaScheduling(); // just causes stateMachine to transition from Planning to scheduled

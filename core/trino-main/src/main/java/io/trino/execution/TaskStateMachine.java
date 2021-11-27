@@ -81,6 +81,12 @@ public class TaskStateMachine
     {
         return failureCauses;
     }
+    
+    
+    public void transitionBackToRunning()
+    {
+        taskState.setIf(RUNNING, currentState -> Boolean.TRUE);
+    }
 
     public void transitionToFlushing()
     {

@@ -414,7 +414,12 @@ public class SqlTaskManager
         }
 
         sqlTask.recordHeartbeat();
-        return sqlTask.updateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
+        boolean isDeltaUpdate = sources.stream().allMatch(taskSource -> taskSource.isDeltaSource());
+        if (isDeltaUpdate){
+            return sqlTask.deltaUpdateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
+        }else{
+            return sqlTask.updateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
+        }
     }
 
     @Override

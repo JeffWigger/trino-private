@@ -461,6 +461,63 @@ public class SqlTask
         return getTaskInfo();
     }
 
+    public TaskInfo deltaUpdateTask(
+            Session session,
+            Optional<PlanFragment> fragment,
+            List<TaskSource> sources,
+            OutputBuffers outputBuffers,
+            Map<DynamicFilterId, Domain> dynamicFilterDomains)
+    {
+        try {
+            // The LazyOutput buffer does not support write methods, so the actual
+            // output buffer must be established before drivers are created (e.g.
+            // a VALUES query).
+            outputBuffer.setOutputBuffers(outputBuffers);
+
+            // assure the task execution is only created once
+            SqlTaskExecution taskExecution;
+            synchronized (this) {
+                // is task already complete?
+                TaskHolder taskHolder = taskHolderReference.get();
+                //We are restarting the taskHolder for the delta update
+                taskStateMachine.transitionBackToRunning();
+                //if (taskHolder.isFinished()) {
+                  //  return taskHolder.getFinalTaskInfo();
+                //}
+                taskExecution = taskHolder.getTaskExecution();
+                // this should not happen
+                if (taskExecution == null) {
+                    System.out.println("Needed to recreate taskExecution in deltaUpdate - this should not happen");
+                    checkState(fragment.isPresent(), "fragment must be present");
+                    taskExecution = sqlTaskExecutionFactory.create(
+                            session,
+                            queryContext,
+                            taskStateMachine,
+                            outputBuffer,
+                            fragment.get(),
+                            sources,
+                            this::notifyStatusChanged);
+                    taskHolderReference.compareAndSet(taskHolder, new TaskHolder(taskExecution));
+                    needsPlan.set(false);
+                }
+            }
+
+            if (taskExecution != null) {
+                taskExecution.addDeltaSources(sources);
+                taskExecution.getTaskContext().addDynamicFilter(dynamicFilterDomains);
+            }
+        }
+        catch (Error e) {
+            failed(e);
+            throw e;
+        }
+        catch (RuntimeException e) {
+            failed(e);
+        }
+
+        return getTaskInfo();
+    }
+
     public ListenableFuture<BufferResult> getTaskResults(OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)
     {
         requireNonNull(bufferId, "bufferId is null");

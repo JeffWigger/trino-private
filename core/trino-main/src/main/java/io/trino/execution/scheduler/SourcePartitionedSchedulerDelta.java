@@ -296,6 +296,7 @@ public class SourcePartitionedSchedulerDelta
             else if (pendingSplits.isEmpty()) {
                 // try to get the next batch
                 if (scheduleGroup.nextSplitBatchFuture == null) {
+                    // memory connector uses a FixedSplitSource which returns a completedFuture
                     scheduleGroup.nextSplitBatchFuture = splitSource.getNextBatch(scheduleGroup.partitionHandle, lifespan, splitBatchSize - pendingSplits.size());
 
                     long start = System.nanoTime();
@@ -538,6 +539,8 @@ public class SourcePartitionedSchedulerDelta
                 }
 
                 // calculate placements for splits
+                // TODO: this needs to yield the same as for the non-delta splits
+                // for current example: DynamicSplitPlacementPolicy with UniformNodeSelector
                 SplitPlacementResult splitPlacementResult = splitPlacementPolicy.computeAssignments(pendingSplits);
                 splitAssignment = splitPlacementResult.getAssignments();
 
@@ -619,6 +622,7 @@ public class SourcePartitionedSchedulerDelta
             overallNewTasks.addAll(createTaskOnRandomNode());
         }
 
+        // TODO: this is a problem as it also looks at non-delta tasks -> read text in next else if
         boolean anySourceTaskBlocked = this.anySourceTaskBlocked.getAsBoolean();
         if (anySourceTaskBlocked) {
             // Dynamic filters might not be collected due to build side source tasks being blocked on full buffer.

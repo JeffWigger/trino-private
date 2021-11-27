@@ -321,6 +321,43 @@ public class SqlTaskExecution
         }
     }
 
+    public void addDeltaSources(List<TaskSource> sources)
+    {
+        requireNonNull(sources, "sources is null");
+        checkState(!Thread.holdsLock(this), "Cannot add sources while holding a lock on the %s", getClass().getSimpleName());
+
+        try (SetThreadName ignored = new SetThreadName("Task-Delta-%s", taskId)) {
+            // update our record of sources and schedule drivers for new partitioned splits
+            Map<PlanNodeId, TaskSource> updatedUnpartitionedSources = updateSources(sources);
+
+            // tell existing drivers about the new splits; it is safe to update drivers
+            // multiple times and out of order because sources contain full record of
+            // the unpartitioned splits
+            for (WeakReference<Driver> driverReference : drivers) {
+                Driver driver = driverReference.get();
+                // the driver can be GCed due to a failure or a limit
+                if (driver == null) {
+                    // remove the weak reference from the list to avoid a memory leak
+                    // NOTE: this is a concurrent safe operation on a CopyOnWriteArrayList
+                    drivers.remove(driverReference);
+                    continue;
+                }
+                Optional<PlanNodeId> sourceId = driver.getSourceId();
+                if (sourceId.isEmpty()) {
+                    continue;
+                }
+                TaskSource sourceUpdate = updatedUnpartitionedSources.get(sourceId.get());
+                if (sourceUpdate == null) {
+                    continue;
+                }
+                driver.updateSource(sourceUpdate);
+            }
+
+            // we may have transitioned to no more splits, so check for completion
+            checkTaskCompletion();
+        }
+    }
+
     private synchronized Map<PlanNodeId, TaskSource> updateSources(List<TaskSource> sources)
     {
         Map<PlanNodeId, TaskSource> updatedUnpartitionedSources = new HashMap<>();

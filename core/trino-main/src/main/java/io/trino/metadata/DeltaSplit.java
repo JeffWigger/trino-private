@@ -25,63 +25,47 @@ import java.util.List;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
-public class Split
+public final class DeltaSplit
+    extends Split
 {
-    private final CatalogName catalogName;
-    private final ConnectorSplit connectorSplit;
-    private final Lifespan lifespan;
-
     @JsonCreator
-    public Split(
+    public DeltaSplit(
             @JsonProperty("catalogName") CatalogName catalogName,
             @JsonProperty("connectorSplit") ConnectorSplit connectorSplit,
             @JsonProperty("lifespan") Lifespan lifespan)
     {
-        this.catalogName = requireNonNull(catalogName, "catalogName is null");
-        this.connectorSplit = requireNonNull(connectorSplit, "connectorSplit is null");
-        this.lifespan = requireNonNull(lifespan, "lifespan is null");
+        super(catalogName, connectorSplit, lifespan);
     }
 
+    @Override
     @JsonProperty
     public CatalogName getCatalogName()
     {
-        return catalogName;
+        return super.getCatalogName();
     }
 
+    @Override
     @JsonProperty
     public ConnectorSplit getConnectorSplit()
     {
-        return connectorSplit;
+        return super.getConnectorSplit();
     }
 
+    @Override
     @JsonProperty
     public Lifespan getLifespan()
     {
-        return lifespan;
+        return super.getLifespan();
     }
 
-    public Object getInfo()
-    {
-        return connectorSplit.getInfo();
-    }
-
-    public List<HostAddress> getAddresses()
-    {
-        return connectorSplit.getAddresses();
-    }
-
-    public boolean isRemotelyAccessible()
-    {
-        return connectorSplit.isRemotelyAccessible();
-    }
 
     @Override
     public String toString()
     {
         return toStringHelper(this)
-                .add("catalogName", catalogName)
-                .add("connectorSplit", connectorSplit)
-                .add("lifespan", lifespan)
+                .add("catalogName", super.getCatalogName())
+                .add("connectorSplit", super.getConnectorSplit())
+                .add("lifespan", super.getLifespan())
                 .toString();
     }
 }

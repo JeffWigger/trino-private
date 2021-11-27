@@ -25,6 +25,7 @@ import io.trino.execution.StateMachine.StateChangeListener;
 import io.trino.execution.buffer.OutputBuffers;
 import io.trino.execution.scheduler.SplitSchedulerStats;
 import io.trino.failuredetector.FailureDetector;
+import io.trino.metadata.DeltaSplit;
 import io.trino.metadata.InternalNode;
 import io.trino.metadata.Split;
 import io.trino.server.DynamicFilterService;
@@ -408,6 +409,7 @@ public final class SqlStageExecution
     {
         requireNonNull(node, "node is null");
         requireNonNull(splits, "splits is null");
+        boolean delta = splits.values().stream().allMatch(split -> split instanceof DeltaSplit);
 
         if (stateMachine.getState().isDone()) {
             return ImmutableSet.of();

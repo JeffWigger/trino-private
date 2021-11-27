@@ -16,6 +16,7 @@ package io.trino.execution;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
+import io.trino.metadata.DeltaSplit;
 import io.trino.sql.planner.plan.PlanNodeId;
 
 import java.util.Set;
@@ -110,6 +111,10 @@ public class TaskSource
         return (!noMoreSplits && source.isNoMoreSplits()) ||
                 (!noMoreSplitsForLifespan.containsAll(source.getNoMoreSplitsForLifespan())) ||
                 (!splits.containsAll(source.getSplits()));
+    }
+
+    public boolean isDeltaSource(){
+        return this.splits.stream().allMatch(split -> split.getSplit() instanceof DeltaSplit);
     }
 
     @Override
