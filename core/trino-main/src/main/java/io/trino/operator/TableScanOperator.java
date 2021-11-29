@@ -158,6 +158,7 @@ public class TableScanOperator
     private long completedBytes;
     private long completedPositions;
     private long readTimeNanos;
+    private int counter = 0;
 
     public TableScanOperator(
             OperatorContext operatorContext,
@@ -331,6 +332,8 @@ public class TableScanOperator
         // updating system memory usage should happen after page is loaded.
         systemMemoryContext.setBytes(source.getSystemMemoryUsage());
         operatorContext.setLatestConnectorMetrics(source.getMetrics());
+        System.out.println(String.format("Tablescan: %d page == %b",counter, page==null));
+        counter++;
         return page;
     }
 }

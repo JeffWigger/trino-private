@@ -386,6 +386,7 @@ public class Driver
                 if (!current.isFinished() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
                     // get an output page from current operator
                     Page page = current.getOutput();
+                    System.out.println(String.format("%s page == %b",current.toString(), page == null));
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
                     // if we got an output page, add it to the next operator

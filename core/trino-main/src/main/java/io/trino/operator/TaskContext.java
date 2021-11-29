@@ -88,6 +88,8 @@ public class TaskContext
 
     private final Set<Lifespan> completedDriverGroups = newConcurrentHashSet();
 
+    private final Set<Lifespan> completedDriverGroupsDelta = newConcurrentHashSet();
+
     private final List<PipelineContext> pipelineContexts = new CopyOnWriteArrayList<>();
 
     private final boolean perOperatorCpuTimerEnabled;
@@ -282,6 +284,17 @@ public class TaskContext
     {
         checkArgument(!driverGroup.isTaskWide(), "driverGroup is task-wide, not a driver group.");
         completedDriverGroups.add(driverGroup);
+    }
+
+    public Set<Lifespan> getCompletedDriverGroupsDelta()
+    {
+        return completedDriverGroupsDelta;
+    }
+
+    public void addCompletedDriverGroupDelta(Lifespan driverGroup)
+    {
+        checkArgument(!driverGroup.isTaskWide(), "driverGroup is task-wide, not a driver group.");
+        completedDriverGroupsDelta.add(driverGroup);
     }
 
     public List<PipelineContext> getPipelineContexts()

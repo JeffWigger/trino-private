@@ -687,7 +687,7 @@ public class SqlTaskExecution
                     for (ScheduledSplit scheduledSplit : pendingSplits.removeAllDeltaSplits()) {
                         // create a new driver for the split
                         assert (scheduledSplit.getSplit() instanceof DeltaSplit); // if not then we need to add an argument to createDriverRunner
-                        runners.add(partitionedDriverRunnerFactory.createDriverRunner(scheduledSplit, lifespan));
+                        runners.add(partitionedDriverRunnerFactory.createDriverRunnerDelta(scheduledSplit, lifespan));
                     }
                     enqueueDriverSplitRunner(false, runners.build());
 
@@ -696,7 +696,7 @@ public class SqlTaskExecution
                     if (pendingSplits.getDeltaState() != NO_MORE_SPLITS) {
                         break;
                     }
-                    partitionedDriverRunnerFactory.noMoreDriverRunner(ImmutableList.of(lifespan));
+                    partitionedDriverRunnerFactory.noMoreDriverRunnerDelta(ImmutableList.of(lifespan));
                     pendingSplits.markAsCleanedUpDelta();
 
                     schedulingLifespan.nextPlanNode();
@@ -1201,6 +1201,7 @@ public class SqlTaskExecution
         private final DriverFactory driverFactory;
         private final PipelineContext pipelineContext;
         private boolean closed;
+        private boolean closedDelta;
 
         private DriverSplitRunnerFactory(DriverFactory driverFactory, boolean partitioned)
         {
@@ -1214,6 +1215,16 @@ public class SqlTaskExecution
         {
             checkLifespan(driverFactory.getPipelineExecutionStrategy(), lifespan);
             status.incrementPendingCreation(pipelineContext.getPipelineId(), lifespan);
+            // create driver context immediately so the driver existence is recorded in the stats
+            // the number of drivers is used to balance work across nodes
+            DriverContext driverContext = pipelineContext.addDriverContext(lifespan);
+            return new DriverSplitRunner(this, driverContext, partitionedSplit, lifespan);
+        }
+
+        public DriverSplitRunner createDriverRunnerDelta(@Nullable ScheduledSplit partitionedSplit, Lifespan lifespan)
+        {
+            checkLifespan(driverFactory.getPipelineExecutionStrategy(), lifespan);
+            status.incrementPendingCreationDelta(pipelineContext.getPipelineId(), lifespan);
             // create driver context immediately so the driver existence is recorded in the stats
             // the number of drivers is used to balance work across nodes
             DriverContext driverContext = pipelineContext.addDriverContext(lifespan);
@@ -1254,6 +1265,44 @@ public class SqlTaskExecution
             return driver;
         }
 
+        /**
+         * driver context must be the same as for the non delta version
+         */
+        public Driver createDriverDelta(DriverContext driverContext, @Nullable ScheduledSplit partitionedSplit)
+        {
+
+            Driver driver = driverFactory.createDriver(driverContext);
+
+            // record driver so other threads add unpartitioned sources can see the driver
+            // NOTE: this MUST be done before reading unpartitionedSources, so we see a consistent view of the unpartitioned sources
+            drivers.add(new WeakReference<>(driver));
+
+            if (partitionedSplit != null) {
+                // TableScanOperator requires partitioned split to be added before the first call to process
+                if (partitionedSplit.getSplit() instanceof DeltaSplit){
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true,  ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
+                }else{
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
+                }
+            }
+
+            // add unpartitioned sources
+            Optional<PlanNodeId> sourceId = driver.getSourceId();
+            if (sourceId.isPresent()) {
+                // todo: where are completed TaskSources removed??????????
+                TaskSource taskSource = unpartitionedSources.get(sourceId.get());
+                if (taskSource != null) {
+                    // TODO::make sure they can be delta / are only delta if delta
+                    driver.updateSource(taskSource);
+                }
+            }
+
+            status.decrementPendingCreationDelta(pipelineContext.getPipelineId(), driverContext.getLifespan());
+            closeDriverFactoryIfFullyCreatedDelta();
+
+            return driver;
+        }
+
         public void noMoreDriverRunner(Iterable<Lifespan> lifespans)
         {
             for (Lifespan lifespan : lifespans) {
@@ -1265,7 +1314,7 @@ public class SqlTaskExecution
         public void noMoreDriverRunnerDelta(Iterable<Lifespan> lifespans)
         {
             for (Lifespan lifespan : lifespans) {
-                status.setNoMoreDriverRunner(pipelineContext.getPipelineId(), lifespan);
+                status.setNoMoreDriverRunnerDelta(pipelineContext.getPipelineId(), lifespan);
             }
             closeDriverFactoryIfFullyCreated();
         }
@@ -1273,6 +1322,11 @@ public class SqlTaskExecution
         public boolean isNoMoreDriverRunner()
         {
             return status.isNoMoreDriverRunners(pipelineContext.getPipelineId());
+        }
+
+        public boolean isNoMoreDriverRunnerDelta()
+        {
+            return status.isNoMoreDriverRunnersDelta(pipelineContext.getPipelineId());
         }
 
         public void closeDriverFactoryIfFullyCreated()
@@ -1288,6 +1342,21 @@ public class SqlTaskExecution
             }
             driverFactory.noMoreDrivers();
             closed = true;
+        }
+
+        public void closeDriverFactoryIfFullyCreatedDelta()
+        {
+            if (closedDelta) {
+                return;
+            }
+            for (Lifespan lifespan : status.getAndAcknowledgeLifespansWithNoMoreDriversDelta(pipelineContext.getPipelineId())) {
+                driverFactory.noMoreDrivers(lifespan);
+            }
+            if (!isNoMoreDriverRunner() || status.getPendingCreationDelta(pipelineContext.getPipelineId()) != 0) {
+                return;
+            }
+            driverFactory.noMoreDrivers();
+            closedDelta = true;
         }
 
         public PipelineExecutionStrategy getPipelineExecutionStrategy()
@@ -1364,7 +1433,11 @@ public class SqlTaskExecution
                 }
 
                 if (this.driver == null) {
-                    this.driver = driverSplitRunnerFactory.createDriver(driverContext, partitionedSplit);
+                    if (partitionedSplit.getSplit() instanceof DeltaSplit){
+                        this.driver = driverSplitRunnerFactory.createDriverDelta(driverContext, partitionedSplit);
+                    }else {
+                        this.driver = driverSplitRunnerFactory.createDriver(driverContext, partitionedSplit);
+                    }
                 }
 
                 driver = this.driver;
@@ -1431,6 +1504,12 @@ public class SqlTaskExecution
         @GuardedBy("this")
         private final int pipelineWithDriverGroupLifeCycleCount;
 
+        @GuardedBy("this")
+        private final int pipelineWithTaskLifeCycleCountDelta;
+        @GuardedBy("this")
+        private final int pipelineWithDriverGroupLifeCycleCountDelta;
+
+
         // For these 3 perX fields, they are populated lazily. If enumeration operations on the
         // map can lead to side effects, no new entries can be created after such enumeration has
         // happened. Otherwise, the order of entry creation and the enumeration operation will
@@ -1442,11 +1521,25 @@ public class SqlTaskExecution
         @GuardedBy("this")
         private final Map<Lifespan, PerLifespanStatus> perLifespan = new HashMap<>();
 
+
+        @GuardedBy("this")
+        private final Map<Integer, Map<Lifespan, PerPipelineAndLifespanStatus>> perPipelineAndLifespanDelta;
+        @GuardedBy("this")
+        private final Map<Integer, PerPipelineStatus> perPipelineDelta;
+        @GuardedBy("this")
+        private final Map<Lifespan, PerLifespanStatus> perLifespanDelta = new HashMap<>();
+
         @GuardedBy("this")
         private int overallRemainingDriver;
 
         @GuardedBy("this")
         private boolean noMoreLifespans;
+
+        @GuardedBy("this")
+        private int overallRemainingDriverDelta;
+
+        @GuardedBy("this")
+        private boolean noMoreLifespansDelta;
 
         public Status(TaskContext taskContext, Map<Integer, PipelineExecutionStrategy> pipelineToExecutionStrategy)
         {
@@ -1473,8 +1566,12 @@ public class SqlTaskExecution
             }
             this.pipelineWithTaskLifeCycleCount = pipelineWithTaskLifeCycleCount;
             this.pipelineWithDriverGroupLifeCycleCount = pipelineWithDriverGroupLifeCycleCount;
+            this.pipelineWithTaskLifeCycleCountDelta = pipelineWithTaskLifeCycleCount;
+            this.pipelineWithDriverGroupLifeCycleCountDelta = pipelineWithDriverGroupLifeCycleCount;
             this.perPipelineAndLifespan = perPipelineAndLifespan.build();
             this.perPipeline = perPipeline.build();
+            this.perPipelineAndLifespanDelta = perPipelineAndLifespan.build();
+            this.perPipelineDelta = perPipeline.build();
         }
 
         public synchronized void setNoMoreLifespans()
@@ -1483,6 +1580,14 @@ public class SqlTaskExecution
                 return;
             }
             noMoreLifespans = true;
+        }
+
+        public synchronized void setNoMoreLifespans()
+        {
+            if (noMoreLifespansDelta) {
+                return;
+            }
+            noMoreLifespansDelta = true;
         }
 
         public synchronized void setNoMoreDriverRunner(int pipelineId, Lifespan lifespan)
@@ -1502,16 +1607,16 @@ public class SqlTaskExecution
 
         public synchronized void setNoMoreDriverRunnerDelta(int pipelineId, Lifespan lifespan)
         {
-            if (per(pipelineId, lifespan).noMoreDriverRunner) {
+            if (perDelta(pipelineId, lifespan).noMoreDriverRunner) {
                 return;
             }
-            per(pipelineId, lifespan).noMoreDriverRunner = true;
-            if (per(pipelineId, lifespan).pendingCreation == 0) {
-                per(pipelineId).unacknowledgedLifespansWithNoMoreDrivers.add(lifespan);
+            perDelta(pipelineId, lifespan).noMoreDriverRunner = true;
+            if (perDelta(pipelineId, lifespan).pendingCreation == 0) {
+                perDelta(pipelineId).unacknowledgedLifespansWithNoMoreDrivers.add(lifespan);
             }
-            per(pipelineId).lifespansWithNoMoreDriverRunners++;
-            per(lifespan).pipelinesWithNoMoreDriverRunners++;
-            checkLifespanCompletion(lifespan);
+            perDelta(pipelineId).lifespansWithNoMoreDriverRunners++;
+            perDelta(lifespan).pipelinesWithNoMoreDriverRunners++;
+            checkLifespanCompletionDelta(lifespan);
         }
 
         public synchronized void incrementPendingCreation(int pipelineId, Lifespan lifespan)
@@ -1519,6 +1624,13 @@ public class SqlTaskExecution
             checkState(!per(pipelineId, lifespan).noMoreDriverRunner, "Cannot increment pendingCreation for Pipeline %s Lifespan %s. NoMoreSplits is set.", pipelineId, lifespan);
             per(pipelineId, lifespan).pendingCreation++;
             per(pipelineId).pendingCreation++;
+        }
+
+        public synchronized void incrementPendingCreationDelta(int pipelineId, Lifespan lifespan)
+        {
+            checkState(!perDelta(pipelineId, lifespan).noMoreDriverRunner, "Cannot increment pendingCreation for Pipeline %s Lifespan %s. NoMoreSplits is set.", pipelineId, lifespan);
+            perDelta(pipelineId, lifespan).pendingCreation++;
+            perDelta(pipelineId).pendingCreation++;
         }
 
         public synchronized void decrementPendingCreation(int pipelineId, Lifespan lifespan)
@@ -1531,11 +1643,28 @@ public class SqlTaskExecution
             per(pipelineId).pendingCreation--;
         }
 
+        public synchronized void decrementPendingCreationDelta(int pipelineId, Lifespan lifespan)
+        {
+            checkState(perDelta(pipelineId, lifespan).pendingCreation > 0, "Cannot decrement pendingCreation for Pipeline %s Lifespan %s. Value is 0.", pipelineId, lifespan);
+            perDelta(pipelineId, lifespan).pendingCreation--;
+            if (perDelta(pipelineId, lifespan).pendingCreation == 0 && per(pipelineId, lifespan).noMoreDriverRunner) {
+                perDelta(pipelineId).unacknowledgedLifespansWithNoMoreDrivers.add(lifespan);
+            }
+            perDelta(pipelineId).pendingCreation--;
+        }
+
         public synchronized void incrementRemainingDriver(Lifespan lifespan)
         {
             checkState(!isNoMoreDriverRunners(lifespan), "Cannot increment remainingDriver for Lifespan %s. NoMoreSplits is set.", lifespan);
             per(lifespan).remainingDriver++;
             overallRemainingDriver++;
+        }
+
+        public synchronized void incrementRemainingDriverDelta(Lifespan lifespan)
+        {
+            checkState(!isNoMoreDriverRunnersDelta(lifespan), "Cannot increment remainingDriver for Lifespan %s. NoMoreSplits is set.", lifespan);
+            perDelta(lifespan).remainingDriver++;
+            overallRemainingDriverDelta++;
         }
 
         public synchronized void decrementRemainingDriver(Lifespan lifespan)
@@ -1546,9 +1675,22 @@ public class SqlTaskExecution
             checkLifespanCompletion(lifespan);
         }
 
+        public synchronized void decrementRemainingDriverDelta(Lifespan lifespan)
+        {
+            checkState(perDelta(lifespan).remainingDriver > 0, "Cannot decrement remainingDriver for Lifespan %s. Value is 0.", lifespan);
+            perDelta(lifespan).remainingDriver--;
+            overallRemainingDriverDelta--;
+            checkLifespanCompletionDelta(lifespan);
+        }
+
         public synchronized boolean isNoMoreLifespans()
         {
             return noMoreLifespans;
+        }
+
+        public synchronized boolean isNoMoreLifespansDelta()
+        {
+            return noMoreLifespansDelta;
         }
 
         public synchronized int getPendingCreation(int pipelineId)
@@ -1556,14 +1698,29 @@ public class SqlTaskExecution
             return per(pipelineId).pendingCreation;
         }
 
+        public synchronized int getPendingCreationDelta(int pipelineId)
+        {
+            return perDelta(pipelineId).pendingCreation;
+        }
+
         public synchronized int getRemainingDriver(Lifespan lifespan)
         {
             return per(lifespan).remainingDriver;
         }
 
+        public synchronized int getRemainingDriverDelta(Lifespan lifespan)
+        {
+            return perDelta(lifespan).remainingDriver;
+        }
+
         public synchronized int getRemainingDriver()
         {
             return overallRemainingDriver;
+        }
+
+        public synchronized int getRemainingDriverDelta()
+        {
+            return overallRemainingDriverDelta;
         }
 
         public synchronized boolean isNoMoreDriverRunners(int pipelineId)
@@ -1595,6 +1752,35 @@ public class SqlTaskExecution
             return per(pipelineId).lifespansWithNoMoreDriverRunners == driverGroupCount;
         }
 
+        public synchronized boolean isNoMoreDriverRunnersDelta(int pipelineId)
+        {
+            int driverGroupCount;
+            switch (perDelta(pipelineId).executionStrategy) {
+                case UNGROUPED_EXECUTION:
+                    // Even if noMoreLifespans is not set, UNGROUPED_EXECUTION pipelines can only have 1 driver group by nature.
+                    driverGroupCount = 1;
+                    break;
+                case GROUPED_EXECUTION:
+                    if (!noMoreLifespansDelta) {
+                        // There may still be new driver groups, which means potentially new splits.
+                        return false;
+                    }
+
+                    // We are trying to figure out the number of driver life cycles that has this pipeline here.
+                    // Since the pipeline has grouped execution strategy, all Lifespans except for the task-wide one
+                    // should have this pipeline.
+                    // Therefore, we get the total number of Lifespans in the task, and deduct 1 if the task-wide one exists.
+                    driverGroupCount = perLifespanDelta.size();
+                    if (perLifespanDelta.containsKey(Lifespan.taskWide())) {
+                        driverGroupCount--;
+                    }
+                    break;
+                default:
+                    throw new UnsupportedOperationException();
+            }
+            return perDelta(pipelineId).lifespansWithNoMoreDriverRunners == driverGroupCount;
+        }
+
         public synchronized boolean isNoMoreDriverRunners(Lifespan lifespan)
         {
             if (!lifespan.isTaskWide()) {
@@ -1602,6 +1788,16 @@ public class SqlTaskExecution
             }
             else {
                 return per(lifespan).pipelinesWithNoMoreDriverRunners == pipelineWithTaskLifeCycleCount;
+            }
+        }
+
+        public synchronized boolean isNoMoreDriverRunnersDelta(Lifespan lifespan)
+        {
+            if (!lifespan.isTaskWide()) {
+                return perDelta(lifespan).pipelinesWithNoMoreDriverRunners == pipelineWithDriverGroupLifeCycleCountDelta;
+            }
+            else {
+                return perDelta(lifespan).pipelinesWithNoMoreDriverRunners == pipelineWithTaskLifeCycleCountDelta;
             }
         }
 
@@ -1619,6 +1815,14 @@ public class SqlTaskExecution
             return result;
         }
 
+        public synchronized List<Lifespan> getAndAcknowledgeLifespansWithNoMoreDriversDelta(int pipelineId)
+        {
+            List<Lifespan> result = ImmutableList.copyOf(perDelta(pipelineId).unacknowledgedLifespansWithNoMoreDrivers);
+            perDelta(pipelineId).unacknowledgedLifespansWithNoMoreDrivers.clear();
+            return result;
+        }
+
+
         private void checkLifespanCompletion(Lifespan lifespan)
         {
             if (lifespan.isTaskWide()) {
@@ -1631,6 +1835,20 @@ public class SqlTaskExecution
                 return;
             }
             taskContext.addCompletedDriverGroup(lifespan);
+        }
+
+        private void checkLifespanCompletionDelta(Lifespan lifespan)
+        {
+            if (lifespan.isTaskWide()) {
+                return; // not a driver group
+            }
+            if (!isNoMoreDriverRunners(lifespan)) {
+                return;
+            }
+            if (getRemainingDriver(lifespan) != 0) {
+                return;
+            }
+            taskContext.addCompletedDriverGroupDelta(lifespan);
         }
 
         @GuardedBy("this")
@@ -1653,6 +1871,29 @@ public class SqlTaskExecution
             }
             PerLifespanStatus result = new PerLifespanStatus();
             perLifespan.put(lifespan, result);
+            return result;
+        }
+
+        @GuardedBy("this")
+        private PerPipelineAndLifespanStatus perDelta(int pipelineId, Lifespan lifespan)
+        {
+            return perPipelineAndLifespanDelta.get(pipelineId).computeIfAbsent(lifespan, ignored -> new PerPipelineAndLifespanStatus());
+        }
+
+        @GuardedBy("this")
+        private PerPipelineStatus perDelta(int pipelineId)
+        {
+            return perPipelineDelta.get(pipelineId);
+        }
+
+        @GuardedBy("this")
+        private PerLifespanStatus perDelta(Lifespan lifespan)
+        {
+            if (perLifespanDelta.containsKey(lifespan)) {
+                return perLifespanDelta.get(lifespan);
+            }
+            PerLifespanStatus result = new PerLifespanStatus();
+            perLifespanDelta.put(lifespan, result);
             return result;
         }
     }

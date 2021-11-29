@@ -24,6 +24,7 @@ import io.trino.sql.planner.plan.AggregationNode.Step;
 import io.trino.sql.planner.plan.PlanNodeId;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -87,6 +88,7 @@ public class AggregationOperator
     private final LocalMemoryContext userMemoryContext;
     private final List<Aggregator> aggregates;
     private final boolean useSystemMemory;
+    private AtomicInteger counter = new AtomicInteger(0);
 
     private State state = State.NEEDS_INPUT;
 
@@ -146,6 +148,7 @@ public class AggregationOperator
     {
         checkState(needsInput(), "Operator is already finishing");
         requireNonNull(page, "page is null");
+        System.out.println("AggregationOperator: "+counter.incrementAndGet());
 
         long memorySize = 0;
         for (Aggregator aggregate : aggregates) {
