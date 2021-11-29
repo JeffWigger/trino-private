@@ -128,6 +128,7 @@ public class SqlQueryScheduler
     private final StageId rootStageId;
     private final Map<StageId, StageScheduler> stageSchedulers;
     private final Map<StageId, StageLinkage> stageLinkages;
+    private final Map<StageId, StageLinkage> stageLinkagesDelta;
     private final SplitSchedulerStats schedulerStats;
     private final boolean summarizeTaskInfo;
     private final DynamicFilterService dynamicFilterService;
@@ -202,6 +203,7 @@ public class SqlQueryScheduler
         // todo come up with a better way to build this, or eliminate this map
         ImmutableMap.Builder<StageId, StageScheduler> stageSchedulers = ImmutableMap.builder();
         ImmutableMap.Builder<StageId, StageLinkage> stageLinkages = ImmutableMap.builder();
+        ImmutableMap.Builder<StageId, StageLinkage> stageLinkagesDelta = ImmutableMap.builder();
 
         // Only fetch a distribution once per query to assure all stages see the same machine assignments
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
@@ -222,7 +224,8 @@ public class SqlQueryScheduler
                 failureDetector,
                 nodeTaskMap,
                 stageSchedulers,
-                stageLinkages);
+                stageLinkages,
+                stageLinkagesDelta);
 
         SqlStageExecution rootStage = stages.get(0);
         rootStage.setOutputBuffers(rootOutputBuffers);
@@ -233,6 +236,7 @@ public class SqlQueryScheduler
 
         this.stageSchedulers = stageSchedulers.build();
         this.stageLinkages = stageLinkages.build();
+        this.stageLinkagesDelta = stageLinkagesDelta.build();
 
         this.executor = queryExecutor;
     }
@@ -330,7 +334,8 @@ public class SqlQueryScheduler
             FailureDetector failureDetector,
             NodeTaskMap nodeTaskMap,
             ImmutableMap.Builder<StageId, StageScheduler> stageSchedulers,
-            ImmutableMap.Builder<StageId, StageLinkage> stageLinkages)
+            ImmutableMap.Builder<StageId, StageLinkage> stageLinkages,
+            ImmutableMap.Builder<StageId, StageLinkage> stageLinkagesDelta)
     {
         ImmutableList.Builder<SqlStageExecution> stages = ImmutableList.builder();
 
@@ -368,7 +373,8 @@ public class SqlQueryScheduler
                         failureDetector,
                         nodeTaskMap,
                         stageSchedulers,
-                        stageLinkages);
+                        stageLinkages,
+                        stageLinkagesDelta);
                 stages.addAll(subTree);
                 // SqlStageExecution of the child, the other entries are from the children of the child
                 SqlStageExecution childStage = subTree.get(0);
@@ -420,6 +426,7 @@ public class SqlQueryScheduler
             }
         }
         else if (partitioningHandle.equals(SCALED_WRITER_DISTRIBUTION)) { // TODO: uses round-robin so we should make sure this is never used
+            // TODO: handle delta
             childStages = createChildStages.apply(Optional.of(new int[1]));
             Supplier<Collection<TaskStatus>> sourceTasksProvider = () -> childStages.stream()
                     .map(SqlStageExecution::getTaskStatuses)
@@ -439,6 +446,7 @@ public class SqlQueryScheduler
             stageSchedulers.put(stageId, scheduler);
         }
         else {
+            // TODO: handle delta
             Optional<int[]> bucketToPartition;
             Map<PlanNodeId, SplitSource> splitSources = plan.getSplitSources();
             if (!splitSources.isEmpty()) {
@@ -498,6 +506,7 @@ public class SqlQueryScheduler
                         dynamicFilterService));
             }
             else {
+                // TODO: handle delta
                 // all sources are remote
                 NodePartitionMap nodePartitionMap = partitioningCache.apply(plan.getFragment().getPartitioning());
                 List<InternalNode> partitionToNode = nodePartitionMap.getPartitionToNode();
@@ -516,6 +525,7 @@ public class SqlQueryScheduler
         });
 
         stageLinkages.put(stageId, new StageLinkage(plan.getFragment().getId(), parent, childStages));
+        stageLinkagesDelta.put(stageId, new StageLinkage(plan.getFragment().getId(), parent, childStages));
 
         return stages.build();
     }
@@ -597,11 +607,13 @@ public class SqlQueryScheduler
             while (!executionSchedule.isFinished()) {
                 List<ListenableFuture<Void>> blockedStages = new ArrayList<>();
                 for (SqlStageExecution stage : executionSchedule.getStagesToSchedule()) {
-                    synchronized (DeltaFlagRequest.class) {
+                    DeltaFlagRequest.deltaFlagLock.readLock().lock();
                         // do not make any progress during a delta update
-                        if(DeltaFlagRequest.globalDeltaUpdateInProcess){
-                            break;
-                        }
+                    boolean skip = DeltaFlagRequest.globalDeltaUpdateInProcess;
+
+                    DeltaFlagRequest.deltaFlagLock.readLock().unlock();
+                    if (skip){
+                        break;
                     }
                     stage.beginScheduling(); // just causes stateMachine to transition from Planning to scheduled
 
@@ -666,11 +678,12 @@ public class SqlQueryScheduler
                     }
                 }
                 boolean sleep = false;
-                synchronized (DeltaFlagRequest.class) {
-                    if(DeltaFlagRequest.globalDeltaUpdateInProcess){
-                        sleep = true;
-                    }
+
+                DeltaFlagRequest.deltaFlagLock.readLock().lock();
+                if(DeltaFlagRequest.globalDeltaUpdateInProcess){
+                    sleep = true;
                 }
+                DeltaFlagRequest.deltaFlagLock.readLock().unlock();
                 if(sleep){
                     try{
                         Thread.sleep(100);
@@ -712,7 +725,7 @@ public class SqlQueryScheduler
         }
     }
 
-    private void scheduleDelta()
+    public void scheduleDelta()
     {
         try (SetThreadName ignored = new SetThreadName("Query-Delta-%s", queryStateMachine.getQueryId())) {
             Set<StageId> completedStages = new HashSet<>();
@@ -720,6 +733,7 @@ public class SqlQueryScheduler
             // this needs a second loop that only finishes when all stages are finished with scheduling
             synchronized (this) {
                 for (SqlStageExecution stage : scheduledStages) {
+                    // TODO: may want two parallel states in stage, one for normal and one for delta
                     stage.beginDeltaScheduling(); // just causes stateMachine to transition from Planning to scheduled
 
                     // only should happen once, if an additional outer-loop is re-added then move it there
@@ -736,7 +750,8 @@ public class SqlQueryScheduler
                     else if (!result.getBlocked().isDone()) {
                         blockedStages.add(result.getBlocked());
                     }
-                    stageLinkages.get(stage.getStageId())
+                    // TODO: Do we need a delta version of this
+                    stageLinkagesDelta.get(stage.getStageId())
                             .processScheduleResults(stage.getState(), result.getNewTasks());
                     schedulerStats.getSplitsScheduledPerIteration().add(result.getSplitsScheduled());
                     if (result.getBlockedReason().isPresent()) {
@@ -763,7 +778,7 @@ public class SqlQueryScheduler
             // make sure to update stage linkage at least once per loop to catch async state changes (e.g., partial cancel)
             for (SqlStageExecution stage : stages.values()) {
                 if (!completedStages.contains(stage.getStageId()) && stage.getState().isDone()) {
-                    stageLinkages.get(stage.getStageId())
+                    stageLinkagesDelta.get(stage.getStageId())
                             .processScheduleResults(stage.getState(), ImmutableSet.of());
                     completedStages.add(stage.getStageId());
                 }

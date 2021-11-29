@@ -26,6 +26,7 @@ import io.airlift.units.Duration;
 import io.trino.execution.ScheduledSplit;
 import io.trino.execution.TaskSource;
 import io.trino.metadata.Split;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.UpdatablePageSource;
@@ -40,9 +41,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -88,6 +91,9 @@ public class Driver
 
     @GuardedBy("exclusiveLock")
     private TaskSource currentTaskSource;
+
+    private int finishedIndex = 0;
+    private int finishedIndexDelta = 0;
 
     private final AtomicReference<SettableFuture<Void>> driverBlockedFuture = new AtomicReference<>();
 
@@ -249,6 +255,8 @@ public class Driver
 
         // determine new splits to add
         Set<ScheduledSplit> newSplits = Sets.difference(newSource.getSplits(), currentTaskSource.getSplits());
+        Set<ScheduledSplit> newDeltaSplits = Sets.difference(newSource.getDeltaSplits(), currentTaskSource.getDeltaSplits());
+        // TODO: how to handle the delta splits, if we have delta splits we should only schedule them
 
         // add new splits
         SourceOperator sourceOperator = this.sourceOperator.orElseThrow(VerifyException::new);
@@ -260,9 +268,20 @@ public class Driver
             updateOperator.ifPresent(updateOperator -> updateOperator.setPageSource(pageSource));
         }
 
+        for (ScheduledSplit newSplit : newDeltaSplits) {
+            Split split = newSplit.getSplit();
+            Supplier<Optional<UpdatablePageSource>> pageSource = sourceOperator.addDeltaSplit(split);
+            //deleteOperator.ifPresent(deleteOperator -> deleteOperator.setPageSource(pageSource));
+            //updateOperator.ifPresent(updateOperator -> updateOperator.setPageSource(pageSource));
+        }
+
         // set no more splits
         if (newSource.isNoMoreSplits()) {
             sourceOperator.noMoreSplits();
+        }
+
+        if (newSource.isNoMoreDeltaSplits()) {
+            sourceOperator.noMoreDeltaSplits();
         }
 
         currentTaskSource = newSource;
@@ -288,8 +307,17 @@ public class Driver
             driverContext.getYieldSignal().setWithDelay(maxRuntime, driverContext.getYieldExecutor());
             try {
                 long start = System.nanoTime();
+                //risky, TODO: test if lock is released if crash happens
+                DeltaFlagRequest.deltaFlagLock.readLock().lock();
+                Function<OperationTimer, ListenableFuture<Void>> func;
+                if (DeltaFlagRequest.globalDeltaUpdateInProcess){
+                    func = this::processInternal;
+                }else{
+                    func = this::processInternalDelta;
+                }
+
                 do {
-                    ListenableFuture<Void> future = processInternal(operationTimer);
+                    ListenableFuture<Void> future = func.apply(operationTimer);
                     if (!future.isDone()) {
                         return updateDriverBlockedFuture(future);
                     }
@@ -297,6 +325,7 @@ public class Driver
                 while (System.nanoTime() - start < maxRuntime && !isFinishedInternal());
             }
             finally {
+                DeltaFlagRequest.deltaFlagLock.readLock().unlock();
                 driverContext.getYieldSignal().reset();
                 driverContext.recordProcessed(operationTimer);
             }
@@ -314,12 +343,25 @@ public class Driver
         if (!blockedFuture.isDone()) {
             return blockedFuture;
         }
-
-        Optional<ListenableFuture<Void>> result = tryWithLock(100, TimeUnit.MILLISECONDS, () -> {
-            ListenableFuture<Void> future = processInternal(createTimer());
-            return updateDriverBlockedFuture(future);
-        });
+        DeltaFlagRequest.deltaFlagLock.readLock().lock();
+        Function<OperationTimer, ListenableFuture<Void>> func;
+        if (DeltaFlagRequest.globalDeltaUpdateInProcess){
+            func = this::processInternal;
+        }else{
+            func = this::processInternalDelta;
+        }
+        Optional<ListenableFuture<Void>> result = Optional.empty();
+        try {
+            result = tryWithLock(100, TimeUnit.MILLISECONDS, () -> {
+                ListenableFuture<Void> future = func.apply(createTimer());
+                return updateDriverBlockedFuture(future);
+            });
+        }finally {
+            DeltaFlagRequest.deltaFlagLock.readLock().unlock();
+        }
         return result.orElse(NOT_BLOCKED);
+
+
     }
 
     private OperationTimer createTimer()
@@ -352,6 +394,35 @@ public class Driver
         return newDriverBlockedFuture;
     }
 
+    public ListenableFuture<Void> finish(){
+        checkLockNotHeld("Cannot finish while holding the driver lock");
+
+        // if the driver is blocked we don't need to continue
+        SettableFuture<Void> blockedFuture = driverBlockedFuture.get();
+        if (!blockedFuture.isDone()) {
+            return blockedFuture;
+        }
+
+        Optional<ListenableFuture<Void>> result = tryWithLock(100, TimeUnit.MILLISECONDS, () -> {
+                ListenableFuture<Void> future = internalFinish();
+                return updateDriverBlockedFuture(future);
+            });
+
+        return result.orElse(NOT_BLOCKED);
+    }
+
+    private ListenableFuture<Void> internalFinish(){
+        checkLockHeld("Lock must be held to call internalFinish");
+        Throwable throwable = closeAndDestroyOperators(this.activeOperators);
+        this.activeOperators.clear();
+        if (throwable != null) {
+            throwIfUnchecked(throwable);
+            throw new RuntimeException(throwable);
+        }
+        state.compareAndSet(State.ALIVE, State.NEED_DESTRUCTION);
+        return NOT_BLOCKED;
+    }
+
     @GuardedBy("exclusiveLock")
     private ListenableFuture<Void> processInternal(OperationTimer operationTimer)
     {
@@ -366,14 +437,15 @@ public class Driver
             // Some operators (LookupJoinOperator and HashBuildOperator) are broken and requires finish to be called continuously
             // TODO remove the second part of the if statement, when these operators are fixed
             // Note: finish should not be called on the natural source of the pipeline as this could cause the task to finish early
-            if (!activeOperators.isEmpty() && activeOperators.size() != allOperators.size()) {
-                Operator rootOperator = activeOperators.get(0);
+            //if (!activeOperators.isEmpty() && activeOperators.size() != allOperators.size()) {
+            if (finishedIndex > 0){
+                Operator rootOperator = activeOperators.get(finishedIndex);
                 rootOperator.finish();
                 rootOperator.getOperatorContext().recordFinish(operationTimer);
             }
 
             boolean movedPage = false;
-            for (int i = 0; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
+            for (int i = finishedIndex; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
                 Operator current = activeOperators.get(i);
                 Operator next = activeOperators.get(i + 1);
 
@@ -411,17 +483,128 @@ public class Driver
 
             for (int index = activeOperators.size() - 1; index >= 0; index--) {
                 if (activeOperators.get(index).isFinished()) {
-                    // close and remove this operator and all source operators
-                    List<Operator> finishedOperators = this.activeOperators.subList(0, index + 1);
-                    Throwable throwable = closeAndDestroyOperators(finishedOperators);
-                    finishedOperators.clear();
-                    if (throwable != null) {
-                        throwIfUnchecked(throwable);
-                        throw new RuntimeException(throwable);
-                    }
+                    finishedIndex = index + 1;
                     // Finish the next operator, which is now the first operator.
                     if (!activeOperators.isEmpty()) {
-                        Operator newRootOperator = activeOperators.get(0);
+                        Operator newRootOperator = activeOperators.get(finishedIndex);
+                        newRootOperator.finish();
+                        newRootOperator.getOperatorContext().recordFinish(operationTimer);
+                    }
+                    break;
+                }
+            }
+
+            // if we did not move any pages, check if we are blocked
+            if (!movedPage) {
+                List<Operator> blockedOperators = new ArrayList<>();
+                List<ListenableFuture<Void>> blockedFutures = new ArrayList<>();
+                for (Operator operator : activeOperators) {
+                    Optional<ListenableFuture<Void>> blocked = getBlockedFuture(operator);
+                    if (blocked.isPresent()) {
+                        blockedOperators.add(operator);
+                        blockedFutures.add(blocked.get());
+                    }
+                }
+
+                if (!blockedFutures.isEmpty()) {
+                    // unblock when the first future is complete
+                    ListenableFuture<Void> blocked = firstFinishedFuture(blockedFutures);
+                    // driver records serial blocked time
+                    driverContext.recordBlocked(blocked);
+                    // each blocked operator is responsible for blocking the execution
+                    // until one of the operators can continue
+                    for (Operator operator : blockedOperators) {
+                        operator.getOperatorContext().recordBlocked(blocked);
+                    }
+                    return blocked;
+                }
+            }
+
+            return NOT_BLOCKED;
+        }
+        catch (Throwable t) {
+            List<StackTraceElement> interrupterStack = exclusiveLock.getInterrupterStack();
+            if (interrupterStack == null) {
+                driverContext.failed(t);
+                throw t;
+            }
+
+            // Driver thread was interrupted which should only happen if the task is already finished.
+            // If this becomes the actual cause of a failed query there is a bug in the task state machine.
+            Exception exception = new Exception("Interrupted By");
+            exception.setStackTrace(interrupterStack.stream().toArray(StackTraceElement[]::new));
+            TrinoException newException = new TrinoException(GENERIC_INTERNAL_ERROR, "Driver was interrupted", exception);
+            newException.addSuppressed(t);
+            driverContext.failed(newException);
+            throw newException;
+        }
+    }
+
+
+    @GuardedBy("exclusiveLock")
+    private ListenableFuture<Void> processInternalDelta(OperationTimer operationTimer)
+    {
+        checkLockHeld("Lock must be held to call processInternal");
+
+        handleMemoryRevoke();
+
+        try {
+            processNewSources();
+
+            // If there is only one operator, finish it
+            // Some operators (LookupJoinOperator and HashBuildOperator) are broken and requires finish to be called continuously
+            // TODO remove the second part of the if statement, when these operators are fixed
+            // Note: finish should not be called on the natural source of the pipeline as this could cause the task to finish early
+            //if (!activeOperators.isEmpty() && activeOperators.size() != allOperators.size()) {
+            if (finishedIndexDelta > 0){
+                Operator rootOperator = activeOperators.get(finishedIndexDelta);
+                rootOperator.finishDelta();
+                rootOperator.getOperatorContext().recordFinish(operationTimer);
+            }
+
+            boolean movedPage = false;
+            for (int i = finishedIndexDelta; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
+                Operator current = activeOperators.get(i);
+                Operator next = activeOperators.get(i + 1);
+
+                // skip blocked operator
+                if (getBlockedFuture(current).isPresent()) {
+                    continue;
+                }
+
+                // if the current operator is not finished and next operator isn't blocked and needs input...
+                if (!current.isFinishedDelta() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
+                    // get an output page from current operator
+                    Page page = current.getOutputDelta();
+                    System.out.println(String.format("%s page == %b",current.toString(), page == null));
+                    current.getOperatorContext().recordGetOutput(operationTimer, page);
+
+                    // if we got an output page, add it to the next operator
+                    if (page != null && page.getPositionCount() != 0) {
+                        next.addInputDelta(page);
+                        next.getOperatorContext().recordAddInput(operationTimer, page);
+                        movedPage = true;
+                    }
+
+                    if (current instanceof SourceOperator) {
+                        movedPage = true;
+                    }
+                }
+
+                // if current operator is finished...
+                if (current.isFinishedDelta()) {
+                    // let next operator know there will be no more data
+                    next.finishDelta();
+                    next.getOperatorContext().recordFinish(operationTimer);
+                }
+            }
+
+            for (int index = activeOperators.size() - 1; index >= 0; index--) {
+                if (activeOperators.get(index).isFinished()) {
+                    finishedIndexDelta = index + 1;
+                    // Finish the next operator, which is now the first operator.
+                    if (!activeOperators.isEmpty()) {
+                        Operator newRootOperator = activeOperators.get(finishedIndexDelta);
                         newRootOperator.finish();
                         newRootOperator.getOperatorContext().recordFinish(operationTimer);
                     }

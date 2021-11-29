@@ -59,7 +59,7 @@ public class TaskManagerConfig
     private DataSize sinkMaxBroadcastBufferSize = DataSize.of(200, Unit.MEGABYTE);
     private DataSize maxPagePartitioningBufferSize = DataSize.of(32, Unit.MEGABYTE);
 
-    private Duration clientTimeout = new Duration(2, TimeUnit.MINUTES);
+    private Duration clientTimeout = new Duration(1, TimeUnit.HOURS);
     private Duration infoMaxAge = new Duration(15, TimeUnit.MINUTES);
 
     private Duration statusRefreshMaxWait = new Duration(1, TimeUnit.SECONDS);

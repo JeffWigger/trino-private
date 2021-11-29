@@ -100,4 +100,22 @@ public interface Operator
             throws Exception
     {
     }
+
+    default void addInputDelta(Page page)
+    {
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+
+    default void finishDelta()
+    {
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+    default Page getOutputDelta()
+    {
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+    default boolean isFinishedDelta()
+    {
+        throw new UnsupportedOperationException(getClass().getName());
+    }
 }

@@ -101,14 +101,14 @@ public class MemoryPagesStore
             Page row = page.getSingleValuePage(i);
             Slice key = getKey(tableId, row);
             TableDataPosition tableDataPosition = htable.getOrDefault(key, null);
-            if (tableDataPosition != null){
+            if (tableDataPosition != null) {
                 // entry is already in the DB
                 continue;
             }
             htable.put(key, new TableDataPosition(pageNr, i));
             added++;
         }
-        if (added == 0){
+        if (added == 0) {
             return 0;
         }
         UpdatablePage updatablePage = make_updatable(page);
@@ -161,7 +161,7 @@ public class MemoryPagesStore
                 }
             }
             //else {
-              //  throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
+            //  throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
             //}
         }
         return key.slice();
@@ -186,7 +186,7 @@ public class MemoryPagesStore
             // TODO: better value expected entries.
             insertBlocks[c] = ci.getType().createBlockBuilder(null, 2).makeUpdatable();
         }
-        int added =0;
+        int added = 0;
         for (int i = 0; i < size; i++) {
             Page row = page.getSingleValuePage(i);
             // assumes the entries actually exist, what if not.
@@ -273,19 +273,20 @@ public class MemoryPagesStore
             OptionalDouble sampleRatio)
     {
         long sleepTime = 1; //sleep for 1 ms
-        while(true){
+        while (true) {
             // replace DeltaFlagRequest.globalDeltaUpdateInProcess with atomic
             boolean sleep = false;
-            synchronized (DeltaFlagRequest.class){
-                if (DeltaFlagRequest.globalDeltaUpdateInProcess){
-                    sleep = true;
-                    sleepTime *= 2;
-                }
+            DeltaFlagRequest.deltaFlagLock.readLock().lock();
+            if (DeltaFlagRequest.globalDeltaUpdateInProcess) {
+                sleep = true;
+                sleepTime *= 2;
             }
+            DeltaFlagRequest.deltaFlagLock.readLock().unlock();
             try {
                 if (sleep) {
                     Thread.sleep(Math.min(sleepTime, 1000));
-                }else{
+                }
+                else {
                     break;
                 }
             }
@@ -301,62 +302,56 @@ public class MemoryPagesStore
         // Also the engine might be working on the results of splits gotten before the delta update synchronization was activated
         // We must sure that all the tasks working on this data finish their derived splits before derivations of the delta split reach
         // them as new input
-        
+
         // it takes the DeltaFlagRequest lock such that TaskSource::setDeltaUpdateFlag must wait for the current split to be processed
-        synchronized (DeltaFlagRequest.class) {
-            synchronized (this) {
-                if (!contains(tableId)) {
-                    throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
+        synchronized (this) {
+            ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
+            if (!contains(tableId)) {
+                throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
+            }
+            TableData tableData = tables.get(tableId);
+            if (tableData.getRows() != expectedRows) {
+                throw new TrinoException(MISSING_DATA,
+                        format("Expected to find [%s] rows on a worker, but found [%s].", expectedRows, tableData.getRows()));
+            }
+
+            boolean done = false;
+            long totalRows = 0;
+            for (int i = partNumber; i < tableData.getPages().size() && !done; i += totalParts) {
+                if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
+                    continue;
                 }
-                TableData tableData = tables.get(tableId);
-                if (tableData.getRows() != expectedRows) {
-                    throw new TrinoException(MISSING_DATA,
-                            format("Expected to find [%s] rows on a worker, but found [%s].", expectedRows, tableData.getRows()));
-                }
 
-                ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
+                UpdatablePage uPage = tableData.getPages().get(i);
+                Page page = null;
 
-                boolean done = false;
-                long totalRows = 0;
-                for (int i = partNumber; i < tableData.getPages().size() && !done; i += totalParts) {
-                    if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
-                        continue;
-                    }
-
-                    UpdatablePage uPage = tableData.getPages().get(i);
-                    Page page = null;
-
-                    if (limit.isPresent()) {
-                        // && totalRows > limit.getAsLong()
-                        if (limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0) {
-                            // can safely read everything from the page
-                            page = uPage.getEntriesFrom(0, uPage.getPositionCount());
-                            totalRows += page.getPositionCount();
-                        }
-                        else {
-                            // Get only what is needed
-                            page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
-                            totalRows += page.getPositionCount();
-                            if (totalRows > limit.getAsLong()) {
-                                throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
-                            }
-                        }
-                    }
-                    else {
-                        // creating a genuine Page, not a Updatable page
-                        // this forces a copy, do not want to return the actual data
+                if (limit.isPresent()) {
+                    // && totalRows > limit.getAsLong()
+                    if (limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0) {
+                        // can safely read everything from the page
                         page = uPage.getEntriesFrom(0, uPage.getPositionCount());
                         totalRows += page.getPositionCount();
                     }
-
-                    // columns get copied here
-                    partitionedPages.add(getColumns(page, columnIndexes));
+                    else {
+                        // Get only what is needed
+                        page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
+                        totalRows += page.getPositionCount();
+                        if (totalRows > limit.getAsLong()) {
+                            throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
+                        }
+                    }
                 }
-                return partitionedPages.build();
+                else {
+                    // creating a genuine Page, not a Updatable page
+                    // this forces a copy, do not want to return the actual data
+                    page = uPage.getEntriesFrom(0, uPage.getPositionCount());
+                    totalRows += page.getPositionCount();
+                }
+                // columns get copied here
+                partitionedPages.add(getColumns(page, columnIndexes));
             }
+            return partitionedPages.build();
         }
-           
-        
     }
 
     public synchronized boolean contains(Long tableId)
@@ -418,7 +413,8 @@ public class MemoryPagesStore
             return pages.size();
         }
 
-        public void decreaseNumberOfRows(int decrease){
+        public void decreaseNumberOfRows(int decrease)
+        {
             rows -= decrease;
         }
 

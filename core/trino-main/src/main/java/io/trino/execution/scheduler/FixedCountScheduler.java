@@ -14,14 +14,18 @@
 package io.trino.execution.scheduler;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.SettableFuture;
+import io.trino.execution.Lifespan;
 import io.trino.execution.RemoteTask;
 import io.trino.execution.SqlStageExecution;
 import io.trino.metadata.InternalNode;
+import io.trino.spi.connector.ConnectorPartitionHandle;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
@@ -35,6 +39,7 @@ public class FixedCountScheduler
 
     private final TaskScheduler taskScheduler;
     private final List<InternalNode> partitionToNode;
+    private ScheduleResult scheduleResult = null;
 
     public FixedCountScheduler(SqlStageExecution stage, List<InternalNode> partitionToNode)
     {
@@ -58,7 +63,20 @@ public class FixedCountScheduler
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(toImmutableList());
-
-        return new ScheduleResult(true, newTasks, 0);
+        scheduleResult = new ScheduleResult(true, newTasks, 0);
+        return scheduleResult;
     }
+
+    @Override
+    public ScheduleResult scheduleDelta()
+    {
+        return scheduleResult;
+    }
+
+    @Override
+    public void resetDelta()
+    {
+//Do noting
+    }
+
 }

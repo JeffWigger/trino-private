@@ -369,10 +369,24 @@ public class SqlTask
         return ImmutableSet.of();
     }
 
+    private static Set<PlanNodeId> getNoMoreDeltaSplits(TaskHolder taskHolder)
+    {
+        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
+        if (finalTaskInfo != null) {
+            return finalTaskInfo.getNoMoreDeltaSplits();
+        }
+        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
+        if (taskExecution != null) {
+            return taskExecution.getNoMoreDeltaSplits();
+        }
+        return ImmutableSet.of();
+    }
+
     private TaskInfo createTaskInfo(TaskHolder taskHolder)
     {
         TaskStats taskStats = getTaskStats(taskHolder);
         Set<PlanNodeId> noMoreSplits = getNoMoreSplits(taskHolder);
+        Set<PlanNodeId> noMoreDeltaSplits = getNoMoreDeltaSplits(taskHolder);
 
         TaskStatus taskStatus = createTaskStatus(taskHolder);
         return new TaskInfo(
@@ -380,6 +394,7 @@ public class SqlTask
                 lastHeartbeat.get(),
                 outputBuffer.getInfo(),
                 noMoreSplits,
+                noMoreDeltaSplits,
                 taskStats,
                 needsPlan.get());
     }
@@ -505,6 +520,37 @@ public class SqlTask
             if (taskExecution != null) {
                 taskExecution.addDeltaSources(sources);
                 taskExecution.getTaskContext().addDynamicFilter(dynamicFilterDomains);
+            }
+        }
+        catch (Error e) {
+            failed(e);
+            throw e;
+        }
+        catch (RuntimeException e) {
+            failed(e);
+        }
+
+        return getTaskInfo();
+    }
+
+    public TaskInfo finish()
+    {
+        try {
+            SqlTaskExecution taskExecution;
+            synchronized (this) {
+                // is task already complete?
+                TaskHolder taskHolder = taskHolderReference.get();
+                //We are restarting the taskHolder for the delta update
+                taskStateMachine.transitionBackToRunning();
+                if (taskHolder.isFinished()) {
+                  return taskHolder.getFinalTaskInfo();
+                }
+                taskExecution = taskHolder.getTaskExecution();
+                // this should not happen
+                if (taskExecution == null) {
+                    System.out.println("SqlTask::finish, taskExecution does not exist for not finished task - this should not happen!");
+                }
+                taskExecution.finish();
             }
         }
         catch (Error e) {

@@ -26,6 +26,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
+import static io.trino.execution.TaskState.COMPLETED;
 import static io.trino.execution.TaskState.FLUSHING;
 import static io.trino.execution.TaskState.RUNNING;
 import static io.trino.execution.TaskState.TERMINAL_TASK_STATES;
@@ -91,6 +92,15 @@ public class TaskStateMachine
     public void transitionToFlushing()
     {
         taskState.setIf(FLUSHING, currentState -> currentState == RUNNING);
+    }
+
+    public void completed()
+    {
+        transitionToDoneState(COMPLETED);
+    }
+    public boolean isCompleted()
+    {
+        return getState() == COMPLETED;
     }
 
     public void finished()
