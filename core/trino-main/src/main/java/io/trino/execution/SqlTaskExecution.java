@@ -1179,7 +1179,9 @@ public class SqlTaskExecution
         public SchedulingLifespanManager makeDelta(){
             SchedulingLifespanManager schedulingLifespanManager = new SchedulingLifespanManager(this.sourceStartOrder, this.stageExecutionDescriptor, this.status);
             Set<Lifespan> newLifespans = Set.copyOf(this.lifespans.keySet());
-            newLifespans.addAll(completedLifespans);
+            if (!completedLifespans.isEmpty()) {
+                newLifespans.addAll(completedLifespans);
+            }
             for (Lifespan l : newLifespans){
                 schedulingLifespanManager.addLifespanIfAbsent(l);
             }
@@ -1554,7 +1556,7 @@ public class SqlTaskExecution
                 }
 
                 if (this.driver == null) {
-                    if (partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit){
+                    if (partitionedSplit != null && partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit){
                         this.driver = driverSplitRunnerFactory.createDriverDelta(driverContext, partitionedSplit);
                     }else {
                         // if the split is null then either may be called

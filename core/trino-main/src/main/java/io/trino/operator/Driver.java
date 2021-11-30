@@ -311,9 +311,9 @@ public class Driver
                 DeltaFlagRequest.deltaFlagLock.readLock().lock();
                 Function<OperationTimer, ListenableFuture<Void>> func;
                 if (DeltaFlagRequest.globalDeltaUpdateInProcess){
-                    func = this::processInternal;
-                }else{
                     func = this::processInternalDelta;
+                }else{
+                    func = this::processInternal;
                 }
 
                 do {
@@ -346,9 +346,9 @@ public class Driver
         DeltaFlagRequest.deltaFlagLock.readLock().lock();
         Function<OperationTimer, ListenableFuture<Void>> func;
         if (DeltaFlagRequest.globalDeltaUpdateInProcess){
-            func = this::processInternal;
-        }else{
             func = this::processInternalDelta;
+        }else{
+            func = this::processInternal;
         }
         Optional<ListenableFuture<Void>> result = Optional.empty();
         try {
@@ -448,6 +448,7 @@ public class Driver
             for (int i = finishedIndex; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
                 Operator current = activeOperators.get(i);
                 Operator next = activeOperators.get(i + 1);
+                System.out.println(String.format("%s -> %s is at index %d",current.toString(), next.toString(), i));
 
                 // skip blocked operator
                 if (getBlockedFuture(current).isPresent()) {
@@ -485,7 +486,7 @@ public class Driver
                 if (activeOperators.get(index).isFinished()) {
                     finishedIndex = index + 1;
                     // Finish the next operator, which is now the first operator.
-                    if (!activeOperators.isEmpty()) {
+                    if (finishedIndex < activeOperators.size()) {
                         Operator newRootOperator = activeOperators.get(finishedIndex);
                         newRootOperator.finish();
                         newRootOperator.getOperatorContext().recordFinish(operationTimer);
@@ -603,7 +604,7 @@ public class Driver
                 if (activeOperators.get(index).isFinished()) {
                     finishedIndexDelta = index + 1;
                     // Finish the next operator, which is now the first operator.
-                    if (!activeOperators.isEmpty()) {
+                    if (finishedIndex < activeOperators.size()) {
                         Operator newRootOperator = activeOperators.get(finishedIndexDelta);
                         newRootOperator.finish();
                         newRootOperator.getOperatorContext().recordFinish(operationTimer);

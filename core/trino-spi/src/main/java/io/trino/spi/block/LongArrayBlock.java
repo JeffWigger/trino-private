@@ -191,11 +191,11 @@ public class LongArrayBlock
     @Override
     public UpdatableBlock makeUpdatable()
     {
-        if (arrayOffset == 0){
-            return new UpdatableLongArrayBlock(null, positionCount, valueIsNull, values);
+        if (valueIsNull == null){
+            return new UpdatableLongArrayBlock(null, positionCount, new boolean[positionCount], compactArray(values, arrayOffset, positionCount));
+        }else {
+            return new UpdatableLongArrayBlock(null, positionCount, compactArray(valueIsNull, arrayOffset, positionCount), compactArray(values, arrayOffset, positionCount));
         }
-        return null;
-
     }
 
     @Override

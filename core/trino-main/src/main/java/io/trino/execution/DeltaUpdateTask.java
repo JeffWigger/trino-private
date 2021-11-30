@@ -289,8 +289,8 @@ public class DeltaUpdateTask
                 // todo
 
              */
-            }
         }
+
         //queryManager.queryTracker.getQuery();
 
 

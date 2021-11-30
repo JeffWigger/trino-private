@@ -51,6 +51,8 @@ public class MemoryPagesStore
 {
     private final long maxBytes;
 
+    static final int MAX_PAGE_SIZE = 5;
+
     @GuardedBy("this")
     private long currentBytes;
 
@@ -81,6 +83,19 @@ public class MemoryPagesStore
 
     public synchronized int add(Long tableId, Page page)
     {
+        int added = 0;
+        int index = 0;
+        int positionCount = page.getPositionCount();
+        if (positionCount > MAX_PAGE_SIZE){
+            while(true){
+                int length =  index + MAX_PAGE_SIZE < positionCount ? MAX_PAGE_SIZE : positionCount - index;
+                added += add(tableId, page.getRegion(index, length));
+                index += length;
+                if (index >= positionCount){
+                    return added;
+                }
+            }
+        }
         if (!contains(tableId)) {
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
         }
@@ -96,7 +111,6 @@ public class MemoryPagesStore
             hashTables.put(tableId, htable);
         }
         int pageNr = tableData.getPageNumber(); // + 1; getPageNumber returns 0 for the first page that gets added.
-        int added = 0;
         for (int i = 0; i < pageSize; i++) {
             Page row = page.getSingleValuePage(i);
             Slice key = getKey(tableId, row);
