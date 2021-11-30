@@ -939,23 +939,19 @@ public class SqlTaskExecution
         if (status.getRemainingDriver() != 0) {
             return;
         }
-
+        /*
         // are there more partition splits expected?
         for (DriverSplitRunnerFactory driverSplitRunnerFactory : driverRunnerFactoriesWithSplitLifeCycle.values()) {
             if (!driverSplitRunnerFactory.isNoMoreDriverRunnerDelta()) {
                 return;
             }
         }
-        // do we still have running tasks?
-        if (status.getRemainingDriver() != 0) {
-            return;
-        }
 
         // do we still have running tasks?
         if (status.getRemainingDriverDelta() != 0) {
             return;
         }
-
+        */
         // no more output will be created
         outputBuffer.setNoMorePages();
 
@@ -976,7 +972,7 @@ public class SqlTaskExecution
         }
         if (taskStateMachine.isCompleted()){
             taskStateMachine.finished();
-            for(WeakReference<Driver> d : drivers){
+            /*for(WeakReference<Driver> d : drivers){
                 while(true){
                     if(d.get().finish().isDone()){
                         break;
@@ -990,7 +986,7 @@ public class SqlTaskExecution
                     }
                 }
 
-            }
+            }*/
         }else{
             System.out.println("SqlTaskExecution::finish called without being in COMPLETED state!");
         }

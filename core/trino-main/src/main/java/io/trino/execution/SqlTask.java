@@ -540,8 +540,6 @@ public class SqlTask
             synchronized (this) {
                 // is task already complete?
                 TaskHolder taskHolder = taskHolderReference.get();
-                //We are restarting the taskHolder for the delta update
-                taskStateMachine.transitionBackToRunning();
                 if (taskHolder.isFinished()) {
                   return taskHolder.getFinalTaskInfo();
                 }
