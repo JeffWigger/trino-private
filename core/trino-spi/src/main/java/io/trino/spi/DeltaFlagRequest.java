@@ -19,14 +19,18 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DeltaFlagRequest
 {
     private final boolean deltaUpdateInProcess;
 
+    public static final ReentrantReadWriteLock deltaFlagLock = new ReentrantReadWriteLock(true);
+
     // use synchronized(DeltaFlagRequest.class)
-    @GuardedBy("DeltaFlagRequest.class")
+    @GuardedBy("deltaFlagLock")
     public static boolean globalDeltaUpdateInProcess = false;
+
 
     @JsonCreator
     public DeltaFlagRequest(

@@ -102,12 +102,10 @@ public class VariableWidthBlock
     @Override
     public UpdatableBlock makeUpdatable()
     {
-        if (arrayOffset == 0){
-            return new UpdatableVariableWidthBlock(null, positionCount, valueIsNull, new VariableSliceOutput(slice,
-                    offsets[positionCount] - offsets[0]), offsets);
-        }else{
-            return null;
-        }
+        int[] newOffsets = compactOffsets(offsets, arrayOffset, positionCount);
+        Slice newSlice = compactSlice(slice, offsets[arrayOffset], newOffsets[positionCount]);
+        return new UpdatableVariableWidthBlock(null, positionCount, valueIsNull, new VariableSliceOutput(newSlice, newSlice.length()), newOffsets);
+
 
     }
 

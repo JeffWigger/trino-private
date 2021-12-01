@@ -387,6 +387,12 @@ public class SqlTaskManager
         }
     }
 
+    @Override
+    public TaskInfo finishTask(TaskId taskId)
+    {
+        return null;
+    }
+
     private TaskInfo doUpdateTask(
             Session session,
             TaskId taskId,

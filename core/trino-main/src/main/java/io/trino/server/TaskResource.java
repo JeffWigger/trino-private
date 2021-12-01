@@ -144,6 +144,25 @@ public class TaskResource
     }
 
     @ResourceSecurity(INTERNAL_ONLY)
+    @GET
+    @Path("{taskId}/finish")
+    @Produces(MediaType.APPLICATION_JSON)
+    public void finishTask(
+            @PathParam("taskId") TaskId taskId,
+            @Context UriInfo uriInfo,
+            @Suspended AsyncResponse asyncResponse)
+    {
+        requireNonNull(taskId, "taskId is null");
+
+        // returning the final taskInfo
+        TaskInfo taskInfo = taskManager.getTaskInfo(taskId);
+        if (shouldSummarize(uriInfo)) {
+            taskInfo = taskInfo.summarize();
+        }
+        asyncResponse.resume(taskInfo);
+    }
+
+    @ResourceSecurity(INTERNAL_ONLY)
     @POST
     @Path("deltaflag")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -152,10 +171,11 @@ public class TaskResource
     {
         requireNonNull(deltaFlagRequest, "taskUpdateRequest is null");
         System.out.println("In setDeltaUpdateFlag");
-        synchronized (DeltaFlagRequest.class){
-            DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
-            System.out.println("Set globalDeltaUpdateInProcess to: "+deltaFlagRequest.getDeltaUpdateInProcess());
-        }
+        DeltaFlagRequest.deltaFlagLock.writeLock().lock();
+        DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
+        DeltaFlagRequest.deltaFlagLock.writeLock().unlock();
+        //
+        System.out.println("Set globalDeltaUpdateInProcess to: "+deltaFlagRequest.getDeltaUpdateInProcess());
         // just sending back the same thing
         return Response.ok().entity(deltaFlagRequest).build();
     }

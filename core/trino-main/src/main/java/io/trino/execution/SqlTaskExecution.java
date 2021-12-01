@@ -1241,7 +1241,7 @@ public class SqlTaskExecution
 
             if (partitionedSplit != null) {
                 // TableScanOperator requires partitioned split to be added before the first call to process
-                if (partitionedSplit.getSplit() instanceof DeltaSplit){
+                if (partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit){
                     driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true,  ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
                 }else{
                     driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
@@ -1279,7 +1279,7 @@ public class SqlTaskExecution
 
             if (partitionedSplit != null) {
                 // TableScanOperator requires partitioned split to be added before the first call to process
-                if (partitionedSplit.getSplit() instanceof DeltaSplit){
+                if (partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit){
                     driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true,  ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
                 }else{
                     driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
@@ -1433,7 +1433,7 @@ public class SqlTaskExecution
                 }
 
                 if (this.driver == null) {
-                    if (partitionedSplit.getSplit() instanceof DeltaSplit){
+                    if (partitionedSplit != null && partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit){
                         this.driver = driverSplitRunnerFactory.createDriverDelta(driverContext, partitionedSplit);
                     }else {
                         this.driver = driverSplitRunnerFactory.createDriver(driverContext, partitionedSplit);
@@ -1582,7 +1582,7 @@ public class SqlTaskExecution
             noMoreLifespans = true;
         }
 
-        public synchronized void setNoMoreLifespans()
+        public synchronized void setNoMoreLifespansDelta()
         {
             if (noMoreLifespansDelta) {
                 return;
