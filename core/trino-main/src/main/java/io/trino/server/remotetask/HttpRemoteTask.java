@@ -651,7 +651,7 @@ public final class HttpRemoteTask
         }
 
         List<TaskSource> sources = getSources();
-        boolean isDeltaUpdate = sources.stream().allMatch(taskSource -> taskSource.isDeltaSource());
+        boolean isDeltaUpdate = sources.stream().allMatch(TaskSource::isDeltaSource);
         VersionedDynamicFilterDomains dynamicFilterDomains = outboundDynamicFiltersCollector.acknowledgeAndGetNewDomains(sentDynamicFiltersVersion);
 
         // Workers don't need the embedded JSON representation when the fragment is sent

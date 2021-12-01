@@ -204,7 +204,7 @@ public class TaskSource
     }
 
     public boolean isDeltaSource(){
-        return this.splits.stream().allMatch(split -> split.getSplit() instanceof DeltaSplit);
+        return !getDeltaSplits().isEmpty(); //this.splits.stream().allMatch(split -> split.getSplit() instanceof DeltaSplit);
     }
 
     @Override

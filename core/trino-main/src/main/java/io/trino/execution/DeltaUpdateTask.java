@@ -244,6 +244,7 @@ public class DeltaUpdateTask
                 }
             }
         }
+
         for (QueryId qid : perQueryTablesToUpdate.keySet()){
             QueryExecution queryExecution = queryManager.queryTracker.getQuery(qid);
             // could be an update/dataDefinitionExecution
@@ -255,6 +256,14 @@ public class DeltaUpdateTask
             // get all stages that that use a table that is being updated
             SqlQueryScheduler sqlQueryScheduler = sqlQueryExecution.queryScheduler.get();
             // should not change after the scheduling is finished, and we work on Running queries.
+
+
+            sqlQueryScheduler.scheduleDelta();
+            // TODO: figure out when it finished
+
+
+            // the following is useless as we need to update all stages in the query
+            /*
             Map<StageId, SqlStageExecution> stages = sqlQueryScheduler.stages;
             for(Map.Entry<StageId, SqlStageExecution> entry : stages.entrySet()){
                 // todo figure out which stages to update
@@ -278,8 +287,10 @@ public class DeltaUpdateTask
                     // todo: call sheduleDelta in SqlQueryScheduler, using its executor and a listener!
                 }
                 // todo
-            }
+
+             */
         }
+
         //queryManager.queryTracker.getQuery();
 
 
