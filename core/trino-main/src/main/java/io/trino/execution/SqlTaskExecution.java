@@ -273,6 +273,7 @@ public class SqlTaskExecution
                 getMaxDriversPerTask(taskContext.getSession()));
         taskStateMachine.addStateChangeListener(state -> {
             if (state.isDone()) {
+                // TODO: after all changes verify this is still getting executed.
                 taskExecutor.removeTask(taskHandle);
                 for (DriverFactory factory : localExecutionPlan.getDriverFactories()) {
                     factory.noMoreDrivers();
@@ -411,6 +412,7 @@ public class SqlTaskExecution
 
         for (DriverSplitRunnerFactory driverSplitRunnerFactory :
                 Iterables.concat(driverRunnerFactoriesWithSplitLifeCycle.values(), driverRunnerFactoriesWithTaskLifeCycle, driverRunnerFactoriesWithDriverGroupLifeCycle)) {
+            // TODO: add this closing (For delta as well) to the finish()
             driverSplitRunnerFactory.closeDriverFactoryIfFullyCreated();
         }
 
@@ -598,6 +600,7 @@ public class SqlTaskExecution
                     PendingSplits pendingSplits = pendingSplitsByPlanNode.get(schedulingPlanNode).getLifespan(lifespan);
 
                     // Enqueue driver runners with driver group lifecycle for this driver life cycle, if not already enqueued.
+                    // getAndSetDriversForDriverGroupLifeCycleScheduled is only false the first time this is called
                     if (!lifespan.isTaskWide() && !schedulingLifespan.getAndSetDriversForDriverGroupLifeCycleScheduled()) {
                         scheduleDriversForDriverGroupLifeCycle(lifespan);
                     }

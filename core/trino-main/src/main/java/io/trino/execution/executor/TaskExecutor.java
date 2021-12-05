@@ -324,13 +324,13 @@ public class TaskExecutor
                     // If the handle is destroyed, we destroy the task splits to complete the future
                     splitsToDestroy.add(prioritizedSplitRunner);
                 }
-                else if (intermediate) {
+                else if (intermediate) { // case for unpartitioned
                     // Note: we do not record queued time for intermediate splits
                     startIntermediateSplit(prioritizedSplitRunner);
                     // add the runner to the handle so it can be destroyed if the task is canceled
                     taskHandle.recordIntermediateSplit(prioritizedSplitRunner);
                 }
-                else {
+                else { // case for partitioned
                     // add this to the work queue for the task
                     taskHandle.enqueueSplit(prioritizedSplitRunner);
                     // if task is under the limit for guaranteed splits, start one

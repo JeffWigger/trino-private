@@ -495,6 +495,7 @@ public class SqlTask
                 // is task already complete?
                 TaskHolder taskHolder = taskHolderReference.get();
                 //We are restarting the taskHolder for the delta update
+                // TODO: is this still necessary
                 taskStateMachine.transitionBackToRunning();
                 //if (taskHolder.isFinished()) {
                   //  return taskHolder.getFinalTaskInfo();

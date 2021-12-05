@@ -129,6 +129,7 @@ public class TaskHandle
         builder.addAll(runningLeafSplits);
         builder.addAll(queuedLeafSplits);
         runningIntermediateSplits.clear();
+        // leaf splits are the partitioned splits
         runningLeafSplits.clear();
         queuedLeafSplits.clear();
         return builder.build();

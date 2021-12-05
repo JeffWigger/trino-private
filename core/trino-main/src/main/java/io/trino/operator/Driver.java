@@ -95,6 +95,8 @@ public class Driver
     private int finishedIndex = 0;
     private int finishedIndexDelta = 0;
 
+    public boolean preFinished = false;
+
     private final AtomicReference<SettableFuture<Void>> driverBlockedFuture = new AtomicReference<>();
 
     private enum State
@@ -200,19 +202,19 @@ public class Driver
 
         // if we can get the lock, attempt a clean shutdown; otherwise someone else will shutdown
         Optional<Boolean> result = tryWithLock(this::isFinishedInternal);
-        return result.orElseGet(() -> state.get() != State.ALIVE || driverContext.isDone());
+        return result.orElseGet(() -> preFinished);//state.get() != State.ALIVE || driverContext.isDone());
     }
 
     @GuardedBy("exclusiveLock")
     private boolean isFinishedInternal()
     {
         checkLockHeld("Lock must be held to call isFinishedInternal");
-
-        boolean finished = state.get() != State.ALIVE || driverContext.isDone() || activeOperators.isEmpty() || activeOperators.get(activeOperators.size() - 1).isFinished();
+        return preFinished;
+        /*boolean finished = state.get() != State.ALIVE || driverContext.isDone() || activeOperators.isEmpty() || activeOperators.get(activeOperators.size() - 1).isFinished();
         if (finished) {
             state.compareAndSet(State.ALIVE, State.NEED_DESTRUCTION);
         }
-        return finished;
+        return finished;*/
     }
 
     public void updateSource(TaskSource sourceUpdate)
@@ -519,6 +521,10 @@ public class Driver
                     }
                     return blocked;
                 }
+            }
+
+            if(activeOperators.get(activeOperators.size() - 1).isFinished()){
+                preFinished = true;
             }
 
             return NOT_BLOCKED;
