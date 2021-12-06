@@ -70,7 +70,7 @@ import static io.airlift.http.client.HttpStatus.OK;
 import static io.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
 import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
 import io.airlift.http.client.HttpClient;
-import org.checkerframework.checker.nullness.qual.Nullable;
+import javax.annotation.Nullable;
 
 import javax.annotation.concurrent.GuardedBy;
 

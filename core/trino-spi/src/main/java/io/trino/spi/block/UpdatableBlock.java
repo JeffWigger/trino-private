@@ -94,7 +94,7 @@ public interface UpdatableBlock
      * Update a byte sequences to the current entry;
      * sourceIndex is the position inside the source slice
      */
-    default UpdatableBlock updateBytes(Slice source, int sourceIndex, int length,  int position, int offset)
+    default UpdatableBlock updateBytes(Slice source, int sourceIndex, int length, int position, int offset)
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
@@ -198,7 +198,7 @@ public interface UpdatableBlock
     /**
      * Returns true if there are deleted values in the block.
      */
-    public boolean mayHaveDel();
+    boolean mayHaveDel();
 
     default UpdatableBlock getLoadedBlock()
     {
@@ -206,17 +206,21 @@ public interface UpdatableBlock
     }
 
     @Override
-    default public Block getRegion(int positionOffset, int length){
+    default Block getRegion(int positionOffset, int length)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
+
     @Override
-    default public Block copyRegion(int positionOffset, int length){
+    default Block copyRegion(int positionOffset, int length)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
+
     /**
      * Returns length number of rows that start from positionOffset.
      * If there are less then length rows it will return all available ones
      * It does not return deleted rows
      */
-    public Block getEntriesFrom(int positionOffset, int length);
+    Block getEntriesFrom(int positionOffset, int length);
 }

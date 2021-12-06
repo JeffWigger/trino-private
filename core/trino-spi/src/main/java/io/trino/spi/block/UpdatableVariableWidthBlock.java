@@ -58,12 +58,11 @@ public class UpdatableVariableWidthBlock
     private final BlockBuilderStatus blockBuilderStatus;
     private boolean initialized;
     private final int initialEntryCount;
-    private int initialSliceOutputSize;
+    private final int initialSliceOutputSize;
 
     private VariableSliceOutput sliceOutput = new VariableSliceOutput(0);
     private int nullCounter = 0;
     private int deleteCounter = 0;
-
 
     // it is assumed that the offsets array is one position longer than the valueIsNull array
     private byte[] valueMarker = new byte[0];
@@ -87,7 +86,8 @@ public class UpdatableVariableWidthBlock
         updateArraysDataSize();
     }
 
-    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, VariableSliceOutput sliceOutput, int[] offsets){
+    public UpdatableVariableWidthBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, VariableSliceOutput sliceOutput, int[] offsets)
+    {
         this(blockBuilderStatus, positionCount, UpdatableUtils.toBytes(valueMarker), sliceOutput, UpdatableUtils.getNullCount(valueMarker), 0, offsets);
     }
 
@@ -114,7 +114,7 @@ public class UpdatableVariableWidthBlock
 
         this.valueMarker = Objects.requireNonNullElseGet(valueMarker, () -> new byte[positionCount]);
 
-        if (offsets.length != positionCount + 1){
+        if (offsets.length != positionCount + 1) {
             throw new IllegalArgumentException("offsets needs to be one larger than positionCount");
         }
         this.offsets = offsets;
@@ -126,7 +126,7 @@ public class UpdatableVariableWidthBlock
         this.initialEntryCount = max(this.valueMarker.length, 1);
         this.initialSliceOutputSize = max(min(sliceOutput.size(), MAX_ARRAY_SIZE), 1);
 
-        if(positions >0){
+        if (positions > 0) {
             initialized = true;
         }
     }
@@ -227,7 +227,7 @@ public class UpdatableVariableWidthBlock
         int finalLength = 0;
         int newlength = 0;
         for (int i = offset; i < offset + length; i++) {
-            if (valueMarker[i] == DEL){
+            if (valueMarker[i] == DEL) {
                 continue;
             }
             finalLength += getSliceLength(positions[i]);
@@ -240,9 +240,10 @@ public class UpdatableVariableWidthBlock
 
         for (int i = 0; i < length; i++) {
             int position = positions[offset + i];
-            if (valueMarker[position] == DEL){
+            if (valueMarker[position] == DEL) {
                 continue;
-            } else if (valueMarker[position] == NULL) {
+            }
+            else if (valueMarker[position] == NULL) {
                 newValueMarker[i] = true;
             }
             else {
@@ -349,41 +350,48 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlock updateBytes(Slice source, int sourceIndex, int length, int position, int offset){
+    public UpdatableBlock updateBytes(Slice source, int sourceIndex, int length, int position, int offset)
+    {
         // currently, we cannot handle updates that do not exactly match the size
         // we would need another array encoding the size of each entry
-        if(length != this.getSliceLength(position)){
+        if (length != this.getSliceLength(position)) {
             // deletes the current entry, decreases null counter if necessary and increases delete counter
             deleteBytes(position, offset, length);
             if (source != null) {
                 this.writeBytes(source, sourceIndex, length);
                 this.closeEntry();
-            }else{
+            }
+            else {
                 this.appendNull();
             }
             return this;
-        }else{
+        }
+        else {
             if (source != null) {
-                if (valueMarker[position] == NULL){
+                if (valueMarker[position] == NULL) {
                     nullCounter--;
                     valueMarker[position] = 0;
-                }else if (valueMarker[position] == DEL){
+                }
+                else if (valueMarker[position] == DEL) {
                     deleteCounter--;
                     valueMarker[position] = 0;
                 }
-                System.out.println("sliceOutput size: "+ this.sliceOutput.size()+ "slice output: "+ this.sliceOutput);
+                System.out.println("sliceOutput size: " + this.sliceOutput.size() + "slice output: " + this.sliceOutput);
                 this.sliceOutput.slice().setBytes(offsets[position], source, sourceIndex, length);
                 return this;
-            }else{
-                if (valueMarker[position] == NULL){
+            }
+            else {
+                if (valueMarker[position] == NULL) {
                     // no-op
                     return this;
-                }else if (valueMarker[position] == DEL){
+                }
+                else if (valueMarker[position] == DEL) {
                     deleteCounter--;
                     valueMarker[position] = NULL;
                     nullCounter++;
                     return this;
-                }else{
+                }
+                else {
                     valueMarker[position] = NULL;
                     nullCounter++;
                     return this;
@@ -393,8 +401,9 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
-    public UpdatableBlock deleteBytes(int position, int offset, int length){
-        if (valueMarker[position] == NULL){
+    public UpdatableBlock deleteBytes(int position, int offset, int length)
+    {
+        if (valueMarker[position] == NULL) {
             nullCounter--;
         }
         this.valueMarker[position] = DEL;
@@ -451,7 +460,7 @@ public class UpdatableVariableWidthBlock
         int positionCount = getPositionCount();
         checkValidRegion(positionCount, positionOffset, length);
 
-        if (deleteCounter == positionCount){
+        if (deleteCounter == positionCount) {
             return new VariableWidthBlock(0, Slices.allocate(0), new int[1], Optional.empty());
         }
         //CoreBool c = compactValuesBool();
@@ -499,7 +508,8 @@ public class UpdatableVariableWidthBlock
         return sb.toString();
     }
 
-    private void compact(){
+    private void compact()
+    {
         if (deleteCounter != 0) {
             Core c = compactValues();
             long copy = getSizeInBytes();
@@ -509,25 +519,27 @@ public class UpdatableVariableWidthBlock
             this.positions = c.markers.length;
             this.deleteCounter = 0;
             updateArraysDataSize();
-            if (blockBuilderStatus!=null) {
+            if (blockBuilderStatus != null) {
                 blockBuilderStatus.addBytes((int) (getSizeInBytes() - copy));
             }
         }
     }
 
-    private Core compactValues(){
+    private Core compactValues()
+    {
         int start = 0;
         int end = positions;
-        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end+1] - offsets[start] );
-        byte markers[] = new byte[positions];
-        int[] newoffsets = new int[positions+1];
+        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[end + 1] - offsets[start]);
+        byte[] markers = new byte[positions];
+        int[] newoffsets = new int[positions + 1];
         int cindex = 0;
         // TODO: not sure if inclusive is correct
-        for (int i=start; i < end; i++){
-            if(valueMarker[i] != DEL){
+        for (int i = start; i < end; i++) {
+            if (valueMarker[i] != DEL) {
                 if (valueMarker[i] == NULL) {
                     markers[cindex] = NULL;
-                }else{
+                }
+                else {
                     sliceOutput.writeBytes(this.sliceOutput.slice().getBytes(offsets[i], this.getSliceLength(i)));
                 }
                 cindex++;
@@ -537,49 +549,53 @@ public class UpdatableVariableWidthBlock
         return new Core(sliceOutput, markers, newoffsets);
     }
 
-    private class Core{
-        private VariableSliceOutput sliceOutput;
-        private byte markers[];
-        private int[] offsets;
+    private class Core
+    {
+        private final VariableSliceOutput sliceOutput;
+        private final byte[] markers;
+        private final int[] offsets;
 
-        public Core(VariableSliceOutput sliceOutput, byte markers[], int[] offsets){
+        public Core(VariableSliceOutput sliceOutput, byte[] markers, int[] offsets)
+        {
             this.sliceOutput = sliceOutput;
             this.markers = markers;
             this.offsets = offsets;
         }
     }
 
-    private CoreBool compactValuesBool(int start, int length){
-        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[start + length] - offsets[start] );
-        boolean markers[] = new boolean[length];
-        int[] newoffsets = new int[length+1];
+    private CoreBool compactValuesBool(int start, int length)
+    {
+        VariableSliceOutput sliceOutput = new VariableSliceOutput(offsets[start + length] - offsets[start]);
+        boolean[] markers = new boolean[length];
+        int[] newoffsets = new int[length + 1];
         int cindex = 0;
         boolean hasNulll = false;
-        for (int i = start; cindex < length &&  i < positions; i++) {
-            if(valueMarker[i] != DEL){
-                if (valueMarker[i] == NULL){
+        for (int i = start; cindex < length && i < positions; i++) {
+            if (valueMarker[i] != DEL) {
+                if (valueMarker[i] == NULL) {
                     markers[cindex] = true;
                     hasNulll = true;
-                }else{
+                }
+                else {
                     sliceOutput.writeBytes(this.sliceOutput.slice().getBytes(offsets[i], this.getSliceLength(i)));
                 }
                 cindex++;
                 newoffsets[cindex] = sliceOutput.size();
-
             }
         }
         // one too long in compatc Array markers
         return new CoreBool(compactSlice(sliceOutput.getUnderlyingSlice(), 0, newoffsets[cindex]), compactArray(markers, 0, cindex), compactOffsets(newoffsets, 0, cindex), hasNulll);
     }
 
-
-    private static class CoreBool{
+    private static class CoreBool
+    {
         private final Slice sliceOutput;
         private final boolean[] markers;
         private final int[] offsets;
         private final boolean hasNull;
 
-        public CoreBool(Slice sliceOutput, boolean[] markers, int[] offsets, boolean hasNull){
+        public CoreBool(Slice sliceOutput, boolean[] markers, int[] offsets, boolean hasNull)
+        {
             this.sliceOutput = sliceOutput;
             this.markers = markers;
             this.offsets = offsets;

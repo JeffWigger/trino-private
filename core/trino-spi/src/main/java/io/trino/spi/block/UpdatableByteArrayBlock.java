@@ -52,7 +52,6 @@ public class UpdatableByteArrayBlock
 
     private long retainedSizeInBytes;
 
-
     public UpdatableByteArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int expectedEntries)
     {
         this.blockBuilderStatus = blockBuilderStatus;
@@ -61,7 +60,8 @@ public class UpdatableByteArrayBlock
         updateDataSize();
     }
 
-    public UpdatableByteArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, byte[] values){
+    public UpdatableByteArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, byte[] values)
+    {
         this(blockBuilderStatus, positionCount, UpdatableUtils.toBytes(valueMarker), values, UpdatableUtils.getNullCount(valueMarker), 0);
     }
 
@@ -73,13 +73,13 @@ public class UpdatableByteArrayBlock
         this.positionCount = positionCount;
 
         // it is assumed that nullCounter matches the number of nulls in valueMarker
-        if (nullCounter > positionCount || nullCounter < 0){
+        if (nullCounter > positionCount || nullCounter < 0) {
             throw new IllegalArgumentException("nullCounter is not valid");
         }
         this.nullCounter = nullCounter;
 
         // it is assumed that deleteCounter matches the number of nulls in valueMarker
-        if (nullCounter > positionCount || nullCounter < 0){
+        if (nullCounter > positionCount || nullCounter < 0) {
             throw new IllegalArgumentException("deleteCounter is not valid");
         }
         this.deleteCounter = deleteCounter;
@@ -94,10 +94,9 @@ public class UpdatableByteArrayBlock
 
         this.initialEntryCount = max(values.length, 1);
 
-        if (values.length == 0){
+        if (values.length == 0) {
             initialized = false;
         }
-
     }
 
     public int getNullCounter()
@@ -133,17 +132,19 @@ public class UpdatableByteArrayBlock
         if (offset != 0) {
             throw new IllegalArgumentException("offset must be zero");
         }
-        if(value != null){
-            values[position] = (byte)(int) value;
-            if(valueMarker[position] == NULL){
+        if (value != null) {
+            values[position] = (byte) (int) value;
+            if (valueMarker[position] == NULL) {
                 nullCounter--;
-            } else if(valueMarker[position] == DEL){
+            }
+            else if (valueMarker[position] == DEL) {
                 deleteCounter++;
             }
             valueMarker[position] = 0;
-        }else{
-            if(valueMarker[position] != NULL){
-                if(valueMarker[position] == DEL){
+        }
+        else {
+            if (valueMarker[position] != NULL) {
+                if (valueMarker[position] == DEL) {
                     deleteCounter--;
                 }
                 nullCounter++;
@@ -180,12 +181,13 @@ public class UpdatableByteArrayBlock
     }
 
     @Override
-    public UpdatableByteArrayBlock deleteByte(int position, int offset){
+    public UpdatableByteArrayBlock deleteByte(int position, int offset)
+    {
         checkReadablePosition(position);
         if (offset != 0) {
             throw new IllegalArgumentException("offset must be zero");
         }
-        if (valueMarker[position] == NULL){
+        if (valueMarker[position] == NULL) {
             nullCounter--;
         }
         this.valueMarker[position] = DEL;
@@ -199,7 +201,7 @@ public class UpdatableByteArrayBlock
         if (deleteCounter == 0 && nullCounter == positionCount) {
             return new RunLengthEncodedBlock(NULL_VALUE_BLOCK, positionCount);
         }
-        if (deleteCounter == positionCount){
+        if (deleteCounter == positionCount) {
             return new ByteArrayBlock(0, 0, null, new byte[0]);
         }
         compact();
@@ -295,21 +297,13 @@ public class UpdatableByteArrayBlock
     @Override
     public boolean mayHaveNull()
     {
-        if (nullCounter > 0){
-            return true;
-        }else{
-            return false;
-        }
+        return nullCounter > 0;
     }
 
     @Override
     public boolean mayHaveDel()
     {
-        if (deleteCounter > 0){
-            return true;
-        }else{
-            return false;
-        }
+        return deleteCounter > 0;
     }
 
     @Override
@@ -337,7 +331,7 @@ public class UpdatableByteArrayBlock
     public Block getSingleValueBlock(int position)
     {
         checkReadablePosition(position);
-        if (valueMarker[position] != DEL){
+        if (valueMarker[position] != DEL) {
             return new ByteArrayBlock(
                     0,
                     1,
@@ -358,7 +352,7 @@ public class UpdatableByteArrayBlock
         if (deleteCounter == 0 && nullCounter == positionCount) {
             return new RunLengthEncodedBlock(NULL_VALUE_BLOCK, positionCount);
         }
-        if (deleteCounter == positionCount){
+        if (deleteCounter == positionCount) {
             return new ByteArrayBlock(0, 0, null, new byte[0]);
         }
 
@@ -371,7 +365,7 @@ public class UpdatableByteArrayBlock
         int acctualSize = 0;
         for (int i = 0; i < length; i++) {
             int position = positions[offset + i];
-            if (valueMarker[position] == DEL){
+            if (valueMarker[position] == DEL) {
                 continue;
             }
             acctualSize++;
@@ -382,7 +376,7 @@ public class UpdatableByteArrayBlock
             newValues[i] = values[position];
         }
         // could use unsafe methods to make the arrays smaller?
-        return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull,0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
+        return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull, 0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
     }
 
     @Override
@@ -393,7 +387,7 @@ public class UpdatableByteArrayBlock
         if (deleteCounter == 0 && nullCounter == positionCount) {
             return new RunLengthEncodedBlock(NULL_VALUE_BLOCK, positionCount);
         }
-        if (deleteCounter == positionCount){
+        if (deleteCounter == positionCount) {
             return new LongArrayBlock(0, 0, null, new long[0]);
         }
         //CoreBool c = compactValuesBool();
@@ -405,8 +399,8 @@ public class UpdatableByteArrayBlock
         }
         byte[] newValues = new byte[length];
         int acctualSize = 0;
-        for (int i = positionOffset; acctualSize < length &&  i < positionCount; i++) {
-            if (valueMarker[i] == DEL){
+        for (int i = positionOffset; acctualSize < length && i < positionCount; i++) {
+            if (valueMarker[i] == DEL) {
                 continue;
             }
             checkReadablePosition(i);
@@ -417,7 +411,7 @@ public class UpdatableByteArrayBlock
             acctualSize++;
         }
         // could use unsafe methods to make the arrays smaller?
-        return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull,0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
+        return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull, 0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
     }
 
     @Override
@@ -452,10 +446,11 @@ public class UpdatableByteArrayBlock
         }
     }
 
-    private void compact(){
+    private void compact()
+    {
         if (nullCounter != 0) {
             Core c = compactValues();
-            if(blockBuilderStatus != null) {
+            if (blockBuilderStatus != null) {
                 blockBuilderStatus.addBytes(-(Byte.BYTES + Byte.BYTES) * (positionCount - c.values.length));
             }
             this.valueMarker = c.markers;
@@ -466,12 +461,13 @@ public class UpdatableByteArrayBlock
         }
     }
 
-    private Core compactValues(){
+    private Core compactValues()
+    {
         byte[] compacted = new byte[positionCount - nullCounter];
         byte[] markers = new byte[positionCount - nullCounter];
         int cindex = 0;
-        for (int i=0; i < positionCount; i++){
-            if(valueMarker[i] != DEL){
+        for (int i = 0; i < positionCount; i++) {
+            if (valueMarker[i] != DEL) {
                 compacted[cindex] = values[i];
                 markers[cindex] = valueMarker[i];
                 cindex++;
@@ -480,23 +476,25 @@ public class UpdatableByteArrayBlock
         return new Core(compacted, markers);
     }
 
+    private class Core
+    {
+        private final byte[] values;
+        private final byte[] markers;
 
-    private class Core{
-        private byte values[];
-        private byte markers[];
-
-        public Core(byte values[], byte markers[]){
+        public Core(byte[] values, byte[] markers)
+        {
             this.values = values;
             this.markers = markers;
         }
     }
 
-    private CoreBool compactValuesBool(){
-        byte compacted[] = new byte[positionCount - nullCounter];
-        boolean markers[] = new boolean[positionCount - nullCounter];
+    private CoreBool compactValuesBool()
+    {
+        byte[] compacted = new byte[positionCount - nullCounter];
+        boolean[] markers = new boolean[positionCount - nullCounter];
         int cindex = 0;
-        for (int i=0; i < positionCount; i++){
-            if(valueMarker[i] != DEL){
+        for (int i = 0; i < positionCount; i++) {
+            if (valueMarker[i] != DEL) {
                 compacted[cindex] = values[i];
                 markers[cindex] = valueMarker[i] == NULL;
                 cindex++;
@@ -505,12 +503,13 @@ public class UpdatableByteArrayBlock
         return new CoreBool(compacted, markers);
     }
 
+    private class CoreBool
+    {
+        private final byte[] values;
+        private final boolean[] markers;
 
-    private class CoreBool{
-        private byte values[];
-        private boolean markers[];
-
-        public CoreBool(byte values[], boolean markers[]){
+        public CoreBool(byte[] values, boolean[] markers)
+        {
             this.values = values;
             this.markers = markers;
         }
