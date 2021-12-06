@@ -68,87 +68,6 @@ public class TableWriterOperator
     public static final int ROW_COUNT_CHANNEL = 0;
     public static final int FRAGMENT_CHANNEL = 1;
     public static final int STATS_START_CHANNEL = 2;
-
-    public static class TableWriterOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final PageSinkManager pageSinkManager;
-        private final WriterTarget target;
-        private final List<Integer> columnChannels;
-        private final List<String> notNullChannelColumnNames;
-        private final Session session;
-        private final OperatorFactory statisticsAggregationOperatorFactory;
-        private final List<Type> types;
-        private boolean closed;
-
-        public TableWriterOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                PageSinkManager pageSinkManager,
-                WriterTarget writerTarget,
-                List<Integer> columnChannels,
-                List<String> notNullChannelColumnNames,
-                Session session,
-                OperatorFactory statisticsAggregationOperatorFactory,
-                List<Type> types)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.columnChannels = requireNonNull(columnChannels, "columnChannels is null");
-            this.notNullChannelColumnNames = requireNonNull(notNullChannelColumnNames, "notNullChannelColumnNames is null");
-            this.pageSinkManager = requireNonNull(pageSinkManager, "pageSinkManager is null");
-            checkArgument(writerTarget instanceof CreateTarget || writerTarget instanceof InsertTarget || writerTarget instanceof TableWriterNode.RefreshMaterializedViewTarget,
-                    "writerTarget must be CreateTarget, InsertTarget or RefreshMaterializedViewTarget");
-            this.target = requireNonNull(writerTarget, "writerTarget is null");
-            this.session = session;
-            this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
-            this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableWriterOperator.class.getSimpleName());
-            Operator statisticsAggregationOperator = statisticsAggregationOperatorFactory.createOperator(driverContext);
-            boolean statisticsCpuTimerEnabled = !(statisticsAggregationOperator instanceof DevNullOperator) && isStatisticsCpuTimerEnabled(session);
-            return new TableWriterOperator(context, createPageSink(), columnChannels, notNullChannelColumnNames, statisticsAggregationOperator, types, statisticsCpuTimerEnabled);
-        }
-
-        private ConnectorPageSink createPageSink()
-        {
-            if (target instanceof CreateTarget) {
-                return pageSinkManager.createPageSink(session, ((CreateTarget) target).getHandle());
-            }
-            if (target instanceof InsertTarget) {
-                return pageSinkManager.createPageSink(session, ((InsertTarget) target).getHandle());
-            }
-            if (target instanceof TableWriterNode.RefreshMaterializedViewTarget) {
-                return pageSinkManager.createPageSink(session, ((TableWriterNode.RefreshMaterializedViewTarget) target).getInsertHandle());
-            }
-            throw new UnsupportedOperationException("Unhandled target type: " + target.getClass().getName());
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new TableWriterOperatorFactory(operatorId, planNodeId, pageSinkManager, target, columnChannels, notNullChannelColumnNames, session, statisticsAggregationOperatorFactory, types);
-        }
-    }
-
-    private enum State
-    {
-        RUNNING, FINISHING, FINISHED
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext pageSinkMemoryContext;
     private final ConnectorPageSink pageSink;
@@ -157,7 +76,9 @@ public class TableWriterOperator
     private final AtomicLong pageSinkPeakMemoryUsage = new AtomicLong();
     private final Operator statisticAggregationOperator;
     private final List<Type> types;
-
+    private final OperationTiming statisticsTiming = new OperationTiming();
+    private final boolean statisticsCpuTimerEnabled;
+    private final Supplier<TableWriterInfo> tableWriterInfoSupplier;
     private ListenableFuture<Void> blocked = NOT_BLOCKED;
     private CompletableFuture<Collection<Slice>> finishFuture;
     private State state = State.RUNNING;
@@ -165,12 +86,6 @@ public class TableWriterOperator
     private boolean committed;
     private boolean closed;
     private long writtenBytes;
-
-    private final OperationTiming statisticsTiming = new OperationTiming();
-    private final boolean statisticsCpuTimerEnabled;
-
-    private final Supplier<TableWriterInfo> tableWriterInfoSupplier;
-
     public TableWriterOperator(
             OperatorContext operatorContext,
             ConnectorPageSink pageSink,
@@ -191,6 +106,23 @@ public class TableWriterOperator
         this.statisticsCpuTimerEnabled = statisticsCpuTimerEnabled;
         this.tableWriterInfoSupplier = createTableWriterInfoSupplier(pageSinkPeakMemoryUsage, statisticsTiming, pageSink);
         this.operatorContext.setInfoSupplier(tableWriterInfoSupplier);
+    }
+
+    private static Supplier<TableWriterInfo> createTableWriterInfoSupplier(AtomicLong pageSinkPeakMemoryUsage, OperationTiming statisticsTiming, ConnectorPageSink pageSink)
+    {
+        requireNonNull(pageSinkPeakMemoryUsage, "pageSinkPeakMemoryUsage is null");
+        requireNonNull(statisticsTiming, "statisticsTiming is null");
+        requireNonNull(pageSink, "pageSink is null");
+        return () -> new TableWriterInfo(
+                pageSinkPeakMemoryUsage.get(),
+                new Duration(statisticsTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
+                new Duration(statisticsTiming.getCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
+                new Duration(pageSink.getValidationCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit());
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -262,9 +194,10 @@ public class TableWriterOperator
 
         ListenableFuture<Void> blockedOnAggregation = statisticAggregationOperator.isBlocked();
         CompletableFuture<?> future = null;
-        if (page instanceof DeltaPage){
+        if (page instanceof DeltaPage) {
             future = pageSink.appendPage(new DeltaPage(blocks, ((DeltaPage) page).getUpdateType()));
-        }else{
+        }
+        else {
             future = pageSink.appendPage(new Page(blocks));
         }
 
@@ -409,16 +342,84 @@ public class TableWriterOperator
         return tableWriterInfoSupplier.get();
     }
 
-    private static Supplier<TableWriterInfo> createTableWriterInfoSupplier(AtomicLong pageSinkPeakMemoryUsage, OperationTiming statisticsTiming, ConnectorPageSink pageSink)
+    private enum State
     {
-        requireNonNull(pageSinkPeakMemoryUsage, "pageSinkPeakMemoryUsage is null");
-        requireNonNull(statisticsTiming, "statisticsTiming is null");
-        requireNonNull(pageSink, "pageSink is null");
-        return () -> new TableWriterInfo(
-                pageSinkPeakMemoryUsage.get(),
-                new Duration(statisticsTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
-                new Duration(statisticsTiming.getCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
-                new Duration(pageSink.getValidationCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit());
+        RUNNING, FINISHING, FINISHED
+    }
+
+    public static class TableWriterOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final PageSinkManager pageSinkManager;
+        private final WriterTarget target;
+        private final List<Integer> columnChannels;
+        private final List<String> notNullChannelColumnNames;
+        private final Session session;
+        private final OperatorFactory statisticsAggregationOperatorFactory;
+        private final List<Type> types;
+        private boolean closed;
+
+        public TableWriterOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                PageSinkManager pageSinkManager,
+                WriterTarget writerTarget,
+                List<Integer> columnChannels,
+                List<String> notNullChannelColumnNames,
+                Session session,
+                OperatorFactory statisticsAggregationOperatorFactory,
+                List<Type> types)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.columnChannels = requireNonNull(columnChannels, "columnChannels is null");
+            this.notNullChannelColumnNames = requireNonNull(notNullChannelColumnNames, "notNullChannelColumnNames is null");
+            this.pageSinkManager = requireNonNull(pageSinkManager, "pageSinkManager is null");
+            checkArgument(writerTarget instanceof CreateTarget || writerTarget instanceof InsertTarget || writerTarget instanceof TableWriterNode.RefreshMaterializedViewTarget,
+                    "writerTarget must be CreateTarget, InsertTarget or RefreshMaterializedViewTarget");
+            this.target = requireNonNull(writerTarget, "writerTarget is null");
+            this.session = session;
+            this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
+            this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableWriterOperator.class.getSimpleName());
+            Operator statisticsAggregationOperator = statisticsAggregationOperatorFactory.createOperator(driverContext);
+            boolean statisticsCpuTimerEnabled = !(statisticsAggregationOperator instanceof DevNullOperator) && isStatisticsCpuTimerEnabled(session);
+            return new TableWriterOperator(context, createPageSink(), columnChannels, notNullChannelColumnNames, statisticsAggregationOperator, types, statisticsCpuTimerEnabled);
+        }
+
+        private ConnectorPageSink createPageSink()
+        {
+            if (target instanceof CreateTarget) {
+                return pageSinkManager.createPageSink(session, ((CreateTarget) target).getHandle());
+            }
+            if (target instanceof InsertTarget) {
+                return pageSinkManager.createPageSink(session, ((InsertTarget) target).getHandle());
+            }
+            if (target instanceof TableWriterNode.RefreshMaterializedViewTarget) {
+                return pageSinkManager.createPageSink(session, ((TableWriterNode.RefreshMaterializedViewTarget) target).getInsertHandle());
+            }
+            throw new UnsupportedOperationException("Unhandled target type: " + target.getClass().getName());
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new TableWriterOperatorFactory(operatorId, planNodeId, pageSinkManager, target, columnChannels, notNullChannelColumnNames, session, statisticsAggregationOperatorFactory, types);
+        }
     }
 
     public static class TableWriterInfo
@@ -492,10 +493,5 @@ public class TableWriterOperator
                     .add("validationCpuTime", validationCpuTime)
                     .toString();
         }
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 }

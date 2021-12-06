@@ -33,10 +33,10 @@ import static io.trino.sql.planner.plan.Patterns.union;
 
 /**
  * Removes branches from a UnionNode that are guaranteed to produce 0 rows.
- *
+ * <p>
  * If there's only one branch left, it replaces the UnionNode with a projection
  * to preserve the outputs of the union.
- *
+ * <p>
  * If all branches are empty, it replaces the UnionNode with an empty ValuesNode
  */
 public class RemoveEmptyUnionBranches

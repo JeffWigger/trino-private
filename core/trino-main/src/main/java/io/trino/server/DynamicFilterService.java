@@ -123,6 +123,78 @@ public class DynamicFilterService
         this.executor = requireNonNull(executor, "executor is null");
     }
 
+    public static Set<DynamicFilterId> getOutboundDynamicFilters(PlanFragment plan)
+    {
+        // dynamic filters which are consumed by the given stage but produced by a different stage
+        return ImmutableSet.copyOf(difference(
+                getConsumedDynamicFilters(plan.getRoot()),
+                getProducedDynamicFilters(plan.getRoot())));
+    }
+
+    private static Set<DynamicFilterId> getLazyDynamicFilters(PlanFragment plan)
+    {
+        // To prevent deadlock dynamic filter can be lazy only when:
+        // 1. it's consumed by different stage from where it's produced
+        // 2. or it's produced by replicated join in source stage. In such case an extra
+        //    task is created that will collect dynamic filter and prevent deadlock.
+        Set<DynamicFilterId> interStageDynamicFilters = difference(getProducedDynamicFilters(plan.getRoot()), getConsumedDynamicFilters(plan.getRoot()));
+        return ImmutableSet.copyOf(union(interStageDynamicFilters, getSourceStageInnerLazyDynamicFilters(plan)));
+    }
+
+    @VisibleForTesting
+    static Set<DynamicFilterId> getSourceStageInnerLazyDynamicFilters(PlanFragment plan)
+    {
+        if (!plan.getPartitioning().equals(SOURCE_DISTRIBUTION)) {
+            // Only non-fixed source stages can have (replicated) lazy dynamic filters that are
+            // produced and consumed within stage. This is because for such stages an extra
+            // dynamic filtering collecting task can be added.
+            return ImmutableSet.of();
+        }
+
+        PlanNode planNode = plan.getRoot();
+        Set<DynamicFilterId> innerStageDynamicFilters = intersection(getProducedDynamicFilters(planNode), getConsumedDynamicFilters(planNode));
+        Set<DynamicFilterId> replicatedDynamicFilters = getReplicatedDynamicFilters(planNode);
+        return ImmutableSet.copyOf(intersection(innerStageDynamicFilters, replicatedDynamicFilters));
+    }
+
+    private static Set<DynamicFilterId> getReplicatedDynamicFilters(PlanNode planNode)
+    {
+        return PlanNodeSearcher.searchFrom(planNode)
+                .where(isInstanceOfAny(JoinNode.class, SemiJoinNode.class))
+                .findAll().stream()
+                .filter(JoinUtils::isBuildSideReplicated)
+                .flatMap(node -> getDynamicFiltersProducedInPlanNode(node).stream())
+                .collect(toImmutableSet());
+    }
+
+    private static Set<DynamicFilterId> getProducedDynamicFilters(PlanNode planNode)
+    {
+        return PlanNodeSearcher.searchFrom(planNode)
+                .where(isInstanceOfAny(JoinNode.class, SemiJoinNode.class))
+                .findAll().stream()
+                .flatMap(node -> getDynamicFiltersProducedInPlanNode(node).stream())
+                .collect(toImmutableSet());
+    }
+
+    private static Set<DynamicFilterId> getDynamicFiltersProducedInPlanNode(PlanNode planNode)
+    {
+        if (planNode instanceof JoinNode) {
+            return ((JoinNode) planNode).getDynamicFilters().keySet();
+        }
+        if (planNode instanceof SemiJoinNode) {
+            return ((SemiJoinNode) planNode).getDynamicFilterId().map(ImmutableSet::of).orElse(ImmutableSet.of());
+        }
+        throw new IllegalStateException("getDynamicFiltersProducedInPlanNode called with neither JoinNode nor SemiJoinNode");
+    }
+
+    private static Set<DynamicFilterId> getConsumedDynamicFilters(PlanNode planNode)
+    {
+        return extractExpressions(planNode).stream()
+                .flatMap(expression -> extractDynamicFilters(expression).getDynamicConjuncts().stream())
+                .map(DynamicFilters.Descriptor::getId)
+                .collect(toImmutableSet());
+    }
+
     @PreDestroy
     public void stop()
     {
@@ -350,14 +422,6 @@ public class DynamicFilterService
         executor.submit(() -> collectDynamicFilters(stageId, Optional.empty()));
     }
 
-    public static Set<DynamicFilterId> getOutboundDynamicFilters(PlanFragment plan)
-    {
-        // dynamic filters which are consumed by the given stage but produced by a different stage
-        return ImmutableSet.copyOf(difference(
-                getConsumedDynamicFilters(plan.getRoot()),
-                getProducedDynamicFilters(plan.getRoot())));
-    }
-
     private void collectDynamicFilters(StageId stageId, Optional<Set<DynamicFilterId>> selectedFilters)
     {
         DynamicFilterContext context = dynamicFilterContexts.get(stageId.getQueryId());
@@ -420,70 +484,6 @@ public class DynamicFilterService
                             }
                             return updatedSummary;
                         })));
-    }
-
-    private static Set<DynamicFilterId> getLazyDynamicFilters(PlanFragment plan)
-    {
-        // To prevent deadlock dynamic filter can be lazy only when:
-        // 1. it's consumed by different stage from where it's produced
-        // 2. or it's produced by replicated join in source stage. In such case an extra
-        //    task is created that will collect dynamic filter and prevent deadlock.
-        Set<DynamicFilterId> interStageDynamicFilters = difference(getProducedDynamicFilters(plan.getRoot()), getConsumedDynamicFilters(plan.getRoot()));
-        return ImmutableSet.copyOf(union(interStageDynamicFilters, getSourceStageInnerLazyDynamicFilters(plan)));
-    }
-
-    @VisibleForTesting
-    static Set<DynamicFilterId> getSourceStageInnerLazyDynamicFilters(PlanFragment plan)
-    {
-        if (!plan.getPartitioning().equals(SOURCE_DISTRIBUTION)) {
-            // Only non-fixed source stages can have (replicated) lazy dynamic filters that are
-            // produced and consumed within stage. This is because for such stages an extra
-            // dynamic filtering collecting task can be added.
-            return ImmutableSet.of();
-        }
-
-        PlanNode planNode = plan.getRoot();
-        Set<DynamicFilterId> innerStageDynamicFilters = intersection(getProducedDynamicFilters(planNode), getConsumedDynamicFilters(planNode));
-        Set<DynamicFilterId> replicatedDynamicFilters = getReplicatedDynamicFilters(planNode);
-        return ImmutableSet.copyOf(intersection(innerStageDynamicFilters, replicatedDynamicFilters));
-    }
-
-    private static Set<DynamicFilterId> getReplicatedDynamicFilters(PlanNode planNode)
-    {
-        return PlanNodeSearcher.searchFrom(planNode)
-                .where(isInstanceOfAny(JoinNode.class, SemiJoinNode.class))
-                .findAll().stream()
-                .filter(JoinUtils::isBuildSideReplicated)
-                .flatMap(node -> getDynamicFiltersProducedInPlanNode(node).stream())
-                .collect(toImmutableSet());
-    }
-
-    private static Set<DynamicFilterId> getProducedDynamicFilters(PlanNode planNode)
-    {
-        return PlanNodeSearcher.searchFrom(planNode)
-                .where(isInstanceOfAny(JoinNode.class, SemiJoinNode.class))
-                .findAll().stream()
-                .flatMap(node -> getDynamicFiltersProducedInPlanNode(node).stream())
-                .collect(toImmutableSet());
-    }
-
-    private static Set<DynamicFilterId> getDynamicFiltersProducedInPlanNode(PlanNode planNode)
-    {
-        if (planNode instanceof JoinNode) {
-            return ((JoinNode) planNode).getDynamicFilters().keySet();
-        }
-        if (planNode instanceof SemiJoinNode) {
-            return ((SemiJoinNode) planNode).getDynamicFilterId().map(ImmutableSet::of).orElse(ImmutableSet.of());
-        }
-        throw new IllegalStateException("getDynamicFiltersProducedInPlanNode called with neither JoinNode nor SemiJoinNode");
-    }
-
-    private static Set<DynamicFilterId> getConsumedDynamicFilters(PlanNode planNode)
-    {
-        return extractExpressions(planNode).stream()
-                .flatMap(expression -> extractDynamicFilters(expression).getDynamicConjuncts().stream())
-                .map(DynamicFilters.Descriptor::getId)
-                .collect(toImmutableSet());
     }
 
     public static class DynamicFiltersStats

@@ -47,6 +47,26 @@ public class MergeHashSort
         this.blockTypeOperators = blockTypeOperators;
     }
 
+    private static BiPredicate<PageBuilder, PageWithPosition> keepSameHashValuesWithinSinglePage(InterpretedHashGenerator hashGenerator)
+    {
+        return (pageBuilder, pageWithPosition) -> {
+            long hash = hashGenerator.hashPosition(pageWithPosition.getPosition(), pageWithPosition.getPage());
+            return !pageBuilder.isEmpty()
+                    && hashGenerator.hashPosition(pageBuilder.getPositionCount() - 1, pageBuilder::getBlockBuilder) != hash
+                    && pageBuilder.isFull();
+        };
+    }
+
+    private static PageWithPositionComparator createHashPageWithPositionComparator(HashGenerator hashGenerator)
+    {
+        return (Page leftPage, int leftPosition, Page rightPage, int rightPosition) -> {
+            long leftHash = hashGenerator.hashPosition(leftPosition, leftPage);
+            long rightHash = hashGenerator.hashPosition(rightPosition, rightPage);
+
+            return Long.compare(leftHash, rightHash);
+        };
+    }
+
     /**
      * Rows with same hash value are guaranteed to be in the same result page.
      */
@@ -68,25 +88,5 @@ public class MergeHashSort
     public void close()
     {
         memoryContext.close();
-    }
-
-    private static BiPredicate<PageBuilder, PageWithPosition> keepSameHashValuesWithinSinglePage(InterpretedHashGenerator hashGenerator)
-    {
-        return (pageBuilder, pageWithPosition) -> {
-            long hash = hashGenerator.hashPosition(pageWithPosition.getPosition(), pageWithPosition.getPage());
-            return !pageBuilder.isEmpty()
-                    && hashGenerator.hashPosition(pageBuilder.getPositionCount() - 1, pageBuilder::getBlockBuilder) != hash
-                    && pageBuilder.isFull();
-        };
-    }
-
-    private static PageWithPositionComparator createHashPageWithPositionComparator(HashGenerator hashGenerator)
-    {
-        return (Page leftPage, int leftPosition, Page rightPage, int rightPosition) -> {
-            long leftHash = hashGenerator.hashPosition(leftPosition, leftPage);
-            long rightHash = hashGenerator.hashPosition(rightPosition, rightPage);
-
-            return Long.compare(leftHash, rightHash);
-        };
     }
 }

@@ -27,6 +27,12 @@ public final class TypeSignatureParameter
     private final ParameterKind kind;
     private final Object value;
 
+    private TypeSignatureParameter(ParameterKind kind, Object value)
+    {
+        this.kind = requireNonNull(kind, "kind is null");
+        this.value = requireNonNull(value, "value is null");
+    }
+
     public static TypeSignatureParameter typeParameter(TypeSignature typeSignature)
     {
         return new TypeSignatureParameter(ParameterKind.TYPE, typeSignature);
@@ -55,12 +61,6 @@ public final class TypeSignatureParameter
     public static TypeSignatureParameter typeVariable(String variable)
     {
         return new TypeSignatureParameter(ParameterKind.VARIABLE, variable);
-    }
-
-    private TypeSignatureParameter(ParameterKind kind, Object value)
-    {
-        this.kind = requireNonNull(kind, "kind is null");
-        this.value = requireNonNull(value, "value is null");
     }
 
     @Override

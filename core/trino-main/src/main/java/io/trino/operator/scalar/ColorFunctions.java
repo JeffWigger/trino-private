@@ -39,47 +39,6 @@ public final class ColorFunctions
     private static final Slice RENDERED_TRUE = render(utf8Slice("\u2713"), color(utf8Slice("green")));
     private static final Slice RENDERED_FALSE = render(utf8Slice("\u2717"), color(utf8Slice("red")));
 
-    public enum SystemColor
-    {
-        BLACK(0, "black"),
-        RED(1, "red"),
-        GREEN(2, "green"),
-        YELLOW(3, "yellow"),
-        BLUE(4, "blue"),
-        MAGENTA(5, "magenta"),
-        CYAN(6, "cyan"),
-        WHITE(7, "white");
-
-        private final int index;
-        private final String name;
-
-        SystemColor(int index, String name)
-        {
-            this.index = index;
-            this.name = name;
-        }
-
-        private int getIndex()
-        {
-            return index;
-        }
-
-        public String getName()
-        {
-            return name;
-        }
-
-        public static SystemColor valueOf(int index)
-        {
-            for (SystemColor color : values()) {
-                if (index == color.getIndex()) {
-                    return color;
-                }
-            }
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Invalid color index: " + index);
-        }
-    }
-
     private ColorFunctions() {}
 
     @ScalarFunction
@@ -317,5 +276,46 @@ public final class ColorFunctions
         checkCondition(color >= 0, INVALID_FUNCTION_ARGUMENT, "color is not a valid rgb value");
 
         return (int) (color & 0xff);
+    }
+
+    public enum SystemColor
+    {
+        BLACK(0, "black"),
+        RED(1, "red"),
+        GREEN(2, "green"),
+        YELLOW(3, "yellow"),
+        BLUE(4, "blue"),
+        MAGENTA(5, "magenta"),
+        CYAN(6, "cyan"),
+        WHITE(7, "white");
+
+        private final int index;
+        private final String name;
+
+        SystemColor(int index, String name)
+        {
+            this.index = index;
+            this.name = name;
+        }
+
+        public static SystemColor valueOf(int index)
+        {
+            for (SystemColor color : values()) {
+                if (index == color.getIndex()) {
+                    return color;
+                }
+            }
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Invalid color index: " + index);
+        }
+
+        private int getIndex()
+        {
+            return index;
+        }
+
+        public String getName()
+        {
+            return name;
+        }
     }
 }

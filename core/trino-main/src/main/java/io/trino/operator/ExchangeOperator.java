@@ -36,64 +36,11 @@ public class ExchangeOperator
         implements SourceOperator
 {
     public static final CatalogName REMOTE_CONNECTOR_ID = new CatalogName("$remote");
-
-    public static class ExchangeOperatorFactory
-            implements SourceOperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId sourceId;
-        private final ExchangeClientSupplier exchangeClientSupplier;
-        private final PagesSerdeFactory serdeFactory;
-        private ExchangeClient exchangeClient;
-        private boolean closed;
-
-        public ExchangeOperatorFactory(
-                int operatorId,
-                PlanNodeId sourceId,
-                ExchangeClientSupplier exchangeClientSupplier,
-                PagesSerdeFactory serdeFactory)
-        {
-            this.operatorId = operatorId;
-            this.sourceId = sourceId;
-            this.exchangeClientSupplier = exchangeClientSupplier;
-            this.serdeFactory = serdeFactory;
-        }
-
-        @Override
-        public PlanNodeId getSourceId()
-        {
-            return sourceId;
-        }
-
-        @Override
-        public SourceOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
-            if (exchangeClient == null) {
-                exchangeClient = exchangeClientSupplier.get(driverContext.getPipelineContext().localSystemMemoryContext());
-            }
-
-            return new ExchangeOperator(
-                    operatorContext,
-                    sourceId,
-                    serdeFactory.createPagesSerde(),
-                    exchangeClient);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
     private final ExchangeClient exchangeClient;
     private final PagesSerde serde;
     private ListenableFuture<Void> isBlocked = NOT_BLOCKED;
-
     public ExchangeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
@@ -195,5 +142,56 @@ public class ExchangeOperator
     public void close()
     {
         exchangeClient.close();
+    }
+
+    public static class ExchangeOperatorFactory
+            implements SourceOperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId sourceId;
+        private final ExchangeClientSupplier exchangeClientSupplier;
+        private final PagesSerdeFactory serdeFactory;
+        private ExchangeClient exchangeClient;
+        private boolean closed;
+
+        public ExchangeOperatorFactory(
+                int operatorId,
+                PlanNodeId sourceId,
+                ExchangeClientSupplier exchangeClientSupplier,
+                PagesSerdeFactory serdeFactory)
+        {
+            this.operatorId = operatorId;
+            this.sourceId = sourceId;
+            this.exchangeClientSupplier = exchangeClientSupplier;
+            this.serdeFactory = serdeFactory;
+        }
+
+        @Override
+        public PlanNodeId getSourceId()
+        {
+            return sourceId;
+        }
+
+        @Override
+        public SourceOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
+            if (exchangeClient == null) {
+                exchangeClient = exchangeClientSupplier.get(driverContext.getPipelineContext().localSystemMemoryContext());
+            }
+
+            return new ExchangeOperator(
+                    operatorContext,
+                    sourceId,
+                    serdeFactory.createPagesSerde(),
+                    exchangeClient);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
     }
 }

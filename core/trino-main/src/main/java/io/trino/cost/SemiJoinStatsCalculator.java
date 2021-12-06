@@ -22,10 +22,10 @@ import static java.lang.Double.min;
 
 public final class SemiJoinStatsCalculator
 {
-    private SemiJoinStatsCalculator() {}
-
     // arbitrary value to be on the safe side when filtering using Anti Join and when value set for filter symbol does not actually overlap with source symbol very much
     private static final double MIN_ANTI_JOIN_FILTER_COEFFICIENT = 0.5;
+
+    private SemiJoinStatsCalculator() {}
 
     // TODO implementation does not take into account overlapping of ranges for source and filtering source.
     //      Basically it works as low and high values were the same for source and filteringSource and just looks at NDVs.

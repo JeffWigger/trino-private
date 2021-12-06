@@ -98,51 +98,6 @@ public class AggregationMetadata
         verifyExactOutputFunction(outputFunction, accumulatorStateDescriptors);
     }
 
-    public Type getOutputType()
-    {
-        return outputType;
-    }
-
-    public List<ParameterMetadata> getValueInputMetadata()
-    {
-        return valueInputMetadata;
-    }
-
-    public List<Class<?>> getLambdaInterfaces()
-    {
-        return lambdaInterfaces;
-    }
-
-    public String getName()
-    {
-        return name;
-    }
-
-    public MethodHandle getInputFunction()
-    {
-        return inputFunction;
-    }
-
-    public Optional<MethodHandle> getRemoveInputFunction()
-    {
-        return removeInputFunction;
-    }
-
-    public MethodHandle getCombineFunction()
-    {
-        return combineFunction;
-    }
-
-    public MethodHandle getOutputFunction()
-    {
-        return outputFunction;
-    }
-
-    public List<AccumulatorStateDescriptor> getAccumulatorStateDescriptors()
-    {
-        return accumulatorStateDescriptors;
-    }
-
     private static void verifyInputFunctionSignature(MethodHandle method, List<ParameterMetadata> dataChannelMetadata, List<Class<?>> lambdaInterfaces, List<AccumulatorStateDescriptor> stateDescriptors)
     {
         Class<?>[] parameters = method.type().parameterArray();
@@ -237,6 +192,51 @@ public class AggregationMetadata
         }
 
         return parameters;
+    }
+
+    public Type getOutputType()
+    {
+        return outputType;
+    }
+
+    public List<ParameterMetadata> getValueInputMetadata()
+    {
+        return valueInputMetadata;
+    }
+
+    public List<Class<?>> getLambdaInterfaces()
+    {
+        return lambdaInterfaces;
+    }
+
+    public String getName()
+    {
+        return name;
+    }
+
+    public MethodHandle getInputFunction()
+    {
+        return inputFunction;
+    }
+
+    public Optional<MethodHandle> getRemoveInputFunction()
+    {
+        return removeInputFunction;
+    }
+
+    public MethodHandle getCombineFunction()
+    {
+        return combineFunction;
+    }
+
+    public MethodHandle getOutputFunction()
+    {
+        return outputFunction;
+    }
+
+    public List<AccumulatorStateDescriptor> getAccumulatorStateDescriptors()
+    {
+        return accumulatorStateDescriptors;
     }
 
     public static class ParameterMetadata

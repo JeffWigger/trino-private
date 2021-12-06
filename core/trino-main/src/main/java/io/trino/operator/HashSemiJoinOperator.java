@@ -49,6 +49,23 @@ import static java.util.Objects.requireNonNull;
 public class HashSemiJoinOperator
         implements WorkProcessorOperator
 {
+    private final WorkProcessor<Page> pages;
+
+    private HashSemiJoinOperator(
+            WorkProcessor<Page> sourcePages,
+            SetSupplier channelSetFuture,
+            int probeJoinChannel,
+            Optional<Integer> probeHashChannel,
+            MemoryTrackingContext memoryTrackingContext)
+    {
+        pages = sourcePages
+                .transform(new SemiJoinPages(
+                        channelSetFuture,
+                        probeJoinChannel,
+                        probeHashChannel,
+                        requireNonNull(memoryTrackingContext, "memoryTrackingContext is null").aggregateUserMemoryContext()));
+    }
+
     public static OperatorFactory createOperatorFactory(
             int operatorId,
             PlanNodeId planNodeId,
@@ -58,6 +75,17 @@ public class HashSemiJoinOperator
             Optional<Integer> probeJoinHashChannel)
     {
         return createAdapterOperatorFactory(new Factory(operatorId, planNodeId, setSupplier, probeTypes, probeJoinChannel, probeJoinHashChannel));
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
+    @Override
+    public WorkProcessor<Page> getOutputPages()
+    {
+        return pages;
     }
 
     private static class Factory
@@ -118,29 +146,6 @@ public class HashSemiJoinOperator
         {
             return new Factory(operatorId, planNodeId, setSupplier, probeTypes, probeJoinChannel, probeJoinHashChannel);
         }
-    }
-
-    private final WorkProcessor<Page> pages;
-
-    private HashSemiJoinOperator(
-            WorkProcessor<Page> sourcePages,
-            SetSupplier channelSetFuture,
-            int probeJoinChannel,
-            Optional<Integer> probeHashChannel,
-            MemoryTrackingContext memoryTrackingContext)
-    {
-        pages = sourcePages
-                .transform(new SemiJoinPages(
-                        channelSetFuture,
-                        probeJoinChannel,
-                        probeHashChannel,
-                        requireNonNull(memoryTrackingContext, "memoryTrackingContext is null").aggregateUserMemoryContext()));
-    }
-
-    @Override
-    public WorkProcessor<Page> getOutputPages()
-    {
-        return pages;
     }
 
     private static class SemiJoinPages
@@ -224,10 +229,5 @@ public class HashSemiJoinOperator
             // add the new boolean column to the page
             return ofResult(inputPage.appendColumn(blockBuilder.build()));
         }
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 }

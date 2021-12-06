@@ -31,11 +31,6 @@ public final class TableStatistics
     private final Estimate rowCount;
     private final Map<ColumnHandle, ColumnStatistics> columnStatistics;
 
-    public static TableStatistics empty()
-    {
-        return EMPTY;
-    }
-
     public TableStatistics(Estimate rowCount, Map<ColumnHandle, ColumnStatistics> columnStatistics)
     {
         this.rowCount = requireNonNull(rowCount, "rowCount cannot be null");
@@ -43,6 +38,16 @@ public final class TableStatistics
             throw new IllegalArgumentException(format("rowCount must be greater than or equal to 0: %s", rowCount.getValue()));
         }
         this.columnStatistics = unmodifiableMap(requireNonNull(columnStatistics, "columnStatistics cannot be null"));
+    }
+
+    public static TableStatistics empty()
+    {
+        return EMPTY;
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
     }
 
     public Estimate getRowCount()
@@ -87,11 +92,6 @@ public final class TableStatistics
                 "rowCount=" + rowCount +
                 ", columnStatistics=" + columnStatistics +
                 '}';
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
     }
 
     public static final class Builder

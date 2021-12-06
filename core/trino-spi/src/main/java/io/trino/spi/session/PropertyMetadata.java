@@ -75,76 +75,6 @@ public final class PropertyMetadata<T>
         this.encoder = encoder;
     }
 
-    /**
-     * Name of the property.  This must be a valid identifier.
-     */
-    public String getName()
-    {
-        return name;
-    }
-
-    /**
-     * Description for the end user.
-     */
-    public String getDescription()
-    {
-        return description;
-    }
-
-    /**
-     * SQL type of the property.
-     */
-    public Type getSqlType()
-    {
-        return sqlType;
-    }
-
-    /**
-     * Java type of this property.
-     */
-    public Class<T> getJavaType()
-    {
-        return javaType;
-    }
-
-    /**
-     * Gets the default value for this property.
-     */
-    public T getDefaultValue()
-    {
-        return defaultValue;
-    }
-
-    /**
-     * Is this property hidden from users?
-     */
-    public boolean isHidden()
-    {
-        return hidden;
-    }
-
-    /**
-     * Decodes the SQL type object value to the Java type of the property.
-     */
-    public T decode(Object value)
-    {
-        return decoder.apply(value);
-    }
-
-    /**
-     * Encodes the Java type value to SQL type object value
-     */
-    public Object encode(T value)
-    {
-        return encoder.apply(value);
-    }
-
-    @Override
-    public String toString()
-    {
-        return "PropertyMetadata{" + name + "}";
-    }
-
     public static PropertyMetadata<Boolean> booleanProperty(String name, String description, Boolean defaultValue, boolean hidden)
     {
         return booleanProperty(name, description, defaultValue, value -> {}, hidden);
@@ -284,5 +214,75 @@ public final class PropertyMetadata<T>
                     return enumValue;
                 },
                 Enum::name);
+    }
+
+    /**
+     * Name of the property.  This must be a valid identifier.
+     */
+    public String getName()
+    {
+        return name;
+    }
+
+    /**
+     * Description for the end user.
+     */
+    public String getDescription()
+    {
+        return description;
+    }
+
+    /**
+     * SQL type of the property.
+     */
+    public Type getSqlType()
+    {
+        return sqlType;
+    }
+
+    /**
+     * Java type of this property.
+     */
+    public Class<T> getJavaType()
+    {
+        return javaType;
+    }
+
+    /**
+     * Gets the default value for this property.
+     */
+    public T getDefaultValue()
+    {
+        return defaultValue;
+    }
+
+    /**
+     * Is this property hidden from users?
+     */
+    public boolean isHidden()
+    {
+        return hidden;
+    }
+
+    /**
+     * Decodes the SQL type object value to the Java type of the property.
+     */
+    public T decode(Object value)
+    {
+        return decoder.apply(value);
+    }
+
+    /**
+     * Encodes the Java type value to SQL type object value
+     */
+    public Object encode(T value)
+    {
+        return encoder.apply(value);
+    }
+
+    @Override
+    public String toString()
+    {
+        return "PropertyMetadata{" + name + "}";
     }
 }

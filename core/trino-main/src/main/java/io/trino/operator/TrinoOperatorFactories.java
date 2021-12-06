@@ -41,6 +41,13 @@ import static io.trino.operator.output.PartitionedOutputOperator.PartitionedOutp
 public class TrinoOperatorFactories
         implements OperatorFactories
 {
+    private static List<Integer> rangeList(int endExclusive)
+    {
+        return IntStream.range(0, endExclusive)
+                .boxed()
+                .collect(toImmutableList());
+    }
+
     @Override
     public OperatorFactory innerJoin(
             int operatorId,
@@ -184,13 +191,6 @@ public class TrinoOperatorFactories
                 nullChannel,
                 outputBuffer,
                 maxPagePartitioningBufferSize);
-    }
-
-    private static List<Integer> rangeList(int endExclusive)
-    {
-        return IntStream.range(0, endExclusive)
-                .boxed()
-                .collect(toImmutableList());
     }
 
     private OperatorFactory createJoinOperatorFactory(

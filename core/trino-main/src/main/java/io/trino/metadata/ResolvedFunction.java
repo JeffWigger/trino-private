@@ -66,6 +66,22 @@ public class ResolvedFunction
         this.functionDependencies = ImmutableSet.copyOf(requireNonNull(functionDependencies, "functionDependencies is null"));
     }
 
+    public static boolean isResolved(QualifiedName name)
+    {
+        return name.getSuffix().startsWith(PREFIX);
+    }
+
+    public static String extractFunctionName(QualifiedName qualifiedName)
+    {
+        String data = qualifiedName.getSuffix();
+        if (!data.startsWith(PREFIX)) {
+            return data;
+        }
+        List<String> parts = Splitter.on(PREFIX).splitToList(data.subSequence(1, data.length()));
+        checkArgument(parts.size() == 2, "Expected encoded resolved function to contain two parts: %s", qualifiedName);
+        return parts.get(0);
+    }
+
     @JsonProperty
     public BoundSignature getSignature()
     {
@@ -90,11 +106,6 @@ public class ResolvedFunction
         return functionDependencies;
     }
 
-    public static boolean isResolved(QualifiedName name)
-    {
-        return name.getSuffix().startsWith(PREFIX);
-    }
-
     public QualifiedName toQualifiedName()
     {
         byte[] json = SERIALIZE_JSON_CODEC.toJsonBytes(this);
@@ -108,17 +119,6 @@ public class ResolvedFunction
         String base32 = base32Hex().encode(compressed, 0, outputSize);
         // add name so expressions are still readable
         return QualifiedName.of(PREFIX + signature.getName() + PREFIX + base32);
-    }
-
-    public static String extractFunctionName(QualifiedName qualifiedName)
-    {
-        String data = qualifiedName.getSuffix();
-        if (!data.startsWith(PREFIX)) {
-            return data;
-        }
-        List<String> parts = Splitter.on(PREFIX).splitToList(data.subSequence(1, data.length()));
-        checkArgument(parts.size() == 2, "Expected encoded resolved function to contain two parts: %s", qualifiedName);
-        return parts.get(0);
     }
 
     @Override

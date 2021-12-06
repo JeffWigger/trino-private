@@ -97,6 +97,95 @@ public class PlanNodeDecorrelator
                 correlation));
     }
 
+    private Optional<DecorrelatedNode> decorrelatedNode(
+            List<Expression> correlatedPredicates,
+            PlanNode node,
+            List<Symbol> correlation)
+    {
+        if (containsCorrelation(node, correlation)) {
+            // node is still correlated ; /
+            return Optional.empty();
+        }
+        return Optional.of(new DecorrelatedNode(correlatedPredicates, node));
+    }
+
+    private boolean containsCorrelation(PlanNode node, List<Symbol> correlation)
+    {
+        return Sets.union(SymbolsExtractor.extractUnique(node, lookup), SymbolsExtractor.extractOutputSymbols(node, lookup)).stream().anyMatch(correlation::contains);
+    }
+
+    private static class DecorrelationResult
+    {
+        final PlanNode node;
+        final Set<Symbol> symbolsToPropagate;
+        final List<Expression> correlatedPredicates;
+
+        // mapping from correlated symbols to their uncorrelated equivalence
+        final Multimap<Symbol, Symbol> correlatedSymbolsMapping;
+
+        // local (uncorrelated) symbols known to be constant based on their dependency on correlation symbols
+        // they are derived from the filter predicate, e.g.
+        // a = corr --> a is constant
+        // b = f(corr_1, corr_2, ...) --> b is constant provided that f is deterministic
+        // cast(c AS ...) = corr --> c is constant provided that cast is injective
+        final Set<Symbol> constantSymbols;
+
+        // If a subquery has at most single row for any correlation values?
+        final boolean atMostSingleRow;
+
+        DecorrelationResult(PlanNode node, Set<Symbol> symbolsToPropagate, List<Expression> correlatedPredicates, Multimap<Symbol, Symbol> correlatedSymbolsMapping, Set<Symbol> constantSymbols, boolean atMostSingleRow)
+        {
+            this.node = node;
+            this.symbolsToPropagate = symbolsToPropagate;
+            this.correlatedPredicates = correlatedPredicates;
+            this.atMostSingleRow = atMostSingleRow;
+            this.correlatedSymbolsMapping = correlatedSymbolsMapping;
+            this.constantSymbols = constantSymbols;
+            checkState(constantSymbols.containsAll(correlatedSymbolsMapping.values()), "Expected constant symbols to contain all correlated symbols local equivalents");
+            checkState(symbolsToPropagate.containsAll(constantSymbols), "Expected symbols to propagate to contain all constant symbols");
+        }
+
+        SymbolMapper getCorrelatedSymbolMapper()
+        {
+            return symbolMapper(correlatedSymbolsMapping.asMap().entrySet().stream()
+                    .collect(toImmutableMap(Map.Entry::getKey, symbols -> Iterables.getLast(symbols.getValue()))));
+        }
+
+        /**
+         * @return constant symbols from a perspective of a subquery
+         */
+        Set<Symbol> getConstantSymbols()
+        {
+            return constantSymbols;
+        }
+    }
+
+    public static class DecorrelatedNode
+    {
+        private final List<Expression> correlatedPredicates;
+        private final PlanNode node;
+
+        public DecorrelatedNode(List<Expression> correlatedPredicates, PlanNode node)
+        {
+            requireNonNull(correlatedPredicates, "correlatedPredicates is null");
+            this.correlatedPredicates = ImmutableList.copyOf(correlatedPredicates);
+            this.node = requireNonNull(node, "node is null");
+        }
+
+        public Optional<Expression> getCorrelatedPredicates()
+        {
+            if (correlatedPredicates.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(ExpressionUtils.and(correlatedPredicates));
+        }
+
+        public PlanNode getNode()
+        {
+            return node;
+        }
+    }
+
     private class DecorrelatingVisitor
             extends PlanVisitor<Optional<DecorrelationResult>, Void>
     {
@@ -578,95 +667,6 @@ public class PlanNodeDecorrelator
         private boolean isCorrelated(Expression expression)
         {
             return correlation.stream().anyMatch(SymbolsExtractor.extractUnique(expression)::contains);
-        }
-    }
-
-    private static class DecorrelationResult
-    {
-        final PlanNode node;
-        final Set<Symbol> symbolsToPropagate;
-        final List<Expression> correlatedPredicates;
-
-        // mapping from correlated symbols to their uncorrelated equivalence
-        final Multimap<Symbol, Symbol> correlatedSymbolsMapping;
-
-        // local (uncorrelated) symbols known to be constant based on their dependency on correlation symbols
-        // they are derived from the filter predicate, e.g.
-        // a = corr --> a is constant
-        // b = f(corr_1, corr_2, ...) --> b is constant provided that f is deterministic
-        // cast(c AS ...) = corr --> c is constant provided that cast is injective
-        final Set<Symbol> constantSymbols;
-
-        // If a subquery has at most single row for any correlation values?
-        final boolean atMostSingleRow;
-
-        DecorrelationResult(PlanNode node, Set<Symbol> symbolsToPropagate, List<Expression> correlatedPredicates, Multimap<Symbol, Symbol> correlatedSymbolsMapping, Set<Symbol> constantSymbols, boolean atMostSingleRow)
-        {
-            this.node = node;
-            this.symbolsToPropagate = symbolsToPropagate;
-            this.correlatedPredicates = correlatedPredicates;
-            this.atMostSingleRow = atMostSingleRow;
-            this.correlatedSymbolsMapping = correlatedSymbolsMapping;
-            this.constantSymbols = constantSymbols;
-            checkState(constantSymbols.containsAll(correlatedSymbolsMapping.values()), "Expected constant symbols to contain all correlated symbols local equivalents");
-            checkState(symbolsToPropagate.containsAll(constantSymbols), "Expected symbols to propagate to contain all constant symbols");
-        }
-
-        SymbolMapper getCorrelatedSymbolMapper()
-        {
-            return symbolMapper(correlatedSymbolsMapping.asMap().entrySet().stream()
-                    .collect(toImmutableMap(Map.Entry::getKey, symbols -> Iterables.getLast(symbols.getValue()))));
-        }
-
-        /**
-         * @return constant symbols from a perspective of a subquery
-         */
-        Set<Symbol> getConstantSymbols()
-        {
-            return constantSymbols;
-        }
-    }
-
-    private Optional<DecorrelatedNode> decorrelatedNode(
-            List<Expression> correlatedPredicates,
-            PlanNode node,
-            List<Symbol> correlation)
-    {
-        if (containsCorrelation(node, correlation)) {
-            // node is still correlated ; /
-            return Optional.empty();
-        }
-        return Optional.of(new DecorrelatedNode(correlatedPredicates, node));
-    }
-
-    private boolean containsCorrelation(PlanNode node, List<Symbol> correlation)
-    {
-        return Sets.union(SymbolsExtractor.extractUnique(node, lookup), SymbolsExtractor.extractOutputSymbols(node, lookup)).stream().anyMatch(correlation::contains);
-    }
-
-    public static class DecorrelatedNode
-    {
-        private final List<Expression> correlatedPredicates;
-        private final PlanNode node;
-
-        public DecorrelatedNode(List<Expression> correlatedPredicates, PlanNode node)
-        {
-            requireNonNull(correlatedPredicates, "correlatedPredicates is null");
-            this.correlatedPredicates = ImmutableList.copyOf(correlatedPredicates);
-            this.node = requireNonNull(node, "node is null");
-        }
-
-        public Optional<Expression> getCorrelatedPredicates()
-        {
-            if (correlatedPredicates.isEmpty()) {
-                return Optional.empty();
-            }
-            return Optional.of(ExpressionUtils.and(correlatedPredicates));
-        }
-
-        public PlanNode getNode()
-        {
-            return node;
         }
     }
 }

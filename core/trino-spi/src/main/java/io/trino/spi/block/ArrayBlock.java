@@ -34,9 +34,25 @@ public class ArrayBlock
     private final boolean[] valueIsNull;
     private final Block values;
     private final int[] offsets;
-
-    private volatile long sizeInBytes;
     private final long retainedSizeInBytes;
+    private volatile long sizeInBytes;
+
+    /**
+     * Use createArrayBlockInternal or fromElementBlock instead of this method.  The caller of this method is assumed to have
+     * validated the arguments with validateConstructorArguments.
+     */
+    private ArrayBlock(int arrayOffset, int positionCount, @Nullable boolean[] valueIsNull, int[] offsets, Block values)
+    {
+        // caller must check arguments with validateConstructorArguments
+        this.arrayOffset = arrayOffset;
+        this.positionCount = positionCount;
+        this.valueIsNull = valueIsNull;
+        this.offsets = offsets;
+        this.values = requireNonNull(values);
+
+        sizeInBytes = -1;
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(valueIsNull);
+    }
 
     /**
      * Create an array block directly from columnar nulls, values, and offsets into the values.
@@ -89,23 +105,6 @@ public class ArrayBlock
         }
 
         requireNonNull(values, "values is null");
-    }
-
-    /**
-     * Use createArrayBlockInternal or fromElementBlock instead of this method.  The caller of this method is assumed to have
-     * validated the arguments with validateConstructorArguments.
-     */
-    private ArrayBlock(int arrayOffset, int positionCount, @Nullable boolean[] valueIsNull, int[] offsets, Block values)
-    {
-        // caller must check arguments with validateConstructorArguments
-        this.arrayOffset = arrayOffset;
-        this.positionCount = positionCount;
-        this.valueIsNull = valueIsNull;
-        this.offsets = offsets;
-        this.values = requireNonNull(values);
-
-        sizeInBytes = -1;
-        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(valueIsNull);
     }
 
     @Override

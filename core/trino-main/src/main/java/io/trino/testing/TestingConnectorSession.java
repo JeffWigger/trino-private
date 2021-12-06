@@ -38,10 +38,8 @@ import static java.util.Objects.requireNonNull;
 public class TestingConnectorSession
         implements ConnectorSession
 {
-    private static final QueryIdGenerator queryIdGenerator = new QueryIdGenerator();
-
     public static final ConnectorSession SESSION = builder().build();
-
+    private static final QueryIdGenerator queryIdGenerator = new QueryIdGenerator();
     private final String queryId = queryIdGenerator.createNextQueryId().toString();
     private final ConnectorIdentity identity;
     private final Optional<String> source;
@@ -70,6 +68,11 @@ public class TestingConnectorSession
         this.start = start;
         this.properties = Maps.uniqueIndex(propertyMetadatas, PropertyMetadata::getName);
         this.propertyValues = ImmutableMap.copyOf(propertyValues);
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
     }
 
     @Override
@@ -143,18 +146,13 @@ public class TestingConnectorSession
                 .toString();
     }
 
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
     public static class Builder
     {
-        private ConnectorIdentity identity = ConnectorIdentity.ofUser("user");
         private final Optional<String> source = Optional.of("test");
-        private TimeZoneKey timeZoneKey = UTC_KEY;
         private final Locale locale = ENGLISH;
         private final Optional<String> traceToken = Optional.empty();
+        private ConnectorIdentity identity = ConnectorIdentity.ofUser("user");
+        private TimeZoneKey timeZoneKey = UTC_KEY;
         private Optional<Instant> start = Optional.empty();
         private List<PropertyMetadata<?>> propertyMetadatas = ImmutableList.of();
         private Map<String, Object> propertyValues = ImmutableMap.of();

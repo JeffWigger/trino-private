@@ -116,6 +116,28 @@ public class IndexJoinOptimizer
             this.session = requireNonNull(session, "session is null");
         }
 
+        private static PlanNode createIndexJoinWithExpectedOutputs(List<Symbol> expectedOutputs, IndexJoinNode.Type type, PlanNode probe, PlanNode index, List<IndexJoinNode.EquiJoinClause> equiJoinClause, PlanNodeIdAllocator idAllocator)
+        {
+            PlanNode result = new IndexJoinNode(idAllocator.getNextId(), type, probe, index, equiJoinClause, Optional.empty(), Optional.empty());
+            if (!result.getOutputSymbols().equals(expectedOutputs)) {
+                result = new ProjectNode(
+                        idAllocator.getNextId(),
+                        result,
+                        Assignments.identity(expectedOutputs));
+            }
+            return result;
+        }
+
+        private static List<IndexJoinNode.EquiJoinClause> createEquiJoinClause(List<Symbol> probeSymbols, List<Symbol> indexSymbols)
+        {
+            checkArgument(probeSymbols.size() == indexSymbols.size());
+            ImmutableList.Builder<IndexJoinNode.EquiJoinClause> builder = ImmutableList.builder();
+            for (int i = 0; i < probeSymbols.size(); i++) {
+                builder.add(new IndexJoinNode.EquiJoinClause(probeSymbols.get(i), indexSymbols.get(i)));
+            }
+            return builder.build();
+        }
+
         @Override
         public PlanNode visitJoin(JoinNode node, RewriteContext<Void> context)
         {
@@ -222,28 +244,6 @@ public class IndexJoinOptimizer
                         node.getReorderJoinStatsAndCost());
             }
             return node;
-        }
-
-        private static PlanNode createIndexJoinWithExpectedOutputs(List<Symbol> expectedOutputs, IndexJoinNode.Type type, PlanNode probe, PlanNode index, List<IndexJoinNode.EquiJoinClause> equiJoinClause, PlanNodeIdAllocator idAllocator)
-        {
-            PlanNode result = new IndexJoinNode(idAllocator.getNextId(), type, probe, index, equiJoinClause, Optional.empty(), Optional.empty());
-            if (!result.getOutputSymbols().equals(expectedOutputs)) {
-                result = new ProjectNode(
-                        idAllocator.getNextId(),
-                        result,
-                        Assignments.identity(expectedOutputs));
-            }
-            return result;
-        }
-
-        private static List<IndexJoinNode.EquiJoinClause> createEquiJoinClause(List<Symbol> probeSymbols, List<Symbol> indexSymbols)
-        {
-            checkArgument(probeSymbols.size() == indexSymbols.size());
-            ImmutableList.Builder<IndexJoinNode.EquiJoinClause> builder = ImmutableList.builder();
-            for (int i = 0; i < probeSymbols.size(); i++) {
-                builder.add(new IndexJoinNode.EquiJoinClause(probeSymbols.get(i), indexSymbols.get(i)));
-            }
-            return builder.build();
         }
     }
 

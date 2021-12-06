@@ -28,6 +28,14 @@ public class IrQuantifier
     private final Optional<Integer> atMost;
     private final boolean greedy;
 
+    @JsonCreator
+    public IrQuantifier(int atLeast, Optional<Integer> atMost, boolean greedy)
+    {
+        this.atLeast = atLeast;
+        this.atMost = requireNonNull(atMost, "atMost is null");
+        this.greedy = greedy;
+    }
+
     public static IrQuantifier zeroOrMore(boolean greedy)
     {
         return new IrQuantifier(0, Optional.empty(), greedy);
@@ -46,14 +54,6 @@ public class IrQuantifier
     public static IrQuantifier range(Optional<Integer> atLeast, Optional<Integer> atMost, boolean greedy)
     {
         return new IrQuantifier(atLeast.orElse(0), atMost, greedy);
-    }
-
-    @JsonCreator
-    public IrQuantifier(int atLeast, Optional<Integer> atMost, boolean greedy)
-    {
-        this.atLeast = atLeast;
-        this.atMost = requireNonNull(atMost, "atMost is null");
-        this.greedy = greedy;
     }
 
     @JsonProperty

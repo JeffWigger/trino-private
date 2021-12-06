@@ -63,23 +63,6 @@ public class ArrayToJsonCast
         this.legacyRowToJson = legacyRowToJson;
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        Type type = functionBinding.getTypeVariable("T");
-        Type arrayType = functionBinding.getBoundSignature().getArgumentTypes().get(0);
-        checkCondition(canCastToJson(arrayType), INVALID_CAST_ARGUMENT, "Cannot cast %s to JSON", arrayType);
-
-        JsonGeneratorWriter writer = JsonGeneratorWriter.createJsonGeneratorWriter(type, legacyRowToJson);
-        MethodHandle methodHandle = METHOD_HANDLE.bindTo(writer);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     public static Slice toJson(JsonGeneratorWriter writer, Block block)
     {
         try {
@@ -96,5 +79,22 @@ public class ArrayToJsonCast
         catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        Type type = functionBinding.getTypeVariable("T");
+        Type arrayType = functionBinding.getBoundSignature().getArgumentTypes().get(0);
+        checkCondition(canCastToJson(arrayType), INVALID_CAST_ARGUMENT, "Cannot cast %s to JSON", arrayType);
+
+        JsonGeneratorWriter writer = JsonGeneratorWriter.createJsonGeneratorWriter(type, legacyRowToJson);
+        MethodHandle methodHandle = METHOD_HANDLE.bindTo(writer);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

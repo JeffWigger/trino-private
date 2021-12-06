@@ -69,6 +69,16 @@ public class JoinStatsRule
         this.unmatchedJoinComplementNdvsCoefficient = unmatchedJoinComplementNdvsCoefficient;
     }
 
+    private static double firstNonNaN(double... values)
+    {
+        for (double value : values) {
+            if (!isNaN(value)) {
+                return value;
+            }
+        }
+        throw new IllegalArgumentException("All values are NaN");
+    }
+
     @Override
     public Pattern<JoinNode> getPattern()
     {
@@ -248,16 +258,6 @@ public class JoinStatsRule
                 .addSymbolStatistics(clause.getLeft(), newLeftStats)
                 .addSymbolStatistics(clause.getRight(), newRightStats);
         return normalizer.normalize(result.build(), types);
-    }
-
-    private static double firstNonNaN(double... values)
-    {
-        for (double value : values) {
-            if (!isNaN(value)) {
-                return value;
-            }
-        }
-        throw new IllegalArgumentException("All values are NaN");
     }
 
     /**

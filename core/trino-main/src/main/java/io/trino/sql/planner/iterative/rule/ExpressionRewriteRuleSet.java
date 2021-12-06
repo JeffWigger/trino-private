@@ -55,11 +55,6 @@ import static java.util.Objects.requireNonNull;
 
 public class ExpressionRewriteRuleSet
 {
-    public interface ExpressionRewriter
-    {
-        Expression rewrite(Expression expression, Rule.Context context);
-    }
-
     private final ExpressionRewriter rewriter;
 
     public ExpressionRewriteRuleSet(ExpressionRewriter rewriter)
@@ -100,6 +95,11 @@ public class ExpressionRewriteRuleSet
     public Rule<?> valuesExpressionRewrite()
     {
         return new ValuesExpressionRewrite(rewriter);
+    }
+
+    public interface ExpressionRewriter
+    {
+        Expression rewrite(Expression expression, Rule.Context context);
     }
 
     private static final class ProjectExpressionRewrite

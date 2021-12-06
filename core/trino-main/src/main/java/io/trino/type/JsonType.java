@@ -39,13 +39,41 @@ import static java.lang.invoke.MethodHandles.lookup;
 public class JsonType
         extends AbstractVariableWidthType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(JsonType.class, lookup(), Slice.class);
-
     public static final JsonType JSON = new JsonType();
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(JsonType.class, lookup(), Slice.class);
 
     public JsonType()
     {
         super(new TypeSignature(StandardTypes.JSON), Slice.class);
+    }
+
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(Slice left, Slice right)
+    {
+        return left.equals(right);
+    }
+
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
+    {
+        int leftLength = leftBlock.getSliceLength(leftPosition);
+        int rightLength = rightBlock.getSliceLength(rightPosition);
+        if (leftLength != rightLength) {
+            return false;
+        }
+        return leftBlock.equals(leftPosition, 0, rightBlock, rightPosition, 0, leftLength);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(Slice value)
+    {
+        return XxHash64.hash(value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(@BlockPosition Block block, @BlockIndex int position)
+    {
+        return block.hash(position, 0, block.getSliceLength(position));
     }
 
     @Override
@@ -103,34 +131,5 @@ public class JsonType
     public void writeSlice(BlockBuilder blockBuilder, Slice value, int offset, int length)
     {
         blockBuilder.writeBytes(value, offset, length).closeEntry();
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(Slice left, Slice right)
-    {
-        return left.equals(right);
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
-    {
-        int leftLength = leftBlock.getSliceLength(leftPosition);
-        int rightLength = rightBlock.getSliceLength(rightPosition);
-        if (leftLength != rightLength) {
-            return false;
-        }
-        return leftBlock.equals(leftPosition, 0, rightBlock, rightPosition, 0, leftLength);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(Slice value)
-    {
-        return XxHash64.hash(value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(@BlockPosition Block block, @BlockIndex int position)
-    {
-        return block.hash(position, 0, block.getSliceLength(position));
     }
 }

@@ -31,6 +31,14 @@ public class DesugarLike
         super(createRewrite(metadata, typeAnalyzer));
     }
 
+    private static ExpressionRewriter createRewrite(Metadata metadata, TypeAnalyzer typeAnalyzer)
+    {
+        requireNonNull(metadata, "metadata is null");
+        requireNonNull(typeAnalyzer, "typeAnalyzer is null");
+
+        return (expression, context) -> DesugarLikeRewriter.rewrite(expression, context.getSession(), metadata, typeAnalyzer, context.getSymbolAllocator().getTypes());
+    }
+
     @Override
     public Set<Rule<?>> rules()
     {
@@ -39,13 +47,5 @@ public class DesugarLike
                 filterExpressionRewrite(),
                 joinExpressionRewrite(),
                 valuesExpressionRewrite());
-    }
-
-    private static ExpressionRewriter createRewrite(Metadata metadata, TypeAnalyzer typeAnalyzer)
-    {
-        requireNonNull(metadata, "metadata is null");
-        requireNonNull(typeAnalyzer, "typeAnalyzer is null");
-
-        return (expression, context) -> DesugarLikeRewriter.rewrite(expression, context.getSession(), metadata, typeAnalyzer, context.getSymbolAllocator().getTypes());
     }
 }

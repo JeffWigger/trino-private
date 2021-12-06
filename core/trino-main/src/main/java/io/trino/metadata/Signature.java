@@ -91,6 +91,69 @@ public class Signature
         return OperatorType.valueOf(mangledName.substring(OPERATOR_PREFIX.length()).toUpperCase(Locale.ENGLISH));
     }
 
+    /*
+     * similar to T extends MyClass<?...>, if Java supported varargs wildcards
+     */
+    public static TypeVariableConstraint withVariadicBound(String name, String variadicBound)
+    {
+        return new TypeVariableConstraint(name, false, false, variadicBound, ImmutableSet.of(), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint comparableWithVariadicBound(String name, String variadicBound)
+    {
+        return new TypeVariableConstraint(name, true, false, variadicBound, ImmutableSet.of(), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint typeVariable(String name)
+    {
+        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.of(), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint comparableTypeParameter(String name)
+    {
+        return new TypeVariableConstraint(name, true, false, null, ImmutableSet.of(), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint orderableWithVariadicBound(String name, String variadicBound)
+    {
+        return new TypeVariableConstraint(name, false, true, variadicBound, ImmutableSet.of(), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint orderableTypeParameter(String name)
+    {
+        return new TypeVariableConstraint(name, false, true, null, ImmutableSet.of(), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint castableToTypeParameter(String name, TypeSignature... toType)
+    {
+        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.copyOf(toType), ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint castableToTypeParameter(String name, Set<TypeSignature> toType)
+    {
+        return new TypeVariableConstraint(name, false, false, null, toType, ImmutableSet.of());
+    }
+
+    public static TypeVariableConstraint castableFromTypeParameter(String name, TypeSignature... toType)
+    {
+        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.of(), ImmutableSet.copyOf(toType));
+    }
+
+    public static TypeVariableConstraint castableFromTypeParameter(String name, Set<TypeSignature> toType)
+    {
+        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.of(), toType);
+    }
+
+    public static LongVariableConstraint longVariableExpression(String variable, String expression)
+    {
+        return new LongVariableConstraint(variable, expression);
+    }
+
+    public static SignatureBuilder builder()
+    {
+        return new SignatureBuilder();
+    }
+
     @JsonProperty
     public String getName()
     {
@@ -160,68 +223,5 @@ public class Signature
                 .collect(Collectors.toList());
 
         return name + (allConstraints.isEmpty() ? "" : "<" + Joiner.on(",").join(allConstraints) + ">") + "(" + Joiner.on(",").join(argumentTypes) + "):" + returnType;
-    }
-
-    /*
-     * similar to T extends MyClass<?...>, if Java supported varargs wildcards
-     */
-    public static TypeVariableConstraint withVariadicBound(String name, String variadicBound)
-    {
-        return new TypeVariableConstraint(name, false, false, variadicBound, ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint comparableWithVariadicBound(String name, String variadicBound)
-    {
-        return new TypeVariableConstraint(name, true, false, variadicBound, ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint typeVariable(String name)
-    {
-        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint comparableTypeParameter(String name)
-    {
-        return new TypeVariableConstraint(name, true, false, null, ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint orderableWithVariadicBound(String name, String variadicBound)
-    {
-        return new TypeVariableConstraint(name, false, true, variadicBound, ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint orderableTypeParameter(String name)
-    {
-        return new TypeVariableConstraint(name, false, true, null, ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint castableToTypeParameter(String name, TypeSignature... toType)
-    {
-        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.copyOf(toType), ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint castableToTypeParameter(String name, Set<TypeSignature> toType)
-    {
-        return new TypeVariableConstraint(name, false, false, null, toType, ImmutableSet.of());
-    }
-
-    public static TypeVariableConstraint castableFromTypeParameter(String name, TypeSignature... toType)
-    {
-        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.of(), ImmutableSet.copyOf(toType));
-    }
-
-    public static TypeVariableConstraint castableFromTypeParameter(String name, Set<TypeSignature> toType)
-    {
-        return new TypeVariableConstraint(name, false, false, null, ImmutableSet.of(), toType);
-    }
-
-    public static LongVariableConstraint longVariableExpression(String variable, String expression)
-    {
-        return new LongVariableConstraint(variable, expression);
-    }
-
-    public static SignatureBuilder builder()
-    {
-        return new SignatureBuilder();
     }
 }

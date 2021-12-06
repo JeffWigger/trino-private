@@ -54,6 +54,12 @@ public final class VersionFunction
         this.nodeVersion = nodeVersion;
     }
 
+    @UsedByGeneratedCode
+    public static Slice getVersion(String version)
+    {
+        return utf8Slice(version);
+    }
+
     @Override
     public ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -63,11 +69,5 @@ public final class VersionFunction
                 FAIL_ON_NULL,
                 ImmutableList.of(),
                 methodHandle);
-    }
-
-    @UsedByGeneratedCode
-    public static Slice getVersion(String version)
-    {
-        return utf8Slice(version);
     }
 }

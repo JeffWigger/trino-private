@@ -51,6 +51,35 @@ public class TestConnectorViewDefinition
         return new JsonCodecFactory(provider).jsonCodec(ConnectorViewDefinition.class);
     }
 
+    private static void assertBaseView(ConnectorViewDefinition view)
+    {
+        assertEquals(view.getOriginalSql(), "SELECT 42 x");
+        assertEquals(view.getColumns().size(), 1);
+        ViewColumn column = getOnlyElement(view.getColumns());
+        assertEquals(column.getName(), "x");
+        assertEquals(column.getType(), BIGINT.getTypeId());
+        assertRoundTrip(view);
+    }
+
+    private static void assertRoundTrip(ConnectorViewDefinition expected)
+    {
+        ConnectorViewDefinition actual = CODEC.fromJson(CODEC.toJson(expected));
+        assertEquals(actual.getOwner(), expected.getOwner());
+        assertEquals(actual.isRunAsInvoker(), expected.isRunAsInvoker());
+        assertEquals(actual.getCatalog(), expected.getCatalog());
+        assertEquals(actual.getSchema(), expected.getSchema());
+        assertEquals(actual.getOriginalSql(), expected.getOriginalSql());
+        assertThat(actual.getColumns())
+                .usingElementComparator(columnComparator())
+                .isEqualTo(expected.getColumns());
+    }
+
+    private static Comparator<ViewColumn> columnComparator()
+    {
+        return comparing(ViewColumn::getName)
+                .thenComparing(column -> column.getType().toString());
+    }
+
     @Test
     public void testLegacyViewWithoutOwner()
     {
@@ -109,34 +138,5 @@ public class TestConnectorViewDefinition
                 Optional.of("comment"),
                 Optional.of("test_owner"),
                 false));
-    }
-
-    private static void assertBaseView(ConnectorViewDefinition view)
-    {
-        assertEquals(view.getOriginalSql(), "SELECT 42 x");
-        assertEquals(view.getColumns().size(), 1);
-        ViewColumn column = getOnlyElement(view.getColumns());
-        assertEquals(column.getName(), "x");
-        assertEquals(column.getType(), BIGINT.getTypeId());
-        assertRoundTrip(view);
-    }
-
-    private static void assertRoundTrip(ConnectorViewDefinition expected)
-    {
-        ConnectorViewDefinition actual = CODEC.fromJson(CODEC.toJson(expected));
-        assertEquals(actual.getOwner(), expected.getOwner());
-        assertEquals(actual.isRunAsInvoker(), expected.isRunAsInvoker());
-        assertEquals(actual.getCatalog(), expected.getCatalog());
-        assertEquals(actual.getSchema(), expected.getSchema());
-        assertEquals(actual.getOriginalSql(), expected.getOriginalSql());
-        assertThat(actual.getColumns())
-                .usingElementComparator(columnComparator())
-                .isEqualTo(expected.getColumns());
-    }
-
-    private static Comparator<ViewColumn> columnComparator()
-    {
-        return comparing(ViewColumn::getName)
-                .thenComparing(column -> column.getType().toString());
     }
 }

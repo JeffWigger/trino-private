@@ -67,30 +67,7 @@ import static java.util.Objects.requireNonNull;
 public class AggregationImplementation
         implements ParametricImplementation
 {
-    public static class AggregateNativeContainerType
-    {
-        private final Class<?> javaType;
-        private final boolean isBlockPosition;
-
-        public AggregateNativeContainerType(Class<?> javaType, boolean isBlockPosition)
-        {
-            this.javaType = javaType;
-            this.isBlockPosition = isBlockPosition;
-        }
-
-        public Class<?> getJavaType()
-        {
-            return javaType;
-        }
-
-        public boolean isBlockPosition()
-        {
-            return isBlockPosition;
-        }
-    }
-
     private final Signature signature;
-
     private final Class<?> definitionClass;
     private final Class<?> stateClass;
     private final MethodHandle inputFunction;
@@ -104,7 +81,6 @@ public class AggregationImplementation
     private final List<ImplementationDependency> outputDependencies;
     private final List<ParameterType> inputParameterMetadataTypes;
     private final ImmutableList<FunctionArgumentDefinition> argumentDefinitions;
-
     public AggregationImplementation(
             Signature signature,
             Class<?> definitionClass,
@@ -242,6 +218,28 @@ public class AggregationImplementation
         return true;
     }
 
+    public static class AggregateNativeContainerType
+    {
+        private final Class<?> javaType;
+        private final boolean isBlockPosition;
+
+        public AggregateNativeContainerType(Class<?> javaType, boolean isBlockPosition)
+        {
+            this.javaType = javaType;
+            this.isBlockPosition = isBlockPosition;
+        }
+
+        public Class<?> getJavaType()
+        {
+            return javaType;
+        }
+
+        public boolean isBlockPosition()
+        {
+            return isBlockPosition;
+        }
+    }
+
     public static final class Parser
     {
         private final Class<?> aggregationDefinition;
@@ -298,10 +296,10 @@ public class AggregationImplementation
             longVariableConstraints = FunctionsParserHelper.parseLongVariableConstraints(inputFunction);
             List<ImplementationDependency> allDependencies =
                     Stream.of(
-                            inputDependencies.stream(),
-                            removeInputDependencies.stream(),
-                            outputDependencies.stream(),
-                            combineDependencies.stream())
+                                    inputDependencies.stream(),
+                                    removeInputDependencies.stream(),
+                                    outputDependencies.stream(),
+                                    combineDependencies.stream())
                             .reduce(Stream::concat)
                             .orElseGet(Stream::empty)
                             .collect(toImmutableList());
@@ -318,31 +316,6 @@ public class AggregationImplementation
             removeInputHandle = removeInputFunction.map(Reflection::methodHandle);
             combineHandle = methodHandle(combineFunction);
             outputHandle = methodHandle(outputFunction);
-        }
-
-        private AggregationImplementation get()
-        {
-            Signature signature = new Signature(
-                    header.getCanonicalName(),
-                    typeVariableConstraints,
-                    longVariableConstraints,
-                    returnType,
-                    inputTypes,
-                    false);
-
-            return new AggregationImplementation(signature,
-                    aggregationDefinition,
-                    stateClass,
-                    inputHandle,
-                    removeInputHandle,
-                    outputHandle,
-                    combineHandle,
-                    argumentNativeContainerTypes,
-                    inputDependencies,
-                    removeInputDependencies,
-                    combineDependencies,
-                    outputDependencies,
-                    parameterMetadataTypes);
         }
 
         public static AggregationImplementation parseImplementation(
@@ -439,33 +412,6 @@ public class AggregationImplementation
             return builder.build();
         }
 
-        public List<ImplementationDependency> parseImplementationDependencies(Method inputFunction)
-        {
-            ImmutableList.Builder<ImplementationDependency> builder = ImmutableList.builder();
-
-            for (Parameter parameter : inputFunction.getParameters()) {
-                Class<?> parameterType = parameter.getType();
-
-                // Skip injected parameters
-                if (parameterType == ConnectorSession.class) {
-                    continue;
-                }
-
-                getImplementationDependencyAnnotation(parameter).ifPresent(annotation -> {
-                    // check if only declared typeParameters and literalParameters are used
-                    validateImplementationDependencyAnnotation(
-                            inputFunction,
-                            annotation,
-                            typeParameters.stream()
-                                    .map(TypeParameter::value)
-                                    .collect(toImmutableSet()),
-                            literalParameters);
-                    builder.add(createDependency(annotation, literalParameters, parameter.getType()));
-                });
-            }
-            return builder.build();
-        }
-
         public static boolean isParameterNullable(Annotation[] annotations)
         {
             return containsAnnotation(annotations, annotation -> annotation instanceof NullablePosition);
@@ -474,23 +420,6 @@ public class AggregationImplementation
         public static boolean isParameterBlock(Annotation[] annotations)
         {
             return containsAnnotation(annotations, annotation -> annotation instanceof BlockPosition);
-        }
-
-        public List<TypeSignature> getInputTypesSignatures(Method inputFunction)
-        {
-            ImmutableList.Builder<TypeSignature> builder = ImmutableList.builder();
-
-            Annotation[][] parameterAnnotations = inputFunction.getParameterAnnotations();
-            for (Annotation[] annotations : parameterAnnotations) {
-                for (Annotation annotation : annotations) {
-                    if (annotation instanceof SqlType) {
-                        String typeName = ((SqlType) annotation).value();
-                        builder.add(parseTypeSignature(typeName, literalParameters));
-                    }
-                }
-            }
-
-            return builder.build();
         }
 
         public static Class<?> findAggregationStateParamType(Method inputFunction)
@@ -526,6 +455,75 @@ public class AggregationImplementation
         private static boolean isAggregationMetaAnnotation(Annotation annotation)
         {
             return annotation instanceof BlockIndex || annotation instanceof AggregationState || isImplementationDependencyAnnotation(annotation);
+        }
+
+        private AggregationImplementation get()
+        {
+            Signature signature = new Signature(
+                    header.getCanonicalName(),
+                    typeVariableConstraints,
+                    longVariableConstraints,
+                    returnType,
+                    inputTypes,
+                    false);
+
+            return new AggregationImplementation(signature,
+                    aggregationDefinition,
+                    stateClass,
+                    inputHandle,
+                    removeInputHandle,
+                    outputHandle,
+                    combineHandle,
+                    argumentNativeContainerTypes,
+                    inputDependencies,
+                    removeInputDependencies,
+                    combineDependencies,
+                    outputDependencies,
+                    parameterMetadataTypes);
+        }
+
+        public List<ImplementationDependency> parseImplementationDependencies(Method inputFunction)
+        {
+            ImmutableList.Builder<ImplementationDependency> builder = ImmutableList.builder();
+
+            for (Parameter parameter : inputFunction.getParameters()) {
+                Class<?> parameterType = parameter.getType();
+
+                // Skip injected parameters
+                if (parameterType == ConnectorSession.class) {
+                    continue;
+                }
+
+                getImplementationDependencyAnnotation(parameter).ifPresent(annotation -> {
+                    // check if only declared typeParameters and literalParameters are used
+                    validateImplementationDependencyAnnotation(
+                            inputFunction,
+                            annotation,
+                            typeParameters.stream()
+                                    .map(TypeParameter::value)
+                                    .collect(toImmutableSet()),
+                            literalParameters);
+                    builder.add(createDependency(annotation, literalParameters, parameter.getType()));
+                });
+            }
+            return builder.build();
+        }
+
+        public List<TypeSignature> getInputTypesSignatures(Method inputFunction)
+        {
+            ImmutableList.Builder<TypeSignature> builder = ImmutableList.builder();
+
+            Annotation[][] parameterAnnotations = inputFunction.getParameterAnnotations();
+            for (Annotation[] annotations : parameterAnnotations) {
+                for (Annotation annotation : annotations) {
+                    if (annotation instanceof SqlType) {
+                        String typeName = ((SqlType) annotation).value();
+                        builder.add(parseTypeSignature(typeName, literalParameters));
+                    }
+                }
+            }
+
+            return builder.build();
         }
     }
 }

@@ -33,7 +33,7 @@ import io.trino.type.UnknownType;
  *          AS row(f1 type1, f2 type2))
  *      AS row(g1 type3, g2 type4))
  * </pre>
- *
+ * <p>
  * to
  *
  * <pre>
@@ -43,7 +43,7 @@ import io.trino.type.UnknownType;
  *          CAST(y AS type2))
  *      AS row(g1 type3, g2 type4))
  * </pre>
- *
+ * <p>
  * Note: it preserves the top-level CAST if the row type has field names because the names are needed by the ROW to JSON cast
  *       TODO: ideally, the types involved in ROW to JSON cast should be captured at analysis time and
  *         remain fixed for the duration of the optimization process so as to have flexibility in terms

@@ -41,8 +41,8 @@ public class GenericSpiller
     private final AggregatedMemoryContext aggregatedMemoryContext;
     private final SingleStreamSpillerFactory singleStreamSpillerFactory;
     private final Closer closer = Closer.create();
-    private ListenableFuture<Void> previousSpill = immediateVoidFuture();
     private final List<SingleStreamSpiller> singleStreamSpillers = new ArrayList<>();
+    private ListenableFuture<Void> previousSpill = immediateVoidFuture();
 
     public GenericSpiller(
             List<Type> types,

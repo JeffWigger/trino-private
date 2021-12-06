@@ -117,6 +117,11 @@ public class InMemoryTransactionManager
         return new InMemoryTransactionManager(new Duration(1, TimeUnit.DAYS), 1, catalogManager, directExecutor());
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
     private void scheduleIdleChecks(Duration idleCheckInterval, ScheduledExecutorService idleCheckExecutor)
     {
         idleCheckExecutor.scheduleWithFixedDelay(() -> {
@@ -291,11 +296,6 @@ public class InMemoryTransactionManager
         tryGetTransactionMetadata(transactionId).ifPresent(TransactionMetadata::asyncAbort);
     }
 
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
-    }
-
     @ThreadSafe
     private static class TransactionMetadata
     {
@@ -334,6 +334,16 @@ public class InMemoryTransactionManager
             this.autoCommitContext = autoCommitContext;
             this.catalogManager = requireNonNull(catalogManager, "catalogManager is null");
             this.finishingExecutor = requireNonNull(finishingExecutor, "finishingExecutor is null");
+        }
+
+        private static void safeAbort(ConnectorTransactionMetadata connection)
+        {
+            try {
+                connection.abort();
+            }
+            catch (Exception e) {
+                log.error(e, "Connector threw exception on abort");
+            }
         }
 
         public void setActive()
@@ -531,16 +541,6 @@ public class InMemoryTransactionManager
                     .collect(toList());
             ListenableFuture<Void> future = asVoid(Futures.allAsList(futures));
             return nonCancellationPropagating(future);
-        }
-
-        private static void safeAbort(ConnectorTransactionMetadata connection)
-        {
-            try {
-                connection.abort();
-            }
-            catch (Exception e) {
-                log.error(e, "Connector threw exception on abort");
-            }
         }
 
         public TransactionInfo getTransactionInfo()

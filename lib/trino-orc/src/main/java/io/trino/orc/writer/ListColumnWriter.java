@@ -74,6 +74,17 @@ public class ListColumnWriter
         this.presentStream = new PresentOutputStream(compression, bufferSize);
     }
 
+    private static List<Integer> createArrayColumnPositionList(
+            boolean compressed,
+            LongStreamCheckpoint lengthCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(lengthCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public List<ColumnWriter> getNestedColumnWriters()
     {
@@ -191,17 +202,6 @@ public class ListColumnWriter
         indexStreams.addAll(elementWriter.getIndexStreams(metadataWriter));
         indexStreams.addAll(elementWriter.getBloomFilters(metadataWriter));
         return indexStreams.build();
-    }
-
-    private static List<Integer> createArrayColumnPositionList(
-            boolean compressed,
-            LongStreamCheckpoint lengthCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(lengthCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

@@ -104,6 +104,57 @@ public class TransformCorrelatedInPredicateToJoin
         countFunction = metadata.resolveFunction(QualifiedName.of("count"), ImmutableList.of());
     }
 
+    private static JoinNode leftOuterJoin(PlanNodeIdAllocator idAllocator, AssignUniqueId probeSide, ProjectNode buildSide, Expression joinExpression)
+    {
+        return new JoinNode(
+                idAllocator.getNextId(),
+                JoinNode.Type.LEFT,
+                probeSide,
+                buildSide,
+                ImmutableList.of(),
+                probeSide.getOutputSymbols(),
+                buildSide.getOutputSymbols(),
+                false,
+                Optional.of(joinExpression),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                ImmutableMap.of(),
+                Optional.empty());
+    }
+
+    private static Expression isGreaterThan(Symbol symbol, long value)
+    {
+        return new ComparisonExpression(
+                ComparisonExpression.Operator.GREATER_THAN,
+                symbol.toSymbolReference(),
+                bigint(value));
+    }
+
+    private static Expression not(Expression booleanExpression)
+    {
+        return new NotExpression(booleanExpression);
+    }
+
+    private static Expression isNotNull(Symbol symbol)
+    {
+        return new IsNotNullPredicate(symbol.toSymbolReference());
+    }
+
+    private static Expression bigint(long value)
+    {
+        return new Cast(new LongLiteral(String.valueOf(value)), toSqlType(BIGINT));
+    }
+
+    private static Expression booleanConstant(@Nullable Boolean value)
+    {
+        if (value == null) {
+            return new Cast(new NullLiteral(), toSqlType(BOOLEAN));
+        }
+        return new BooleanLiteral(value.toString());
+    }
+
     @Override
     public Pattern<ApplyNode> getPattern()
     {
@@ -241,26 +292,6 @@ public class TransformCorrelatedInPredicateToJoin
                         .build());
     }
 
-    private static JoinNode leftOuterJoin(PlanNodeIdAllocator idAllocator, AssignUniqueId probeSide, ProjectNode buildSide, Expression joinExpression)
-    {
-        return new JoinNode(
-                idAllocator.getNextId(),
-                JoinNode.Type.LEFT,
-                probeSide,
-                buildSide,
-                ImmutableList.of(),
-                probeSide.getOutputSymbols(),
-                buildSide.getOutputSymbols(),
-                false,
-                Optional.of(joinExpression),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                ImmutableMap.of(),
-                Optional.empty());
-    }
-
     private AggregationNode.Aggregation countWithFilter(Symbol filter)
     {
         return new AggregationNode.Aggregation(
@@ -270,37 +301,6 @@ public class TransformCorrelatedInPredicateToJoin
                 Optional.of(filter),
                 Optional.empty(),
                 Optional.empty()); /* mask */
-    }
-
-    private static Expression isGreaterThan(Symbol symbol, long value)
-    {
-        return new ComparisonExpression(
-                ComparisonExpression.Operator.GREATER_THAN,
-                symbol.toSymbolReference(),
-                bigint(value));
-    }
-
-    private static Expression not(Expression booleanExpression)
-    {
-        return new NotExpression(booleanExpression);
-    }
-
-    private static Expression isNotNull(Symbol symbol)
-    {
-        return new IsNotNullPredicate(symbol.toSymbolReference());
-    }
-
-    private static Expression bigint(long value)
-    {
-        return new Cast(new LongLiteral(String.valueOf(value)), toSqlType(BIGINT));
-    }
-
-    private static Expression booleanConstant(@Nullable Boolean value)
-    {
-        if (value == null) {
-            return new Cast(new NullLiteral(), toSqlType(BOOLEAN));
-        }
-        return new BooleanLiteral(value.toString());
     }
 
     private static class DecorrelatingVisitor

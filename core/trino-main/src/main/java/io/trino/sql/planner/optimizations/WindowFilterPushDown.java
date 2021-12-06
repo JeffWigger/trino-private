@@ -114,6 +114,66 @@ public class WindowFilterPushDown
             rankFunctionId = metadata.resolveFunction(QualifiedName.of("rank"), ImmutableList.of()).getFunctionId();
         }
 
+        private static boolean allRankingValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
+        {
+            if (tupleDomain.isNone()) {
+                return false;
+            }
+            Domain domain = tupleDomain.getDomains().get().get(symbol);
+            if (domain == null) {
+                return true;
+            }
+            return domain.getValues().contains(ValueSet.ofRanges(range(domain.getType(), 1L, true, upperBound, true)));
+        }
+
+        private static OptionalInt extractUpperBound(TupleDomain<Symbol> tupleDomain, Symbol symbol)
+        {
+            if (tupleDomain.isNone()) {
+                return OptionalInt.empty();
+            }
+
+            Domain domain = tupleDomain.getDomains().get().get(symbol);
+            if (domain == null) {
+                return OptionalInt.empty();
+            }
+            ValueSet values = domain.getValues();
+            if (values.isAll() || values.isNone() || values.getRanges().getRangeCount() <= 0) {
+                return OptionalInt.empty();
+            }
+
+            Range span = values.getRanges().getSpan();
+
+            if (span.isHighUnbounded()) {
+                return OptionalInt.empty();
+            }
+
+            verify(domain.getType().equals(BIGINT));
+            long upperBound = (Long) span.getHighBoundedValue();
+            if (!span.isHighInclusive()) {
+                upperBound--;
+            }
+
+            if (upperBound >= Integer.MIN_VALUE && upperBound <= Integer.MAX_VALUE) {
+                return OptionalInt.of(toIntExact(upperBound));
+            }
+            return OptionalInt.empty();
+        }
+
+        private static RowNumberNode mergeLimit(RowNumberNode node, int newRowCountPerPartition)
+        {
+            if (node.getMaxRowCountPerPartition().isPresent()) {
+                newRowCountPerPartition = Math.min(node.getMaxRowCountPerPartition().get(), newRowCountPerPartition);
+            }
+            return new RowNumberNode(
+                    node.getId(),
+                    node.getSource(),
+                    node.getPartitionBy(),
+                    node.isOrderSensitive(),
+                    node.getRowNumberSymbol(),
+                    Optional.of(newRowCountPerPartition),
+                    node.getHashSymbol());
+        }
+
         @Override
         public PlanNode visitWindow(WindowNode node, RewriteContext<Void> context)
         {
@@ -229,66 +289,6 @@ public class WindowFilterPushDown
                 return source;
             }
             return new FilterNode(filterNode.getId(), source, newPredicate);
-        }
-
-        private static boolean allRankingValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
-        {
-            if (tupleDomain.isNone()) {
-                return false;
-            }
-            Domain domain = tupleDomain.getDomains().get().get(symbol);
-            if (domain == null) {
-                return true;
-            }
-            return domain.getValues().contains(ValueSet.ofRanges(range(domain.getType(), 1L, true, upperBound, true)));
-        }
-
-        private static OptionalInt extractUpperBound(TupleDomain<Symbol> tupleDomain, Symbol symbol)
-        {
-            if (tupleDomain.isNone()) {
-                return OptionalInt.empty();
-            }
-
-            Domain domain = tupleDomain.getDomains().get().get(symbol);
-            if (domain == null) {
-                return OptionalInt.empty();
-            }
-            ValueSet values = domain.getValues();
-            if (values.isAll() || values.isNone() || values.getRanges().getRangeCount() <= 0) {
-                return OptionalInt.empty();
-            }
-
-            Range span = values.getRanges().getSpan();
-
-            if (span.isHighUnbounded()) {
-                return OptionalInt.empty();
-            }
-
-            verify(domain.getType().equals(BIGINT));
-            long upperBound = (Long) span.getHighBoundedValue();
-            if (!span.isHighInclusive()) {
-                upperBound--;
-            }
-
-            if (upperBound >= Integer.MIN_VALUE && upperBound <= Integer.MAX_VALUE) {
-                return OptionalInt.of(toIntExact(upperBound));
-            }
-            return OptionalInt.empty();
-        }
-
-        private static RowNumberNode mergeLimit(RowNumberNode node, int newRowCountPerPartition)
-        {
-            if (node.getMaxRowCountPerPartition().isPresent()) {
-                newRowCountPerPartition = Math.min(node.getMaxRowCountPerPartition().get(), newRowCountPerPartition);
-            }
-            return new RowNumberNode(
-                    node.getId(),
-                    node.getSource(),
-                    node.getPartitionBy(),
-                    node.isOrderSensitive(),
-                    node.getRowNumberSymbol(),
-                    Optional.of(newRowCountPerPartition),
-                    node.getHashSymbol());
         }
 
         private TopNRankingNode convertToTopNRanking(WindowNode windowNode, RankingType rankingType, int limit)

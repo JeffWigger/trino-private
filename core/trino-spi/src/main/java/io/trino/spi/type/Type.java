@@ -19,7 +19,6 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.BlockBuilderStatus;
 import io.trino.spi.connector.ConnectorSession;
-import jdk.jshell.spi.ExecutionControl;
 
 import java.util.List;
 import java.util.Optional;

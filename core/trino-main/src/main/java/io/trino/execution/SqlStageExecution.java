@@ -112,6 +112,38 @@ public final class SqlStageExecution
 
     private final Set<DynamicFilterId> outboundDynamicFilterIds;
 
+    private SqlStageExecution(
+            StageStateMachine stateMachine,
+            RemoteTaskFactory remoteTaskFactory,
+            NodeTaskMap nodeTaskMap,
+            boolean summarizeTaskInfo,
+            Executor executor,
+            FailureDetector failureDetector,
+            DynamicFilterService dynamicFilterService)
+    {
+        this.stateMachine = stateMachine;
+        this.remoteTaskFactory = requireNonNull(remoteTaskFactory, "remoteTaskFactory is null");
+        this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
+        this.summarizeTaskInfo = summarizeTaskInfo;
+        this.executor = requireNonNull(executor, "executor is null");
+        this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
+        this.dynamicFilterService = requireNonNull(dynamicFilterService, "dynamicFilterService is null");
+
+        ImmutableMap.Builder<PlanFragmentId, RemoteSourceNode> fragmentToExchangeSource = ImmutableMap.builder();
+        for (RemoteSourceNode remoteSourceNode : stateMachine.getFragment().getRemoteSourceNodes()) {
+            for (PlanFragmentId planFragmentId : remoteSourceNode.getSourceFragmentIds()) {
+                fragmentToExchangeSource.put(planFragmentId, remoteSourceNode);
+            }
+        }
+        this.exchangeSources = fragmentToExchangeSource.build();
+        if (isEnableCoordinatorDynamicFiltersDistribution(stateMachine.getSession())) {
+            this.outboundDynamicFilterIds = getOutboundDynamicFilters(stateMachine.getFragment());
+        }
+        else {
+            this.outboundDynamicFilterIds = ImmutableSet.of();
+        }
+    }
+
     public static SqlStageExecution createSqlStageExecution(
             StageId stageId,
             PlanFragment fragment,
@@ -148,36 +180,11 @@ public final class SqlStageExecution
         return sqlStageExecution;
     }
 
-    private SqlStageExecution(
-            StageStateMachine stateMachine,
-            RemoteTaskFactory remoteTaskFactory,
-            NodeTaskMap nodeTaskMap,
-            boolean summarizeTaskInfo,
-            Executor executor,
-            FailureDetector failureDetector,
-            DynamicFilterService dynamicFilterService)
+    private static Split createRemoteSplitFor(TaskId taskId, URI taskLocation)
     {
-        this.stateMachine = stateMachine;
-        this.remoteTaskFactory = requireNonNull(remoteTaskFactory, "remoteTaskFactory is null");
-        this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
-        this.summarizeTaskInfo = summarizeTaskInfo;
-        this.executor = requireNonNull(executor, "executor is null");
-        this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
-        this.dynamicFilterService = requireNonNull(dynamicFilterService, "dynamicFilterService is null");
-
-        ImmutableMap.Builder<PlanFragmentId, RemoteSourceNode> fragmentToExchangeSource = ImmutableMap.builder();
-        for (RemoteSourceNode remoteSourceNode : stateMachine.getFragment().getRemoteSourceNodes()) {
-            for (PlanFragmentId planFragmentId : remoteSourceNode.getSourceFragmentIds()) {
-                fragmentToExchangeSource.put(planFragmentId, remoteSourceNode);
-            }
-        }
-        this.exchangeSources = fragmentToExchangeSource.build();
-        if (isEnableCoordinatorDynamicFiltersDistribution(stateMachine.getSession())) {
-            this.outboundDynamicFilterIds = getOutboundDynamicFilters(stateMachine.getFragment());
-        }
-        else {
-            this.outboundDynamicFilterIds = ImmutableSet.of();
-        }
+        // Fetch the results from the buffer assigned to the task based on id
+        URI splitLocation = uriBuilderFrom(taskLocation).appendPath("results").appendPath(String.valueOf(taskId.getId())).build();
+        return new Split(REMOTE_CONNECTOR_ID, new RemoteSplit(splitLocation), Lifespan.taskWide());
     }
 
     // this is a separate method to ensure that the `this` reference is not leaked during construction
@@ -234,6 +241,28 @@ public final class SqlStageExecution
     public OutputBuffers getOutputBuffers()
     {
         return outputBuffers.get();
+    }
+
+    public synchronized void setOutputBuffers(OutputBuffers outputBuffers)
+    {
+        requireNonNull(outputBuffers, "outputBuffers is null");
+
+        while (true) {
+            OutputBuffers currentOutputBuffers = this.outputBuffers.get();
+            if (currentOutputBuffers != null) {
+                if (outputBuffers.getVersion() <= currentOutputBuffers.getVersion()) {
+                    return;
+                }
+                currentOutputBuffers.checkValidTransition(outputBuffers);
+            }
+
+            if (this.outputBuffers.compareAndSet(currentOutputBuffers, outputBuffers)) {
+                for (RemoteTask task : getAllTasks()) {
+                    task.setOutputBuffers(outputBuffers);
+                }
+                return;
+            }
+        }
     }
 
     public void beginScheduling()
@@ -352,28 +381,6 @@ public final class SqlStageExecution
                 for (RemoteTask task : getAllTasks()) {
                     task.noMoreSplits(remoteSource.getId());
                 }
-            }
-        }
-    }
-
-    public synchronized void setOutputBuffers(OutputBuffers outputBuffers)
-    {
-        requireNonNull(outputBuffers, "outputBuffers is null");
-
-        while (true) {
-            OutputBuffers currentOutputBuffers = this.outputBuffers.get();
-            if (currentOutputBuffers != null) {
-                if (outputBuffers.getVersion() <= currentOutputBuffers.getVersion()) {
-                    return;
-                }
-                currentOutputBuffers.checkValidTransition(outputBuffers);
-            }
-
-            if (this.outputBuffers.compareAndSet(currentOutputBuffers, outputBuffers)) {
-                for (RemoteTask task : getAllTasks()) {
-                    task.setOutputBuffers(outputBuffers);
-                }
-                return;
             }
         }
     }
@@ -502,13 +509,6 @@ public final class SqlStageExecution
         stateMachine.recordGetSplitTime(start);
     }
 
-    private static Split createRemoteSplitFor(TaskId taskId, URI taskLocation)
-    {
-        // Fetch the results from the buffer assigned to the task based on id
-        URI splitLocation = uriBuilderFrom(taskLocation).appendPath("results").appendPath(String.valueOf(taskId.getId())).build();
-        return new Split(REMOTE_CONNECTOR_ID, new RemoteSplit(splitLocation), Lifespan.taskWide());
-    }
-
     private synchronized void updateTaskStatus(TaskStatus taskStatus)
     {
         try {
@@ -619,13 +619,33 @@ public final class SqlStageExecution
         return stateMachine.toString();
     }
 
+    private static class ListenerManager<T>
+    {
+        private final List<Consumer<T>> listeners = new ArrayList<>();
+        private boolean frozen;
+
+        public synchronized void addListener(Consumer<T> listener)
+        {
+            checkState(!frozen, "Listeners have been invoked");
+            listeners.add(listener);
+        }
+
+        public synchronized void invoke(T payload, Executor executor)
+        {
+            frozen = true;
+            for (Consumer<T> listener : listeners) {
+                executor.execute(() -> listener.accept(payload));
+            }
+        }
+    }
+
     private class StageTaskListener
             implements StateChangeListener<TaskStatus>
     {
+        private final Set<Lifespan> completedDriverGroups = new HashSet<>();
         private long previousUserMemory;
         private long previousSystemMemory;
         private long previousRevocableMemory;
-        private final Set<Lifespan> completedDriverGroups = new HashSet<>();
 
         @Override
         public void stateChanged(TaskStatus taskStatus)
@@ -668,26 +688,6 @@ public final class SqlStageExecution
             // newlyCompletedDriverGroups is a view.
             // Making changes to completedDriverGroups will change newlyCompletedDriverGroups.
             completedDriverGroups.addAll(newlyCompletedDriverGroups);
-        }
-    }
-
-    private static class ListenerManager<T>
-    {
-        private final List<Consumer<T>> listeners = new ArrayList<>();
-        private boolean frozen;
-
-        public synchronized void addListener(Consumer<T> listener)
-        {
-            checkState(!frozen, "Listeners have been invoked");
-            listeners.add(listener);
-        }
-
-        public synchronized void invoke(T payload, Executor executor)
-        {
-            frozen = true;
-            for (Consumer<T> listener : listeners) {
-                executor.execute(() -> listener.accept(payload));
-            }
         }
     }
 }

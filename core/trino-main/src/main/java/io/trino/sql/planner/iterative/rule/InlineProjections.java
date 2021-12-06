@@ -69,22 +69,6 @@ public class InlineProjections
         this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
     }
 
-    @Override
-    public Pattern<ProjectNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public Result apply(ProjectNode parent, Captures captures, Context context)
-    {
-        ProjectNode child = captures.get(CHILD);
-
-        return inlineProjections(parent, child, context.getSession(), typeAnalyzer, context.getSymbolAllocator().getTypes())
-                .map(Result::ofPlanNode)
-                .orElse(Result.empty());
-    }
-
     static Optional<ProjectNode> inlineProjections(ProjectNode parent, ProjectNode child, Session session, TypeAnalyzer typeAnalyzer, TypeProvider types)
     {
         // squash identity projections
@@ -217,5 +201,21 @@ public class InlineProjections
                 .map(TryExpression.class::cast)
                 .flatMap(tryExpression -> SymbolsExtractor.extractAll(tryExpression).stream())
                 .collect(toSet());
+    }
+
+    @Override
+    public Pattern<ProjectNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public Result apply(ProjectNode parent, Captures captures, Context context)
+    {
+        ProjectNode child = captures.get(CHILD);
+
+        return inlineProjections(parent, child, context.getSession(), typeAnalyzer, context.getSymbolAllocator().getTypes())
+                .map(Result::ofPlanNode)
+                .orElse(Result.empty());
     }
 }

@@ -669,12 +669,6 @@ public final class SystemSessionProperties
                         true));
     }
 
-    @Override
-    public List<PropertyMetadata<?>> getSessionProperties()
-    {
-        return sessionProperties;
-    }
-
     public static String getExecutionPolicy(Session session)
     {
         return session.getSystemProperty(EXECUTION_POLICY, String.class);
@@ -1183,5 +1177,11 @@ public final class SystemSessionProperties
     public static boolean isLegacyCatalogRoles(Session session)
     {
         return session.getSystemProperty(LEGACY_CATALOG_ROLES, Boolean.class);
+    }
+
+    @Override
+    public List<PropertyMetadata<?>> getSessionProperties()
+    {
+        return sessionProperties;
     }
 }

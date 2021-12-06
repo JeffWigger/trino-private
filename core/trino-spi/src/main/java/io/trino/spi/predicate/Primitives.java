@@ -22,9 +22,19 @@ import static java.util.Objects.requireNonNull;
 // Copyright (C) 2007 The Guava Authors
 final class Primitives
 {
+    private static final Map<Class<?>, Class<?>> WRAPPERS = new HashMap<>();
+
     private Primitives() {}
 
-    private static final Map<Class<?>, Class<?>> WRAPPERS = new HashMap<>();
+    public static <T> Class<T> wrap(Class<T> type)
+    {
+        requireNonNull(type);
+
+        // cast is safe: long.class and Long.class are both of type Class<Long>
+        @SuppressWarnings("unchecked")
+        Class<T> wrapped = (Class<T>) WRAPPERS.get(type);
+        return (wrapped == null) ? type : wrapped;
+    }
 
     static {
         WRAPPERS.put(boolean.class, Boolean.class);
@@ -35,15 +45,5 @@ final class Primitives
         WRAPPERS.put(int.class, Integer.class);
         WRAPPERS.put(long.class, Long.class);
         WRAPPERS.put(short.class, Short.class);
-    }
-
-    public static <T> Class<T> wrap(Class<T> type)
-    {
-        requireNonNull(type);
-
-        // cast is safe: long.class and Long.class are both of type Class<Long>
-        @SuppressWarnings("unchecked")
-        Class<T> wrapped = (Class<T>) WRAPPERS.get(type);
-        return (wrapped == null) ? type : wrapped;
     }
 }

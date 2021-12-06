@@ -53,23 +53,17 @@ public class DoubleColumnReader
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(DoubleColumnReader.class).instanceSize();
 
     private final OrcColumn column;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<DoubleInputStream> dataStreamSource = missingStreamSource(DoubleInputStream.class);
     @Nullable
     private DoubleInputStream dataStream;
-
     private boolean rowGroupOpen;
-
     private long[] nonNullValueTemp = new long[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public DoubleColumnReader(Type type, OrcColumn column, LocalMemoryContext systemMemoryContext)
             throws OrcCorruptionException

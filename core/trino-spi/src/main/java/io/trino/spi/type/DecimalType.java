@@ -29,6 +29,15 @@ public abstract class DecimalType
 {
     public static final int DEFAULT_SCALE = 0;
     public static final int DEFAULT_PRECISION = MAX_PRECISION;
+    private final int precision;
+    private final int scale;
+
+    DecimalType(int precision, int scale, Class<?> javaType)
+    {
+        super(new TypeSignature(StandardTypes.DECIMAL, buildTypeParameters(precision, scale)), javaType);
+        this.precision = precision;
+        this.scale = scale;
+    }
 
     public static DecimalType createDecimalType(int precision, int scale)
     {
@@ -58,14 +67,16 @@ public abstract class DecimalType
         return createDecimalType(DEFAULT_PRECISION, DEFAULT_SCALE);
     }
 
-    private final int precision;
-    private final int scale;
-
-    DecimalType(int precision, int scale, Class<?> javaType)
+    private static List<TypeSignatureParameter> buildTypeParameters(int precision, int scale)
     {
-        super(new TypeSignature(StandardTypes.DECIMAL, buildTypeParameters(precision, scale)), javaType);
-        this.precision = precision;
-        this.scale = scale;
+        return List.of(numericParameter(precision), numericParameter(scale));
+    }
+
+    static void checkArgument(boolean condition, String format, Object... args)
+    {
+        if (!condition) {
+            throw new IllegalArgumentException(format(format, args));
+        }
     }
 
     @Override
@@ -93,17 +104,5 @@ public abstract class DecimalType
     public boolean isShort()
     {
         return precision <= MAX_SHORT_PRECISION;
-    }
-
-    private static List<TypeSignatureParameter> buildTypeParameters(int precision, int scale)
-    {
-        return List.of(numericParameter(precision), numericParameter(scale));
-    }
-
-    static void checkArgument(boolean condition, String format, Object... args)
-    {
-        if (!condition) {
-            throw new IllegalArgumentException(format(format, args));
-        }
     }
 }

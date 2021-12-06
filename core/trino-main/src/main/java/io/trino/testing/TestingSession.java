@@ -39,8 +39,6 @@ import static java.util.Locale.ENGLISH;
 
 public final class TestingSession
 {
-    private static final QueryIdGenerator queryIdGenerator = new QueryIdGenerator();
-
     /*
      * Pacific/Apia
      *  - has DST (e.g. January 2017)
@@ -51,6 +49,7 @@ public final class TestingSession
      *  - a whole day was skipped during policy change (on Friday, 30 December 2011, 00:00:00 clocks were turned forward 24 hours)
      */
     public static final TimeZoneKey DEFAULT_TIME_ZONE_KEY = TimeZoneKey.getTimeZoneKey("Pacific/Apia");
+    private static final QueryIdGenerator queryIdGenerator = new QueryIdGenerator();
 
     private TestingSession() {}
 

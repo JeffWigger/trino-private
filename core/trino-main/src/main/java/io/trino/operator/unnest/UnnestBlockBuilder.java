@@ -34,11 +34,9 @@ import static java.util.Objects.requireNonNull;
 class UnnestBlockBuilder
 {
     private final Type type;
-    private Block source;
-
     // checks for existence of null element in the source when required
     private final NullElementFinder nullFinder = new NullElementFinder();
-
+    private Block source;
     // flag indicating whether we are using copied block or a dictionary block
     private boolean usingCopiedBlock;
 

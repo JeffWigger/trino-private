@@ -13,7 +13,6 @@
  */
 package io.trino.spi;
 
-import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.PageBuilderStatus;
 import io.trino.spi.block.UpdatableBlock;
@@ -59,11 +58,6 @@ public class UpdatablePageBuilder
         this(initialExpectedEntries, DEFAULT_MAX_PAGE_SIZE_IN_BYTES, types, Optional.empty());
     }
 
-    public static UpdatablePageBuilder withMaxPageSize(int maxPageBytes, List<? extends Type> types)
-    {
-        return new UpdatablePageBuilder(DEFAULT_INITIAL_EXPECTED_ENTRIES, maxPageBytes, types, Optional.empty());
-    }
-
     private UpdatablePageBuilder(int initialExpectedEntries, int maxPageBytes, List<? extends Type> types, Optional<UpdatableBlock[]> templateBlockBuilders)
     {
         this.types = List.copyOf(requireNonNull(types, "types is null"));
@@ -82,6 +76,18 @@ public class UpdatablePageBuilder
             for (int i = 0; i < blockBuilders.length; i++) {
                 blockBuilders[i] = types.get(i).createBlockBuilder(pageBuilderStatus.createBlockBuilderStatus(), initialExpectedEntries).makeUpdatable();
             }
+        }
+    }
+
+    public static UpdatablePageBuilder withMaxPageSize(int maxPageBytes, List<? extends Type> types)
+    {
+        return new UpdatablePageBuilder(DEFAULT_INITIAL_EXPECTED_ENTRIES, maxPageBytes, types, Optional.empty());
+    }
+
+    private static void checkArgument(boolean expression, String errorMessage)
+    {
+        if (!expression) {
+            throw new IllegalArgumentException(errorMessage);
         }
     }
 
@@ -170,12 +176,5 @@ public class UpdatablePageBuilder
         }
 
         return UpdatablePage.wrapBlocksWithoutCopy(declaredPositions, blocks);
-    }
-
-    private static void checkArgument(boolean expression, String errorMessage)
-    {
-        if (!expression) {
-            throw new IllegalArgumentException(errorMessage);
-        }
     }
 }

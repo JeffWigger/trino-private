@@ -60,6 +60,16 @@ class OperationTimer
         intervalCpuStart = cpuStart;
     }
 
+    private static long currentThreadCpuTime()
+    {
+        return THREAD_MX_BEAN.getCurrentThreadCpuTime();
+    }
+
+    private static long nanosBetween(long start, long end)
+    {
+        return max(0, end - start);
+    }
+
     void resetInterval()
     {
         intervalCpuStart = trackOperationCpuTime ? currentThreadCpuTime() : 0;
@@ -92,16 +102,6 @@ class OperationTimer
         long wallEnd = System.nanoTime();
 
         overallTiming.record(nanosBetween(wallStart, wallEnd), nanosBetween(cpuStart, cpuEnd));
-    }
-
-    private static long currentThreadCpuTime()
-    {
-        return THREAD_MX_BEAN.getCurrentThreadCpuTime();
-    }
-
-    private static long nanosBetween(long start, long end)
-    {
-        return max(0, end - start);
     }
 
     @ThreadSafe

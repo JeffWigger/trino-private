@@ -54,6 +54,42 @@ class ShortTimeWithTimeZoneType
         }
     }
 
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long leftPackedTime, long rightPackedTime)
+    {
+        return normalizePackedTime(leftPackedTime) == normalizePackedTime(rightPackedTime);
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long packedTime)
+    {
+        return AbstractLongType.hash(normalizePackedTime(packedTime));
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long packedTime)
+    {
+        return XxHash64.hash(normalizePackedTime(packedTime));
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Long.compare(normalizePackedTime(left), normalizePackedTime(right));
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return normalizePackedTime(left) < normalizePackedTime(right);
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return normalizePackedTime(left) <= normalizePackedTime(right);
+    }
+
     @Override
     public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
     {
@@ -131,41 +167,5 @@ class ShortTimeWithTimeZoneType
 
         long value = block.getLong(position, 0);
         return SqlTimeWithTimeZone.newInstance(getPrecision(), unpackTimeNanos(value) * PICOSECONDS_PER_NANOSECOND, unpackOffsetMinutes(value));
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long leftPackedTime, long rightPackedTime)
-    {
-        return normalizePackedTime(leftPackedTime) == normalizePackedTime(rightPackedTime);
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long packedTime)
-    {
-        return AbstractLongType.hash(normalizePackedTime(packedTime));
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long packedTime)
-    {
-        return XxHash64.hash(normalizePackedTime(packedTime));
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Long.compare(normalizePackedTime(left), normalizePackedTime(right));
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return normalizePackedTime(left) < normalizePackedTime(right);
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return normalizePackedTime(left) <= normalizePackedTime(right);
     }
 }

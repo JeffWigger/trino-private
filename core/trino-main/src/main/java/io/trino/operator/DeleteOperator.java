@@ -23,6 +23,25 @@ import static java.util.Objects.requireNonNull;
 public class DeleteOperator
         extends AbstractRowChangeOperator
 {
+    private final int rowIdChannel;
+
+    public DeleteOperator(OperatorContext operatorContext, int rowIdChannel)
+    {
+        super(operatorContext);
+        this.rowIdChannel = rowIdChannel;
+    }
+
+    @Override
+    public void addInput(Page page)
+    {
+        requireNonNull(page, "page is null");
+        checkState(state == State.RUNNING, "Operator is %s", state);
+
+        Block rowIds = page.getBlock(rowIdChannel);
+        pageSource().deleteRows(rowIds);
+        rowCount += rowIds.getPositionCount();
+    }
+
     public static class DeleteOperatorFactory
             implements OperatorFactory
     {
@@ -57,24 +76,5 @@ public class DeleteOperator
         {
             return new DeleteOperatorFactory(operatorId, planNodeId, rowIdChannel);
         }
-    }
-
-    private final int rowIdChannel;
-
-    public DeleteOperator(OperatorContext operatorContext, int rowIdChannel)
-    {
-        super(operatorContext);
-        this.rowIdChannel = rowIdChannel;
-    }
-
-    @Override
-    public void addInput(Page page)
-    {
-        requireNonNull(page, "page is null");
-        checkState(state == State.RUNNING, "Operator is %s", state);
-
-        Block rowIds = page.getBlock(rowIdChannel);
-        pageSource().deleteRows(rowIds);
-        rowCount += rowIds.getPositionCount();
     }
 }

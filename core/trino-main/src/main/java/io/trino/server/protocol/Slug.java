@@ -22,26 +22,19 @@ import static java.util.Objects.requireNonNull;
 
 public final class Slug
 {
-    public enum Context
-    {
-        QUEUED_QUERY,
-        EXECUTING_QUERY,
-    }
-
     private static final SecureRandom RANDOM = new SecureRandom();
+    private final HashFunction hmac;
+
+    private Slug(byte[] slugKey)
+    {
+        this.hmac = Hashing.hmacSha1(requireNonNull(slugKey, "slugKey is null"));
+    }
 
     public static Slug createNew()
     {
         byte[] randomBytes = new byte[16];
         RANDOM.nextBytes(randomBytes);
         return new Slug(randomBytes);
-    }
-
-    private final HashFunction hmac;
-
-    private Slug(byte[] slugKey)
-    {
-        this.hmac = Hashing.hmacSha1(requireNonNull(slugKey, "slugKey is null"));
     }
 
     public String makeSlug(Context context, long token)
@@ -57,5 +50,11 @@ public final class Slug
     public boolean isValid(Context context, String slug, long token)
     {
         return makeSlug(context, token).equals(slug);
+    }
+
+    public enum Context
+    {
+        QUEUED_QUERY,
+        EXECUTING_QUERY,
     }
 }

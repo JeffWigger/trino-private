@@ -27,11 +27,10 @@ import static java.util.Objects.requireNonNull;
 final class PageReference
 {
     private static final AtomicIntegerFieldUpdater<PageReference> REFERENCE_COUNT_UPDATER = AtomicIntegerFieldUpdater.newUpdater(PageReference.class, "referenceCount");
-
-    private volatile int referenceCount;
     private final Page page;
     private final PageReleasedListener onPageReleased;
     private final long retainedSizeInBytes;
+    private volatile int referenceCount;
 
     public PageReference(Page page, int referenceCount, PageReleasedListener onPageReleased)
     {
@@ -70,12 +69,12 @@ final class PageReference
 
     interface PageReleasedListener
     {
-        void onPageReleased(long releasedSizeInBytes);
-
         static PageReleasedListener forLocalExchangeMemoryManager(LocalExchangeMemoryManager memoryManager)
         {
             requireNonNull(memoryManager, "memoryManager is null");
             return (releasedSizeInBytes) -> memoryManager.updateMemoryUsage(-releasedSizeInBytes);
         }
+
+        void onPageReleased(long releasedSizeInBytes);
     }
 }

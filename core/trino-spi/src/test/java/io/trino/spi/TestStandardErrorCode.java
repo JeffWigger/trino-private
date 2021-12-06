@@ -31,6 +31,11 @@ public class TestStandardErrorCode
 {
     private static final int EXTERNAL_ERROR_START = 0x0100_0000;
 
+    private static int code(StandardErrorCode error)
+    {
+        return error.toErrorCode().getCode();
+    }
+
     @Test
     public void testUnique()
     {
@@ -66,10 +71,5 @@ public class TestStandardErrorCode
             }
             previous = current;
         }
-    }
-
-    private static int code(StandardErrorCode error)
-    {
-        return error.toErrorCode().getCode();
     }
 }

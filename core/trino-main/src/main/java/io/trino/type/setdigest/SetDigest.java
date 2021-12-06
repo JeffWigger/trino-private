@@ -49,9 +49,9 @@ import static java.util.Objects.requireNonNull;
  */
 public class SetDigest
 {
-    private static final byte UNCOMPRESSED_FORMAT = 1;
     public static final int NUMBER_OF_BUCKETS = 2048;
     public static final int DEFAULT_MAX_HASHES = 8192;
+    private static final byte UNCOMPRESSED_FORMAT = 1;
     private static final int SIZE_OF_ENTRY = SIZE_OF_LONG + SIZE_OF_SHORT;
     private static final int SIZE_OF_SETDIGEST = ClassLayout.parseClass(SetDigest.class).instanceSize();
     private static final int SIZE_OF_RBTREEMAP = ClassLayout.parseClass(Long2ShortRBTreeMap.class).instanceSize();
@@ -100,6 +100,34 @@ public class SetDigest
         }
 
         return new SetDigest(maxHashes, hll, minhash);
+    }
+
+    public static long exactIntersectionCardinality(SetDigest a, SetDigest b)
+    {
+        checkState(a.isExact(), "exact intersection cannot operate on approximate sets");
+        checkArgument(b.isExact(), "exact intersection cannot operate on approximate sets");
+
+        return Sets.intersection(a.minhash.keySet(), b.minhash.keySet()).size();
+    }
+
+    public static double jaccardIndex(SetDigest a, SetDigest b)
+    {
+        int sizeOfSmallerSet = Math.min(a.minhash.size(), b.minhash.size());
+        LongSortedSet minUnion = new LongRBTreeSet(a.minhash.keySet());
+        minUnion.addAll(b.minhash.keySet());
+
+        int intersection = 0;
+        int i = 0;
+        for (long key : minUnion) {
+            if (a.minhash.containsKey(key) && b.minhash.containsKey(key)) {
+                intersection++;
+            }
+            i++;
+            if (i >= sizeOfSmallerSet) {
+                break;
+            }
+        }
+        return intersection / (double) sizeOfSmallerSet;
     }
 
     public Slice serialize()
@@ -153,34 +181,6 @@ public class SetDigest
             return minhash.size();
         }
         return hll.cardinality();
-    }
-
-    public static long exactIntersectionCardinality(SetDigest a, SetDigest b)
-    {
-        checkState(a.isExact(), "exact intersection cannot operate on approximate sets");
-        checkArgument(b.isExact(), "exact intersection cannot operate on approximate sets");
-
-        return Sets.intersection(a.minhash.keySet(), b.minhash.keySet()).size();
-    }
-
-    public static double jaccardIndex(SetDigest a, SetDigest b)
-    {
-        int sizeOfSmallerSet = Math.min(a.minhash.size(), b.minhash.size());
-        LongSortedSet minUnion = new LongRBTreeSet(a.minhash.keySet());
-        minUnion.addAll(b.minhash.keySet());
-
-        int intersection = 0;
-        int i = 0;
-        for (long key : minUnion) {
-            if (a.minhash.containsKey(key) && b.minhash.containsKey(key)) {
-                intersection++;
-            }
-            i++;
-            if (i >= sizeOfSmallerSet) {
-                break;
-            }
-        }
-        return intersection / (double) sizeOfSmallerSet;
     }
 
     public void add(long value)

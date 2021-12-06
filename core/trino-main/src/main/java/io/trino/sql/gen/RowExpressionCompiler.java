@@ -45,6 +45,7 @@ import static io.trino.sql.gen.LambdaBytecodeGenerator.generateLambda;
 
 public class RowExpressionCompiler
 {
+    private static final String TEMP_PREFIX = "$$TEMP$$";
     private final CallSiteBinder callSiteBinder;
     private final CachedInstanceBinder cachedInstanceBinder;
     private final RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler;
@@ -65,6 +66,11 @@ public class RowExpressionCompiler
         this.compiledLambdaMap = compiledLambdaMap;
     }
 
+    public static VariableReferenceExpression createTempVariableReferenceExpression(Variable variable, Type type)
+    {
+        return new VariableReferenceExpression(TEMP_PREFIX + variable.getName(), type);
+    }
+
     public BytecodeNode compile(RowExpression rowExpression, Scope scope)
     {
         return compile(rowExpression, scope, Optional.empty());
@@ -73,6 +79,28 @@ public class RowExpressionCompiler
     public BytecodeNode compile(RowExpression rowExpression, Scope scope, Optional<Class<?>> lambdaInterface)
     {
         return rowExpression.accept(new Visitor(), new Context(scope, lambdaInterface));
+    }
+
+    private static class Context
+    {
+        private final Scope scope;
+        private final Optional<Class<?>> lambdaInterface;
+
+        public Context(Scope scope, Optional<Class<?>> lambdaInterface)
+        {
+            this.scope = scope;
+            this.lambdaInterface = lambdaInterface;
+        }
+
+        public Scope getScope()
+        {
+            return scope;
+        }
+
+        public Optional<Class<?>> getLambdaInterface()
+        {
+            return lambdaInterface;
+        }
     }
 
     private class Visitor
@@ -225,35 +253,6 @@ public class RowExpressionCompiler
                 return context.getScope().getTempVariable(reference.getName().substring(TEMP_PREFIX.length()));
             }
             return fieldReferenceCompiler.visitVariableReference(reference, context.getScope());
-        }
-    }
-
-    private static final String TEMP_PREFIX = "$$TEMP$$";
-
-    public static VariableReferenceExpression createTempVariableReferenceExpression(Variable variable, Type type)
-    {
-        return new VariableReferenceExpression(TEMP_PREFIX + variable.getName(), type);
-    }
-
-    private static class Context
-    {
-        private final Scope scope;
-        private final Optional<Class<?>> lambdaInterface;
-
-        public Context(Scope scope, Optional<Class<?>> lambdaInterface)
-        {
-            this.scope = scope;
-            this.lambdaInterface = lambdaInterface;
-        }
-
-        public Scope getScope()
-        {
-            return scope;
-        }
-
-        public Optional<Class<?>> getLambdaInterface()
-        {
-            return lambdaInterface;
         }
     }
 }

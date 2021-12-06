@@ -101,11 +101,6 @@ public final class DataSizeFunctions
             this.factor = factor;
         }
 
-        public BigDecimal getFactor()
-        {
-            return factor;
-        }
-
         public static Unit parse(String unitString, String dataSize)
         {
             switch (unitString) {
@@ -130,6 +125,11 @@ public final class DataSizeFunctions
                 default:
                     throw invalidDataSize(dataSize);
             }
+        }
+
+        public BigDecimal getFactor()
+        {
+            return factor;
         }
     }
 }

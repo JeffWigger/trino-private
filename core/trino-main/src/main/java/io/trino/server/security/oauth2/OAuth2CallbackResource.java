@@ -37,10 +37,8 @@ import static javax.ws.rs.core.Response.Status.BAD_REQUEST;
 @Path(CALLBACK_ENDPOINT)
 public class OAuth2CallbackResource
 {
-    private static final Logger LOG = Logger.get(OAuth2CallbackResource.class);
-
     public static final String CALLBACK_ENDPOINT = "/oauth2/callback";
-
+    private static final Logger LOG = Logger.get(OAuth2CallbackResource.class);
     private final OAuth2Service service;
 
     @Inject

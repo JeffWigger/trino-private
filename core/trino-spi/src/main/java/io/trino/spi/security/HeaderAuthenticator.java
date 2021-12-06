@@ -18,18 +18,17 @@ import java.util.List;
 
 public interface HeaderAuthenticator
 {
-    interface Headers
-    {
-        // argument is treated as case insensitive
-        List<String> getHeader(String name);
-    }
-
     /**
      * Authenticate the provided headers.
      *
      * @return the authenticated entity
      * @throws AccessDeniedException if not allowed
-
      */
     Principal createAuthenticatedPrincipal(Headers headers);
+
+    interface Headers
+    {
+        // argument is treated as case insensitive
+        List<String> getHeader(String name);
+    }
 }

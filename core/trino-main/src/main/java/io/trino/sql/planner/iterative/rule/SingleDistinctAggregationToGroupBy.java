@@ -106,6 +106,19 @@ public class SingleDistinctAggregationToGroupBy
                 .distinct();
     }
 
+    private static Aggregation removeDistinct(Aggregation aggregation)
+    {
+        checkArgument(aggregation.isDistinct(), "Expected aggregation to have DISTINCT input");
+
+        return new Aggregation(
+                aggregation.getResolvedFunction(),
+                aggregation.getArguments(),
+                false,
+                aggregation.getFilter(),
+                aggregation.getOrderingScheme(),
+                aggregation.getMask());
+    }
+
     @Override
     public Pattern<AggregationNode> getPattern()
     {
@@ -148,18 +161,5 @@ public class SingleDistinctAggregationToGroupBy
                         aggregation.getStep(),
                         aggregation.getHashSymbol(),
                         aggregation.getGroupIdSymbol()));
-    }
-
-    private static Aggregation removeDistinct(Aggregation aggregation)
-    {
-        checkArgument(aggregation.isDistinct(), "Expected aggregation to have DISTINCT input");
-
-        return new Aggregation(
-                aggregation.getResolvedFunction(),
-                aggregation.getArguments(),
-                false,
-                aggregation.getFilter(),
-                aggregation.getOrderingScheme(),
-                aggregation.getMask());
     }
 }

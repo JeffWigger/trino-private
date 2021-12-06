@@ -47,6 +47,11 @@ public class ResourceGroupStateInfoResource
         this.resourceGroupManager = requireNonNull(resourceGroupManager, "resourceGroupManager is null");
     }
 
+    private static String urlDecode(String value)
+    {
+        return URLDecoder.decode(value, UTF_8);
+    }
+
     @ResourceSecurity(MANAGEMENT_READ)
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -56,17 +61,12 @@ public class ResourceGroupStateInfoResource
     {
         if (!isNullOrEmpty(resourceGroupIdString)) {
             return resourceGroupManager.tryGetResourceGroupInfo(
-                    new ResourceGroupId(
-                            Arrays.stream(resourceGroupIdString.split("/"))
-                                    .map(ResourceGroupStateInfoResource::urlDecode)
-                                    .collect(toImmutableList())))
+                            new ResourceGroupId(
+                                    Arrays.stream(resourceGroupIdString.split("/"))
+                                            .map(ResourceGroupStateInfoResource::urlDecode)
+                                            .collect(toImmutableList())))
                     .orElseThrow(() -> new WebApplicationException(NOT_FOUND));
         }
         throw new WebApplicationException(NOT_FOUND);
-    }
-
-    private static String urlDecode(String value)
-    {
-        return URLDecoder.decode(value, UTF_8);
     }
 }

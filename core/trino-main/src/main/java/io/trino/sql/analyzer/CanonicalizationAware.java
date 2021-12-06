@@ -36,6 +36,29 @@ public class CanonicalizationAware<T extends Node>
         return new CanonicalizationAware<T>(node);
     }
 
+    public static Boolean canonicalizationAwareComparison(Node left, Node right)
+    {
+        if (left instanceof Identifier && right instanceof Identifier) {
+            Identifier leftIdentifier = (Identifier) left;
+            Identifier rightIdentifier = (Identifier) right;
+
+            return leftIdentifier.getCanonicalValue().equals(rightIdentifier.getCanonicalValue());
+        }
+
+        return null;
+    }
+
+    public static OptionalInt canonicalizationAwareHash(Node node)
+    {
+        if (node instanceof Identifier) {
+            return OptionalInt.of(((Identifier) node).getCanonicalValue().hashCode());
+        }
+        else if (node.getChildren().isEmpty()) {
+            return OptionalInt.of(node.hashCode());
+        }
+        return OptionalInt.empty();
+    }
+
     public T getNode()
     {
         return node;
@@ -65,28 +88,5 @@ public class CanonicalizationAware<T extends Node>
     public String toString()
     {
         return "CanonicalizationAware(" + node + ")";
-    }
-
-    public static Boolean canonicalizationAwareComparison(Node left, Node right)
-    {
-        if (left instanceof Identifier && right instanceof Identifier) {
-            Identifier leftIdentifier = (Identifier) left;
-            Identifier rightIdentifier = (Identifier) right;
-
-            return leftIdentifier.getCanonicalValue().equals(rightIdentifier.getCanonicalValue());
-        }
-
-        return null;
-    }
-
-    public static OptionalInt canonicalizationAwareHash(Node node)
-    {
-        if (node instanceof Identifier) {
-            return OptionalInt.of(((Identifier) node).getCanonicalValue().hashCode());
-        }
-        else if (node.getChildren().isEmpty()) {
-            return OptionalInt.of(node.hashCode());
-        }
-        return OptionalInt.empty();
     }
 }

@@ -123,7 +123,7 @@ public class SplitManager
                     splitSchedulingStrategy,
                     dynamicFilter);
         }
-        if (source == null){
+        if (source == null) {
             return null;
         }
         SplitSource splitSource = new ConnectorAwareSplitSource(catalogName, source);

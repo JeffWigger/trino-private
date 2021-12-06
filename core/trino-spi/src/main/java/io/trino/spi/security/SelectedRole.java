@@ -25,16 +25,9 @@ import static java.util.Objects.requireNonNull;
 
 public class SelectedRole
 {
-    public enum Type
-    {
-        ROLE, ALL, NONE
-    }
-
     private static final Pattern PATTERN = Pattern.compile("(ROLE|ALL|NONE)(\\{(.+?)\\})?");
-
     private final Type type;
     private final Optional<String> role;
-
     @JsonCreator
     public SelectedRole(@JsonProperty("type") Type type, @JsonProperty("role") Optional<String> role)
     {
@@ -43,6 +36,17 @@ public class SelectedRole
         if (type == Type.ROLE && role.isEmpty()) {
             throw new IllegalArgumentException("Role must be present for the selected role type: " + type);
         }
+    }
+
+    public static SelectedRole valueOf(String value)
+    {
+        Matcher m = PATTERN.matcher(value);
+        if (m.matches()) {
+            Type type = Type.valueOf(m.group(1));
+            Optional<String> role = Optional.ofNullable(m.group(3));
+            return new SelectedRole(type, role);
+        }
+        throw new IllegalArgumentException("Could not parse selected role: " + value);
     }
 
     @JsonProperty
@@ -86,14 +90,8 @@ public class SelectedRole
         return result.toString();
     }
 
-    public static SelectedRole valueOf(String value)
+    public enum Type
     {
-        Matcher m = PATTERN.matcher(value);
-        if (m.matches()) {
-            Type type = Type.valueOf(m.group(1));
-            Optional<String> role = Optional.ofNullable(m.group(3));
-            return new SelectedRole(type, role);
-        }
-        throw new IllegalArgumentException("Could not parse selected role: " + value);
+        ROLE, ALL, NONE
     }
 }

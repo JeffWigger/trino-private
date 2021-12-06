@@ -21,17 +21,6 @@ import static org.testng.Assert.assertEquals;
 
 public class TestIntBigArray
 {
-    @Test
-    public void testFill()
-    {
-        IntBigArray array = new IntBigArray();
-        assertFillCapacity(array, 0, 1);
-        assertFillCapacity(array, 1, 2);
-        assertFillCapacity(array, 1000, 3);
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, 4);
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, 5);
-    }
-
     private static void assertFillCapacity(IntBigArray array, long capacity, int value)
     {
         array.ensureCapacity(capacity);
@@ -39,21 +28,6 @@ public class TestIntBigArray
 
         for (int i = 0; i < capacity; i++) {
             assertEquals(array.get(i), value);
-        }
-    }
-
-    @Test
-    public void testCopyTo()
-    {
-        IntBigArray source = new IntBigArray();
-        IntBigArray destination = new IntBigArray();
-
-        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
-                }
-            }
         }
     }
 
@@ -82,6 +56,32 @@ public class TestIntBigArray
         }
         for (long i = destinationIndex + length; i < destinationCapacity; i++) {
             assertEquals(destination.get(i), destinationFillValue);
+        }
+    }
+
+    @Test
+    public void testFill()
+    {
+        IntBigArray array = new IntBigArray();
+        assertFillCapacity(array, 0, 1);
+        assertFillCapacity(array, 1, 2);
+        assertFillCapacity(array, 1000, 3);
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, 4);
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, 5);
+    }
+
+    @Test
+    public void testCopyTo()
+    {
+        IntBigArray source = new IntBigArray();
+        IntBigArray destination = new IntBigArray();
+
+        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
+                }
+            }
         }
     }
 }

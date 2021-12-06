@@ -59,6 +59,13 @@ public class SimpleFilterProjectSemiJoinStatsRule
         this.filterStatsCalculator = requireNonNull(filterStatsCalculator, "filterStatsCalculator cannot be null");
     }
 
+    private static boolean isSemiJoinOutputReference(Expression conjunct, Symbol semiJoinOutput)
+    {
+        SymbolReference semiJoinOuputSymbolReference = semiJoinOutput.toSymbolReference();
+        return conjunct.equals(semiJoinOuputSymbolReference) ||
+                (conjunct instanceof NotExpression && ((NotExpression) conjunct).getValue().equals(semiJoinOuputSymbolReference));
+    }
+
     @Override
     public Pattern<FilterNode> getPattern()
     {
@@ -141,13 +148,6 @@ public class SimpleFilterProjectSemiJoinStatsRule
                 .collect(toImmutableList()));
         boolean negated = semiJoinOutputReference instanceof NotExpression;
         return Optional.of(new SemiJoinOutputFilter(negated, remainingPredicate));
-    }
-
-    private static boolean isSemiJoinOutputReference(Expression conjunct, Symbol semiJoinOutput)
-    {
-        SymbolReference semiJoinOuputSymbolReference = semiJoinOutput.toSymbolReference();
-        return conjunct.equals(semiJoinOuputSymbolReference) ||
-                (conjunct instanceof NotExpression && ((NotExpression) conjunct).getValue().equals(semiJoinOuputSymbolReference));
     }
 
     private static class SemiJoinOutputFilter

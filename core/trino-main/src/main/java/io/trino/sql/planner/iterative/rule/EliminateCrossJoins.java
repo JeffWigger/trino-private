@@ -64,37 +64,6 @@ public class EliminateCrossJoins
         this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
     }
 
-    @Override
-    public Pattern<JoinNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public boolean isEnabled(Session session)
-    {
-        // we run this for cost-based reordering also for cases when some of the tables do not have statistics
-        JoinReorderingStrategy joinReorderingStrategy = getJoinReorderingStrategy(session);
-        return joinReorderingStrategy == ELIMINATE_CROSS_JOINS || joinReorderingStrategy == AUTOMATIC;
-    }
-
-    @Override
-    public Result apply(JoinNode node, Captures captures, Context context)
-    {
-        JoinGraph joinGraph = JoinGraph.buildFrom(metadata, node, context.getLookup(), context.getIdAllocator(), context.getSession(), typeAnalyzer, context.getSymbolAllocator().getTypes());
-        if (joinGraph.size() < 3 || !joinGraph.isContainsCrossJoin()) {
-            return Result.empty();
-        }
-
-        List<Integer> joinOrder = getJoinOrder(joinGraph);
-        if (isOriginalOrder(joinOrder)) {
-            return Result.empty();
-        }
-
-        PlanNode replacement = buildJoinTree(node.getOutputSymbols(), joinGraph, joinOrder, context.getIdAllocator());
-        return Result.ofPlanNode(replacement);
-    }
-
     public static boolean isOriginalOrder(List<Integer> joinOrder)
     {
         for (int i = 0; i < joinOrder.size(); i++) {
@@ -210,5 +179,36 @@ public class EliminateCrossJoins
         // If needed, introduce a projection to constrain the outputs to what was originally expected
         // Some nodes are sensitive to what's produced (e.g., DistinctLimit node)
         return restrictOutputs(idAllocator, result, ImmutableSet.copyOf(expectedOutputSymbols)).orElse(result);
+    }
+
+    @Override
+    public Pattern<JoinNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public boolean isEnabled(Session session)
+    {
+        // we run this for cost-based reordering also for cases when some of the tables do not have statistics
+        JoinReorderingStrategy joinReorderingStrategy = getJoinReorderingStrategy(session);
+        return joinReorderingStrategy == ELIMINATE_CROSS_JOINS || joinReorderingStrategy == AUTOMATIC;
+    }
+
+    @Override
+    public Result apply(JoinNode node, Captures captures, Context context)
+    {
+        JoinGraph joinGraph = JoinGraph.buildFrom(metadata, node, context.getLookup(), context.getIdAllocator(), context.getSession(), typeAnalyzer, context.getSymbolAllocator().getTypes());
+        if (joinGraph.size() < 3 || !joinGraph.isContainsCrossJoin()) {
+            return Result.empty();
+        }
+
+        List<Integer> joinOrder = getJoinOrder(joinGraph);
+        if (isOriginalOrder(joinOrder)) {
+            return Result.empty();
+        }
+
+        PlanNode replacement = buildJoinTree(node.getOutputSymbols(), joinGraph, joinOrder, context.getIdAllocator());
+        return Result.ofPlanNode(replacement);
     }
 }

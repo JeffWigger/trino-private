@@ -15,13 +15,6 @@ package io.trino.operator.window.matcher;
 
 interface Instruction
 {
-    enum Type
-    {
-        JUMP, MATCH_LABEL, MATCH_START, MATCH_END, SAVE, SPLIT, DONE
-    }
-
-    Type type();
-
     static Jump jump(int target)
     {
         return new Jump(target);
@@ -55,5 +48,12 @@ interface Instruction
     static MatchEnd matchEnd()
     {
         return new MatchEnd();
+    }
+
+    Type type();
+
+    enum Type
+    {
+        JUMP, MATCH_LABEL, MATCH_START, MATCH_END, SAVE, SPLIT, DONE
     }
 }

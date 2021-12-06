@@ -67,6 +67,15 @@ public class PushPartialAggregationThroughJoin
         return aggregationNode.getStep() == PARTIAL && aggregationNode.getGroupingSetCount() == 1;
     }
 
+    private static boolean allAggregationsOn(Map<Symbol, Aggregation> aggregations, List<Symbol> symbols)
+    {
+        Set<Symbol> inputs = aggregations.values().stream()
+                .map(SymbolsExtractor::extractAll)
+                .flatMap(List::stream)
+                .collect(toImmutableSet());
+        return symbols.containsAll(inputs);
+    }
+
     @Override
     public Pattern<AggregationNode> getPattern()
     {
@@ -99,15 +108,6 @@ public class PushPartialAggregationThroughJoin
         return Result.empty();
     }
 
-    private static boolean allAggregationsOn(Map<Symbol, Aggregation> aggregations, List<Symbol> symbols)
-    {
-        Set<Symbol> inputs = aggregations.values().stream()
-                .map(SymbolsExtractor::extractAll)
-                .flatMap(List::stream)
-                .collect(toImmutableSet());
-        return symbols.containsAll(inputs);
-    }
-
     private PlanNode pushPartialToLeftChild(AggregationNode node, JoinNode child, Context context)
     {
         Set<Symbol> joinLeftChildSymbols = ImmutableSet.copyOf(child.getLeft().getOutputSymbols());
@@ -127,11 +127,11 @@ public class PushPartialAggregationThroughJoin
     private Set<Symbol> getJoinRequiredSymbols(JoinNode node)
     {
         return Streams.concat(
-                node.getCriteria().stream().map(JoinNode.EquiJoinClause::getLeft),
-                node.getCriteria().stream().map(JoinNode.EquiJoinClause::getRight),
-                node.getFilter().map(SymbolsExtractor::extractUnique).orElse(ImmutableSet.of()).stream(),
-                node.getLeftHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream(),
-                node.getRightHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream())
+                        node.getCriteria().stream().map(JoinNode.EquiJoinClause::getLeft),
+                        node.getCriteria().stream().map(JoinNode.EquiJoinClause::getRight),
+                        node.getFilter().map(SymbolsExtractor::extractUnique).orElse(ImmutableSet.of()).stream(),
+                        node.getLeftHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream(),
+                        node.getRightHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream())
                 .collect(toImmutableSet());
     }
 

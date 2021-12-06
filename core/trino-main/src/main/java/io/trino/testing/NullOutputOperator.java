@@ -31,47 +31,6 @@ import static java.util.Objects.requireNonNull;
 public class NullOutputOperator
         implements Operator
 {
-    public static class NullOutputFactory
-            implements OutputFactory
-    {
-        @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
-        {
-            return new NullOutputOperatorFactory(operatorId, planNodeId);
-        }
-    }
-
-    public static class NullOutputOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-
-        public NullOutputOperatorFactory(int operatorId, PlanNodeId planNodeId)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, NullOutputOperator.class.getSimpleName());
-            return new NullOutputOperator(operatorContext);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new NullOutputOperatorFactory(operatorId, planNodeId);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private boolean finished;
 
@@ -114,5 +73,46 @@ public class NullOutputOperator
     public Page getOutput()
     {
         return null;
+    }
+
+    public static class NullOutputFactory
+            implements OutputFactory
+    {
+        @Override
+        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        {
+            return new NullOutputOperatorFactory(operatorId, planNodeId);
+        }
+    }
+
+    public static class NullOutputOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+
+        public NullOutputOperatorFactory(int operatorId, PlanNodeId planNodeId)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, NullOutputOperator.class.getSimpleName());
+            return new NullOutputOperator(operatorContext);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new NullOutputOperatorFactory(operatorId, planNodeId);
+        }
     }
 }

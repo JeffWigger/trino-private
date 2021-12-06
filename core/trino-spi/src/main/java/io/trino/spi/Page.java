@@ -34,22 +34,11 @@ public class Page
 {
     public static final int INSTANCE_SIZE = ClassLayout.parseClass(Page.class).instanceSize();
     private static final Block[] EMPTY_BLOCKS = new Block[0];
-
-    /**
-     * Visible to give trusted classes like {@link PageBuilder} access to a constructor that doesn't
-     * defensively copy the blocks
-     */
-    static Page wrapBlocksWithoutCopy(int positionCount, Block[] blocks)
-    {
-        return new Page(false, positionCount, blocks);
-    }
-
-    protected final Block[] blocks;
     public final int positionCount;
+    protected final Block[] blocks;
     private volatile long sizeInBytes = -1;
     private volatile long retainedSizeInBytes = -1;
     private volatile long logicalSizeInBytes = -1;
-
     public Page(Block... blocks)
     {
         this(true, determinePositionCount(blocks), blocks);
@@ -79,6 +68,87 @@ public class Page
         else {
             this.blocks = blocksCopyRequired ? blocks.clone() : blocks;
         }
+    }
+
+    /**
+     * Visible to give trusted classes like {@link PageBuilder} access to a constructor that doesn't
+     * defensively copy the blocks
+     */
+    static Page wrapBlocksWithoutCopy(int positionCount, Block[] blocks)
+    {
+        return new Page(false, positionCount, blocks);
+    }
+
+    private static List<DictionaryBlock> compactRelatedBlocks(List<DictionaryBlock> blocks)
+    {
+        DictionaryBlock firstDictionaryBlock = blocks.get(0);
+        Block dictionary = firstDictionaryBlock.getDictionary();
+
+        int positionCount = firstDictionaryBlock.getPositionCount();
+        int dictionarySize = dictionary.getPositionCount();
+
+        // determine which dictionary entries are referenced and build a reindex for them
+        int[] dictionaryPositionsToCopy = new int[min(dictionarySize, positionCount)];
+        int[] remapIndex = new int[dictionarySize];
+        Arrays.fill(remapIndex, -1);
+
+        int numberOfIndexes = 0;
+        for (int i = 0; i < positionCount; i++) {
+            int position = firstDictionaryBlock.getId(i);
+            if (remapIndex[position] == -1) {
+                dictionaryPositionsToCopy[numberOfIndexes] = position;
+                remapIndex[position] = numberOfIndexes;
+                numberOfIndexes++;
+            }
+        }
+
+        // entire dictionary is referenced
+        if (numberOfIndexes == dictionarySize) {
+            return blocks;
+        }
+
+        // compact the dictionaries
+        int[] newIds = getNewIds(positionCount, firstDictionaryBlock, remapIndex);
+        List<DictionaryBlock> outputDictionaryBlocks = new ArrayList<>(blocks.size());
+        DictionaryId newDictionaryId = randomDictionaryId();
+        for (DictionaryBlock dictionaryBlock : blocks) {
+            if (!firstDictionaryBlock.getDictionarySourceId().equals(dictionaryBlock.getDictionarySourceId())) {
+                throw new IllegalArgumentException("dictionarySourceIds must be the same");
+            }
+
+            try {
+                Block compactDictionary = dictionaryBlock.getDictionary().copyPositions(dictionaryPositionsToCopy, 0, numberOfIndexes);
+                outputDictionaryBlocks.add(new DictionaryBlock(positionCount, compactDictionary, newIds, true, newDictionaryId));
+            }
+            catch (UnsupportedOperationException e) {
+                // ignore if copy positions is not supported for the dictionary
+                outputDictionaryBlocks.add(dictionaryBlock);
+            }
+        }
+        return outputDictionaryBlocks;
+    }
+
+    private static int[] getNewIds(int positionCount, DictionaryBlock dictionaryBlock, int[] remapIndex)
+    {
+        int[] newIds = new int[positionCount];
+        for (int i = 0; i < positionCount; i++) {
+            int newId = remapIndex[dictionaryBlock.getId(i)];
+            if (newId == -1) {
+                throw new IllegalStateException("reference to a non-existent key");
+            }
+            newIds[i] = newId;
+        }
+        return newIds;
+    }
+
+    public static int determinePositionCount(Block... blocks)
+    {
+        requireNonNull(blocks, "blocks is null");
+        if (blocks.length == 0) {
+            throw new IllegalArgumentException("blocks is empty");
+        }
+
+        return blocks[0].getPositionCount();
     }
 
     public int getChannelCount()
@@ -212,68 +282,6 @@ public class Page
         return relatedDictionaryBlocks;
     }
 
-    private static List<DictionaryBlock> compactRelatedBlocks(List<DictionaryBlock> blocks)
-    {
-        DictionaryBlock firstDictionaryBlock = blocks.get(0);
-        Block dictionary = firstDictionaryBlock.getDictionary();
-
-        int positionCount = firstDictionaryBlock.getPositionCount();
-        int dictionarySize = dictionary.getPositionCount();
-
-        // determine which dictionary entries are referenced and build a reindex for them
-        int[] dictionaryPositionsToCopy = new int[min(dictionarySize, positionCount)];
-        int[] remapIndex = new int[dictionarySize];
-        Arrays.fill(remapIndex, -1);
-
-        int numberOfIndexes = 0;
-        for (int i = 0; i < positionCount; i++) {
-            int position = firstDictionaryBlock.getId(i);
-            if (remapIndex[position] == -1) {
-                dictionaryPositionsToCopy[numberOfIndexes] = position;
-                remapIndex[position] = numberOfIndexes;
-                numberOfIndexes++;
-            }
-        }
-
-        // entire dictionary is referenced
-        if (numberOfIndexes == dictionarySize) {
-            return blocks;
-        }
-
-        // compact the dictionaries
-        int[] newIds = getNewIds(positionCount, firstDictionaryBlock, remapIndex);
-        List<DictionaryBlock> outputDictionaryBlocks = new ArrayList<>(blocks.size());
-        DictionaryId newDictionaryId = randomDictionaryId();
-        for (DictionaryBlock dictionaryBlock : blocks) {
-            if (!firstDictionaryBlock.getDictionarySourceId().equals(dictionaryBlock.getDictionarySourceId())) {
-                throw new IllegalArgumentException("dictionarySourceIds must be the same");
-            }
-
-            try {
-                Block compactDictionary = dictionaryBlock.getDictionary().copyPositions(dictionaryPositionsToCopy, 0, numberOfIndexes);
-                outputDictionaryBlocks.add(new DictionaryBlock(positionCount, compactDictionary, newIds, true, newDictionaryId));
-            }
-            catch (UnsupportedOperationException e) {
-                // ignore if copy positions is not supported for the dictionary
-                outputDictionaryBlocks.add(dictionaryBlock);
-            }
-        }
-        return outputDictionaryBlocks;
-    }
-
-    private static int[] getNewIds(int positionCount, DictionaryBlock dictionaryBlock, int[] remapIndex)
-    {
-        int[] newIds = new int[positionCount];
-        for (int i = 0; i < positionCount; i++) {
-            int newId = remapIndex[dictionaryBlock.getId(i)];
-            if (newId == -1) {
-                throw new IllegalStateException("reference to a non-existent key");
-            }
-            newIds[i] = newId;
-        }
-        return newIds;
-    }
-
     /**
      * Returns a page that assures all data is in memory.
      * May return the same page if all page data is already in memory.
@@ -301,7 +309,7 @@ public class Page
 
     public Page getLoadedPage(int column)
     {
-        return wrapBlocksWithoutCopy(positionCount, new Block[]{this.blocks[column].getLoadedBlock()});
+        return wrapBlocksWithoutCopy(positionCount, new Block[] {this.blocks[column].getLoadedBlock()});
     }
 
     public Page getLoadedPage(int... columns)
@@ -324,16 +332,6 @@ public class Page
         builder.append('}');
         builder.append("@").append(Integer.toHexString(System.identityHashCode(this)));
         return builder.toString();
-    }
-
-    public static int determinePositionCount(Block... blocks)
-    {
-        requireNonNull(blocks, "blocks is null");
-        if (blocks.length == 0) {
-            throw new IllegalArgumentException("blocks is empty");
-        }
-
-        return blocks[0].getPositionCount();
     }
 
     public Page getPositions(int[] retainedPositions, int offset, int length)

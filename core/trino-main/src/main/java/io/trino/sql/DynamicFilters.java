@@ -327,9 +327,9 @@ public final class DynamicFilters
     @ScalarFunction(value = Function.NAME, hidden = true)
     public static final class Function
     {
-        private Function() {}
-
         private static final String NAME = "$internal$dynamic_filter_function";
+
+        private Function() {}
 
         @TypeParameter("T")
         @SqlType(BOOLEAN)

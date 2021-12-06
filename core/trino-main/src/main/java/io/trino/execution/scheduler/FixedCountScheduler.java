@@ -14,33 +14,23 @@
 package io.trino.execution.scheduler;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.util.concurrent.SettableFuture;
-import io.trino.execution.Lifespan;
 import io.trino.execution.RemoteTask;
 import io.trino.execution.SqlStageExecution;
 import io.trino.metadata.InternalNode;
-import io.trino.spi.connector.ConnectorPartitionHandle;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
 public class FixedCountScheduler
         implements StageScheduler
 {
-    public interface TaskScheduler
-    {
-        Optional<RemoteTask> scheduleTask(InternalNode node, int partition);
-    }
-
     private final TaskScheduler taskScheduler;
     private final List<InternalNode> partitionToNode;
     private ScheduleResult scheduleResult = null;
-
     public FixedCountScheduler(SqlStageExecution stage, List<InternalNode> partitionToNode)
     {
         requireNonNull(stage, "stage is null");
@@ -79,4 +69,8 @@ public class FixedCountScheduler
 //Do noting
     }
 
+    public interface TaskScheduler
+    {
+        Optional<RemoteTask> scheduleTask(InternalNode node, int partition);
+    }
 }

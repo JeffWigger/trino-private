@@ -104,15 +104,12 @@ public class OperatorContext
     private final AtomicLong peakSystemMemoryReservation = new AtomicLong();
     private final AtomicLong peakRevocableMemoryReservation = new AtomicLong();
     private final AtomicLong peakTotalMemoryReservation = new AtomicLong();
-
+    private final MemoryTrackingContext operatorMemoryContext;
     @GuardedBy("this")
     private boolean memoryRevokingRequested;
-
     @Nullable
     @GuardedBy("this")
     private Runnable memoryRevocationRequestListener;
-
-    private final MemoryTrackingContext operatorMemoryContext;
 
     public OperatorContext(
             int operatorId,
@@ -135,6 +132,43 @@ public class OperatorContext
         this.revocableMemoryFuture.get().set(null);
         this.operatorMemoryContext = requireNonNull(operatorMemoryContext, "operatorMemoryContext is null");
         operatorMemoryContext.initializeLocalMemoryContexts(operatorType);
+    }
+
+    private static void updateMemoryFuture(ListenableFuture<Void> memoryPoolFuture, AtomicReference<SettableFuture<Void>> targetFutureReference)
+    {
+        if (!memoryPoolFuture.isDone()) {
+            SettableFuture<Void> currentMemoryFuture = targetFutureReference.get();
+            while (currentMemoryFuture.isDone()) {
+                SettableFuture<Void> settableFuture = SettableFuture.create();
+                // We can't replace one that's not done, because the task may be blocked on that future
+                if (targetFutureReference.compareAndSet(currentMemoryFuture, settableFuture)) {
+                    currentMemoryFuture = settableFuture;
+                }
+                else {
+                    currentMemoryFuture = targetFutureReference.get();
+                }
+            }
+
+            SettableFuture<Void> finalMemoryFuture = currentMemoryFuture;
+            // Create a new future, so that this operator can un-block before the pool does, if it's moved to a new pool
+            memoryPoolFuture.addListener(() -> finalMemoryFuture.set(null), directExecutor());
+        }
+    }
+
+    private static void runListener(Runnable listener)
+    {
+        requireNonNull(listener, "listener is null");
+        try {
+            listener.run();
+        }
+        catch (RuntimeException e) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Exception while running the listener", e);
+        }
+    }
+
+    private static long nanosBetween(long start, long end)
+    {
+        return max(0, end - start);
     }
 
     public int getOperatorId()
@@ -350,27 +384,6 @@ public class OperatorContext
         return operatorMemoryContext.getRevocableMemory();
     }
 
-    private static void updateMemoryFuture(ListenableFuture<Void> memoryPoolFuture, AtomicReference<SettableFuture<Void>> targetFutureReference)
-    {
-        if (!memoryPoolFuture.isDone()) {
-            SettableFuture<Void> currentMemoryFuture = targetFutureReference.get();
-            while (currentMemoryFuture.isDone()) {
-                SettableFuture<Void> settableFuture = SettableFuture.create();
-                // We can't replace one that's not done, because the task may be blocked on that future
-                if (targetFutureReference.compareAndSet(currentMemoryFuture, settableFuture)) {
-                    currentMemoryFuture = settableFuture;
-                }
-                else {
-                    currentMemoryFuture = targetFutureReference.get();
-                }
-            }
-
-            SettableFuture<Void> finalMemoryFuture = currentMemoryFuture;
-            // Create a new future, so that this operator can un-block before the pool does, if it's moved to a new pool
-            memoryPoolFuture.addListener(() -> finalMemoryFuture.set(null), directExecutor());
-        }
-    }
-
     public void destroy()
     {
         // reset memory revocation listener so that OperatorContext doesn't hold any references to Driver instance
@@ -457,17 +470,6 @@ public class OperatorContext
         // if memory revoking is requested immediately run the listener
         if (shouldNotify) {
             runListener(listener);
-        }
-    }
-
-    private static void runListener(Runnable listener)
-    {
-        requireNonNull(listener, "listener is null");
-        try {
-            listener.run();
-        }
-        catch (RuntimeException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Exception while running the listener", e);
         }
     }
 
@@ -588,32 +590,10 @@ public class OperatorContext
                 info);
     }
 
-    private static long nanosBetween(long start, long end)
+    @VisibleForTesting
+    public MemoryTrackingContext getOperatorMemoryContext()
     {
-        return max(0, end - start);
-    }
-
-    private class BlockedMonitor
-            implements Runnable
-    {
-        private final long start = System.nanoTime();
-        private boolean finished;
-
-        @Override
-        public synchronized void run()
-        {
-            if (finished) {
-                return;
-            }
-            finished = true;
-            blockedMonitor.compareAndSet(this, null);
-            blockedWallNanos.getAndAdd(getBlockedTime());
-        }
-
-        public long getBlockedTime()
-        {
-            return nanosBetween(start, System.nanoTime());
-        }
+        return operatorMemoryContext;
     }
 
     @ThreadSafe
@@ -772,9 +752,26 @@ public class OperatorContext
         }
     }
 
-    @VisibleForTesting
-    public MemoryTrackingContext getOperatorMemoryContext()
+    private class BlockedMonitor
+            implements Runnable
     {
-        return operatorMemoryContext;
+        private final long start = System.nanoTime();
+        private boolean finished;
+
+        @Override
+        public synchronized void run()
+        {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            blockedMonitor.compareAndSet(this, null);
+            blockedWallNanos.getAndAdd(getBlockedTime());
+        }
+
+        public long getBlockedTime()
+        {
+            return nanosBetween(start, System.nanoTime());
+        }
     }
 }

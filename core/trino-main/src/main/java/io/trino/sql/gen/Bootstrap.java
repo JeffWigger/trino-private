@@ -28,15 +28,6 @@ public final class Bootstrap
 {
     public static final Method BOOTSTRAP_METHOD;
 
-    static {
-        try {
-            BOOTSTRAP_METHOD = Bootstrap.class.getMethod("bootstrap", MethodHandles.Lookup.class, String.class, MethodType.class, long.class);
-        }
-        catch (NoSuchMethodException e) {
-            throw new AssertionError(e);
-        }
-    }
-
     private Bootstrap()
     {
     }
@@ -51,5 +42,14 @@ public final class Bootstrap
         checkArgument(target != null, "Binding %s for function %s%s not found", bindingId, name, type.parameterList());
 
         return new ConstantCallSite(target);
+    }
+
+    static {
+        try {
+            BOOTSTRAP_METHOD = Bootstrap.class.getMethod("bootstrap", MethodHandles.Lookup.class, String.class, MethodType.class, long.class);
+        }
+        catch (NoSuchMethodException e) {
+            throw new AssertionError(e);
+        }
     }
 }

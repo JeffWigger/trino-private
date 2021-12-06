@@ -123,6 +123,72 @@ import static org.weakref.jmx.guice.ExportBinder.newExporter;
 public class CoordinatorModule
         extends AbstractConfigurationAwareModule
 {
+    @Provides
+    @Singleton
+    public static ResourceGroupManager<?> getResourceGroupManager(@SuppressWarnings("rawtypes") ResourceGroupManager manager)
+    {
+        return manager;
+    }
+
+    @Provides
+    @Singleton
+    public static QueryPerformanceFetcher createQueryPerformanceFetcher(QueryManager queryManager)
+    {
+        return queryManager::getFullQueryInfo;
+    }
+
+    @Provides
+    @Singleton
+    @ForStatementResource
+    public static ExecutorService createStatementResponseCoreExecutor()
+    {
+        return newCachedThreadPool(daemonThreadsNamed("statement-response-%s"));
+    }
+
+    @Provides
+    @Singleton
+    @ForStatementResource
+    public static BoundedExecutor createStatementResponseExecutor(@ForStatementResource ExecutorService coreExecutor, TaskManagerConfig config)
+    {
+        return new BoundedExecutor(coreExecutor, config.getHttpResponseThreads());
+    }
+
+    @Provides
+    @Singleton
+    @ForStatementResource
+    public static ScheduledExecutorService createStatementTimeoutExecutor(TaskManagerConfig config)
+    {
+        return newScheduledThreadPool(config.getHttpTimeoutThreads(), daemonThreadsNamed("statement-timeout-%s"));
+    }
+
+    @Provides
+    @Singleton
+    @ForTransactionManager
+    public static ScheduledExecutorService createTransactionIdleCheckExecutor()
+    {
+        return newSingleThreadScheduledExecutor(daemonThreadsNamed("transaction-idle-check"));
+    }
+
+    @Provides
+    @Singleton
+    @ForTransactionManager
+    public static ExecutorService createTransactionFinishingExecutor()
+    {
+        return newCachedThreadPool(daemonThreadsNamed("transaction-finishing-%s"));
+    }
+
+    @Provides
+    @Singleton
+    public static TransactionManager createTransactionManager(
+            TransactionManagerConfig config,
+            CatalogManager catalogManager,
+            VersionEmbedder versionEmbedder,
+            @ForTransactionManager ScheduledExecutorService idleCheckExecutor,
+            @ForTransactionManager ExecutorService finishingExecutor)
+    {
+        return InMemoryTransactionManager.create(config, idleCheckExecutor, catalogManager, versionEmbedder.embedVersion(finishingExecutor));
+    }
+
     @Override
     protected void setup(Binder binder)
     {
@@ -251,7 +317,6 @@ public class CoordinatorModule
         binder.bind(ScheduledExecutorService.class).annotatedWith(ForScheduler.class)
                 .toInstance(newSingleThreadScheduledExecutor(threadsNamed("stage-scheduler")));
 
-
         httpClientBinder(binder).bindHttpClient("deltaUpdater", ForDeltaUpdate.class)
                 .withTracing()
                 .withFilter(GenerateTraceTokenRequestFilter.class)
@@ -279,72 +344,6 @@ public class CoordinatorModule
 
         // cleanup
         binder.bind(ExecutorCleanup.class).in(Scopes.SINGLETON);
-    }
-
-    @Provides
-    @Singleton
-    public static ResourceGroupManager<?> getResourceGroupManager(@SuppressWarnings("rawtypes") ResourceGroupManager manager)
-    {
-        return manager;
-    }
-
-    @Provides
-    @Singleton
-    public static QueryPerformanceFetcher createQueryPerformanceFetcher(QueryManager queryManager)
-    {
-        return queryManager::getFullQueryInfo;
-    }
-
-    @Provides
-    @Singleton
-    @ForStatementResource
-    public static ExecutorService createStatementResponseCoreExecutor()
-    {
-        return newCachedThreadPool(daemonThreadsNamed("statement-response-%s"));
-    }
-
-    @Provides
-    @Singleton
-    @ForStatementResource
-    public static BoundedExecutor createStatementResponseExecutor(@ForStatementResource ExecutorService coreExecutor, TaskManagerConfig config)
-    {
-        return new BoundedExecutor(coreExecutor, config.getHttpResponseThreads());
-    }
-
-    @Provides
-    @Singleton
-    @ForStatementResource
-    public static ScheduledExecutorService createStatementTimeoutExecutor(TaskManagerConfig config)
-    {
-        return newScheduledThreadPool(config.getHttpTimeoutThreads(), daemonThreadsNamed("statement-timeout-%s"));
-    }
-
-    @Provides
-    @Singleton
-    @ForTransactionManager
-    public static ScheduledExecutorService createTransactionIdleCheckExecutor()
-    {
-        return newSingleThreadScheduledExecutor(daemonThreadsNamed("transaction-idle-check"));
-    }
-
-    @Provides
-    @Singleton
-    @ForTransactionManager
-    public static ExecutorService createTransactionFinishingExecutor()
-    {
-        return newCachedThreadPool(daemonThreadsNamed("transaction-finishing-%s"));
-    }
-
-    @Provides
-    @Singleton
-    public static TransactionManager createTransactionManager(
-            TransactionManagerConfig config,
-            CatalogManager catalogManager,
-            VersionEmbedder versionEmbedder,
-            @ForTransactionManager ScheduledExecutorService idleCheckExecutor,
-            @ForTransactionManager ExecutorService finishingExecutor)
-    {
-        return InMemoryTransactionManager.create(config, idleCheckExecutor, catalogManager, versionEmbedder.embedVersion(finishingExecutor));
     }
 
     private void bindLowMemoryKiller(LowMemoryKillerPolicy policy, Class<? extends LowMemoryKiller> clazz)

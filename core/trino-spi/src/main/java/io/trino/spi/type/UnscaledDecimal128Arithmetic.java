@@ -42,10 +42,8 @@ import static java.util.Arrays.fill;
 public final class UnscaledDecimal128Arithmetic
 {
     private static final int NUMBER_OF_LONGS = 2;
-    private static final int NUMBER_OF_INTS = 2 * NUMBER_OF_LONGS;
-
     public static final int UNSCALED_DECIMAL_128_SLICE_LENGTH = NUMBER_OF_LONGS * SIZE_OF_LONG;
-
+    private static final int NUMBER_OF_INTS = 2 * NUMBER_OF_LONGS;
     private static final Slice[] POWERS_OF_TEN = new Slice[MAX_PRECISION];
     private static final Slice[] POWERS_OF_FIVE = new Slice[MAX_PRECISION];
 
@@ -90,33 +88,7 @@ public final class UnscaledDecimal128Arithmetic
      */
     private static final int[] POWERS_OF_TEN_INT = new int[MAX_POWER_OF_TEN_INT + 1];
 
-    static {
-        for (int i = 0; i < POWERS_OF_FIVE.length; ++i) {
-            POWERS_OF_FIVE[i] = unscaledDecimal(BigInteger.valueOf(5).pow(i));
-        }
-        for (int i = 0; i < POWERS_OF_TEN.length; ++i) {
-            POWERS_OF_TEN[i] = unscaledDecimal(BigInteger.TEN.pow(i));
-        }
-
-        POWERS_OF_FIVES_INT[0] = 1;
-        for (int i = 1; i < POWERS_OF_FIVES_INT.length; ++i) {
-            POWERS_OF_FIVES_INT[i] = POWERS_OF_FIVES_INT[i - 1] * 5;
-        }
-
-        POWERS_OF_FIVE_LONG[0] = 1;
-        for (int i = 1; i < POWERS_OF_FIVE_LONG.length; ++i) {
-            POWERS_OF_FIVE_LONG[i] = POWERS_OF_FIVE_LONG[i - 1] * 5;
-        }
-
-        POWERS_OF_TEN_INT[0] = 1;
-        for (int i = 1; i < POWERS_OF_TEN_INT.length; ++i) {
-            POWERS_OF_TEN_INT[i] = POWERS_OF_TEN_INT[i - 1] * 10;
-        }
-
-        if (!ByteOrder.nativeOrder().equals(ByteOrder.LITTLE_ENDIAN)) {
-            throw new IllegalStateException("UnsignedDecimal128Arithmetic is supported on little-endian machines only");
-        }
-    }
+    private UnscaledDecimal128Arithmetic() {}
 
     public static Slice unscaledDecimal()
     {
@@ -1906,5 +1878,31 @@ public final class UnscaledDecimal128Arithmetic
         }
     }
 
-    private UnscaledDecimal128Arithmetic() {}
+    static {
+        for (int i = 0; i < POWERS_OF_FIVE.length; ++i) {
+            POWERS_OF_FIVE[i] = unscaledDecimal(BigInteger.valueOf(5).pow(i));
+        }
+        for (int i = 0; i < POWERS_OF_TEN.length; ++i) {
+            POWERS_OF_TEN[i] = unscaledDecimal(BigInteger.TEN.pow(i));
+        }
+
+        POWERS_OF_FIVES_INT[0] = 1;
+        for (int i = 1; i < POWERS_OF_FIVES_INT.length; ++i) {
+            POWERS_OF_FIVES_INT[i] = POWERS_OF_FIVES_INT[i - 1] * 5;
+        }
+
+        POWERS_OF_FIVE_LONG[0] = 1;
+        for (int i = 1; i < POWERS_OF_FIVE_LONG.length; ++i) {
+            POWERS_OF_FIVE_LONG[i] = POWERS_OF_FIVE_LONG[i - 1] * 5;
+        }
+
+        POWERS_OF_TEN_INT[0] = 1;
+        for (int i = 1; i < POWERS_OF_TEN_INT.length; ++i) {
+            POWERS_OF_TEN_INT[i] = POWERS_OF_TEN_INT[i - 1] * 10;
+        }
+
+        if (!ByteOrder.nativeOrder().equals(ByteOrder.LITTLE_ENDIAN)) {
+            throw new IllegalStateException("UnsignedDecimal128Arithmetic is supported on little-endian machines only");
+        }
+    }
 }

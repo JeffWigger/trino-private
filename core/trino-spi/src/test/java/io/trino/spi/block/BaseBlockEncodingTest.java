@@ -31,6 +31,19 @@ public abstract class BaseBlockEncodingTest<T>
 
     private final BlockEncodingSerde blockEncodingSerde = new TestingBlockEncodingSerde();
 
+    @DataProvider
+    public static Object[][] testRandomDataDataProvider()
+    {
+        return Arrays.stream(BlockFill.values())
+                .flatMap(fill -> IntStream.of(RANDOM_BLOCK_SIZES).mapToObj(size -> new Object[] {size, fill}))
+                .toArray(Object[][]::new);
+    }
+
+    private static Random getRandom()
+    {
+        return new Random(32167);
+    }
+
     protected abstract Type getType();
 
     protected abstract void write(BlockBuilder blockBuilder, T value);
@@ -68,14 +81,14 @@ public abstract class BaseBlockEncodingTest<T>
         Random random = getRandom();
 
         Object[] values = Stream.of(
-                BlockFill.MIXED,
-                BlockFill.ONLY_NULLS,
-                BlockFill.MIXED,
-                BlockFill.ONLY_VALUES,
-                BlockFill.MIXED,
-                BlockFill.ONLY_NULLS,
-                BlockFill.ONLY_VALUES,
-                BlockFill.MIXED)
+                        BlockFill.MIXED,
+                        BlockFill.ONLY_NULLS,
+                        BlockFill.MIXED,
+                        BlockFill.ONLY_VALUES,
+                        BlockFill.MIXED,
+                        BlockFill.ONLY_NULLS,
+                        BlockFill.ONLY_VALUES,
+                        BlockFill.MIXED)
                 .map(fill -> getObjects(8, fill, random))
                 .flatMap(Arrays::stream)
                 .toArray();
@@ -113,14 +126,6 @@ public abstract class BaseBlockEncodingTest<T>
         return values;
     }
 
-    @DataProvider
-    public static Object[][] testRandomDataDataProvider()
-    {
-        return Arrays.stream(BlockFill.values())
-                .flatMap(fill -> IntStream.of(RANDOM_BLOCK_SIZES).mapToObj(size -> new Object[] {size, fill}))
-                .toArray(Object[][]::new);
-    }
-
     protected final void roundTrip(Object... values)
     {
         BlockBuilder expectedBlockBuilder = createBlockBuilder(values.length);
@@ -145,11 +150,6 @@ public abstract class BaseBlockEncodingTest<T>
     private BlockBuilder createBlockBuilder(int length)
     {
         return getType().createBlockBuilder(null, length);
-    }
-
-    private static Random getRandom()
-    {
-        return new Random(32167);
     }
 
     private enum BlockFill

@@ -140,9 +140,9 @@ public class GroupedTopNRankBuilder
     {
         private final PageBuilder pageBuilder;
         private final long groupIdCount = groupByHash.getGroupCount();
-        private long currentGroupId = -1;
         private final LongBigArray rowIdOutput = new LongBigArray();
         private final LongBigArray rankingOutput = new LongBigArray();
+        private long currentGroupId = -1;
         private long currentGroupSize;
         private int currentIndexInGroup;
 

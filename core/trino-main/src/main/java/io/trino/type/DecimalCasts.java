@@ -96,6 +96,8 @@ public final class DecimalCasts
     public static final SqlScalarFunction DECIMAL_TO_JSON_CAST = castFunctionFromDecimalTo(JSON.getTypeSignature(), "shortDecimalToJson", "longDecimalToJson");
     public static final SqlScalarFunction JSON_TO_DECIMAL_CAST = castFunctionToDecimalFromBuilder(JSON.getTypeSignature(), true, "jsonToShortDecimal", "jsonToLongDecimal");
 
+    private DecimalCasts() {}
+
     private static SqlScalarFunction castFunctionFromDecimalTo(TypeSignature to, String... methodNames)
     {
         Signature signature = Signature.builder()
@@ -156,8 +158,6 @@ public final class DecimalCasts
                                     return ImmutableList.of(resultType.getPrecision(), resultType.getScale(), tenToScale);
                                 }))).build();
     }
-
-    private DecimalCasts() {}
 
     @UsedByGeneratedCode
     public static boolean shortDecimalToBoolean(long decimal, long precision, long scale, long tenToScale)

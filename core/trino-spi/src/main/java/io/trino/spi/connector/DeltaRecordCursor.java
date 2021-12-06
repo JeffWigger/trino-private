@@ -16,8 +16,6 @@ package io.trino.spi.connector;
 import io.airlift.slice.Slice;
 import io.trino.spi.type.Type;
 
-import java.io.Closeable;
-
 public interface DeltaRecordCursor
         extends RecordCursor
 {

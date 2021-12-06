@@ -88,23 +88,6 @@ public class StreamPreferredProperties
         return any();
     }
 
-    public StreamPreferredProperties withParallelism()
-    {
-        // do not override an existing parallel preference
-        if (isParallelPreferred()) {
-            return this;
-        }
-        return new StreamPreferredProperties(Optional.of(MULTIPLE), Optional.empty(), orderSensitive);
-    }
-
-    public StreamPreferredProperties withFixedParallelism()
-    {
-        if (distribution.isPresent() && distribution.get() == FIXED) {
-            return this;
-        }
-        return fixedParallelism();
-    }
-
     public static StreamPreferredProperties partitionedOn(Collection<Symbol> partitionSymbols)
     {
         if (partitionSymbols.isEmpty()) {
@@ -123,6 +106,36 @@ public class StreamPreferredProperties
 
         // this must be the exact partitioning symbols, in the exact order
         return new StreamPreferredProperties(Optional.of(FIXED), true, Optional.of(ImmutableList.copyOf(partitionSymbols)), false);
+    }
+
+    private static Optional<List<Symbol>> translateSymbols(Iterable<Symbol> partitioning, Function<Symbol, Optional<Symbol>> translator)
+    {
+        ImmutableList.Builder<Symbol> newPartitioningColumns = ImmutableList.builder();
+        for (Symbol partitioningColumn : partitioning) {
+            Optional<Symbol> translated = translator.apply(partitioningColumn);
+            if (translated.isEmpty()) {
+                return Optional.empty();
+            }
+            newPartitioningColumns.add(translated.get());
+        }
+        return Optional.of(newPartitioningColumns.build());
+    }
+
+    public StreamPreferredProperties withParallelism()
+    {
+        // do not override an existing parallel preference
+        if (isParallelPreferred()) {
+            return this;
+        }
+        return new StreamPreferredProperties(Optional.of(MULTIPLE), Optional.empty(), orderSensitive);
+    }
+
+    public StreamPreferredProperties withFixedParallelism()
+    {
+        if (distribution.isPresent() && distribution.get() == FIXED) {
+            return this;
+        }
+        return fixedParallelism();
     }
 
     public StreamPreferredProperties withoutPreference()
@@ -232,19 +245,6 @@ public class StreamPreferredProperties
                 distribution,
                 partitioningColumns.flatMap(partitioning -> translateSymbols(partitioning, translator)),
                 orderSensitive);
-    }
-
-    private static Optional<List<Symbol>> translateSymbols(Iterable<Symbol> partitioning, Function<Symbol, Optional<Symbol>> translator)
-    {
-        ImmutableList.Builder<Symbol> newPartitioningColumns = ImmutableList.builder();
-        for (Symbol partitioningColumn : partitioning) {
-            Optional<Symbol> translated = translator.apply(partitioningColumn);
-            if (translated.isEmpty()) {
-                return Optional.empty();
-            }
-            newPartitioningColumns.add(translated.get());
-        }
-        return Optional.of(newPartitioningColumns.build());
     }
 
     @Override

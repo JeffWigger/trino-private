@@ -59,11 +59,6 @@ public class NodeScheduler
         this.nodeSelectorFactory = requireNonNull(nodeSelectorFactory, "nodeSelectorFactory is null");
     }
 
-    public NodeSelector createNodeSelector(Session session, Optional<CatalogName> catalogName)
-    {
-        return nodeSelectorFactory.createNodeSelector(requireNonNull(session, "session is null"), requireNonNull(catalogName, "catalogName is null"));
-    }
-
     public static List<InternalNode> getAllNodes(NodeMap nodeMap, boolean includeCoordinator)
     {
         return nodeMap.getNodesByHostAndPort().values().stream()
@@ -220,5 +215,10 @@ public class NodeScheduler
     private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
     {
         return Futures.transform(future, v -> null, directExecutor());
+    }
+
+    public NodeSelector createNodeSelector(Session session, Optional<CatalogName> catalogName)
+    {
+        return nodeSelectorFactory.createNodeSelector(requireNonNull(session, "session is null"), requireNonNull(catalogName, "catalogName is null"));
     }
 }

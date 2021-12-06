@@ -79,49 +79,6 @@ public class WorkProcessorPipelineSourceOperator
     private SettableFuture<Void> blockedOnSplits = SettableFuture.create();
     private boolean operatorFinishing;
 
-    public static List<OperatorFactory> convertOperators(
-            List<OperatorFactoryWithTypes> operatorFactoriesWithTypes,
-            DataSize minOutputPageSize,
-            int minOutputPageRowCount)
-    {
-        if (operatorFactoriesWithTypes.isEmpty() || !(operatorFactoriesWithTypes.get(0).getOperatorFactory() instanceof WorkProcessorSourceOperatorFactory)) {
-            return toOperatorFactories(operatorFactoriesWithTypes);
-        }
-
-        WorkProcessorSourceOperatorFactory sourceOperatorFactory = (WorkProcessorSourceOperatorFactory) operatorFactoriesWithTypes.get(0).getOperatorFactory();
-        ImmutableList.Builder<WorkProcessorOperatorFactory> workProcessorOperatorFactoriesBuilder = ImmutableList.builder();
-        int operatorIndex = 1;
-        for (; operatorIndex < operatorFactoriesWithTypes.size(); ++operatorIndex) {
-            OperatorFactory operatorFactory = operatorFactoriesWithTypes.get(operatorIndex).getOperatorFactory();
-            if (!(operatorFactory instanceof WorkProcessorOperatorFactory)) {
-                break;
-            }
-            workProcessorOperatorFactoriesBuilder.add((WorkProcessorOperatorFactory) operatorFactory);
-        }
-
-        List<WorkProcessorOperatorFactory> workProcessorOperatorFactories = workProcessorOperatorFactoriesBuilder.build();
-        if (workProcessorOperatorFactories.isEmpty()) {
-            return toOperatorFactories(operatorFactoriesWithTypes);
-        }
-
-        return ImmutableList.<OperatorFactory>builder()
-                .add(new WorkProcessorPipelineSourceOperatorFactory(
-                        sourceOperatorFactory,
-                        workProcessorOperatorFactories,
-                        operatorFactoriesWithTypes.get(operatorIndex - 1).getTypes(),
-                        minOutputPageSize,
-                        minOutputPageRowCount))
-                .addAll(toOperatorFactories(operatorFactoriesWithTypes.subList(operatorIndex, operatorFactoriesWithTypes.size())))
-                .build();
-    }
-
-    public static List<OperatorFactory> toOperatorFactories(List<OperatorFactoryWithTypes> operatorFactoriesWithTypes)
-    {
-        return operatorFactoriesWithTypes.stream()
-                .map(OperatorFactoryWithTypes::getOperatorFactory)
-                .collect(toImmutableList());
-    }
-
     private WorkProcessorPipelineSourceOperator(
             DriverContext driverContext,
             WorkProcessorSourceOperatorFactory sourceOperatorFactory,
@@ -201,6 +158,75 @@ public class WorkProcessorPipelineSourceOperator
         operatorContext.setNestedOperatorStatsSupplier(this::getNestedOperatorStats);
     }
 
+    public static List<OperatorFactory> convertOperators(
+            List<OperatorFactoryWithTypes> operatorFactoriesWithTypes,
+            DataSize minOutputPageSize,
+            int minOutputPageRowCount)
+    {
+        if (operatorFactoriesWithTypes.isEmpty() || !(operatorFactoriesWithTypes.get(0).getOperatorFactory() instanceof WorkProcessorSourceOperatorFactory)) {
+            return toOperatorFactories(operatorFactoriesWithTypes);
+        }
+
+        WorkProcessorSourceOperatorFactory sourceOperatorFactory = (WorkProcessorSourceOperatorFactory) operatorFactoriesWithTypes.get(0).getOperatorFactory();
+        ImmutableList.Builder<WorkProcessorOperatorFactory> workProcessorOperatorFactoriesBuilder = ImmutableList.builder();
+        int operatorIndex = 1;
+        for (; operatorIndex < operatorFactoriesWithTypes.size(); ++operatorIndex) {
+            OperatorFactory operatorFactory = operatorFactoriesWithTypes.get(operatorIndex).getOperatorFactory();
+            if (!(operatorFactory instanceof WorkProcessorOperatorFactory)) {
+                break;
+            }
+            workProcessorOperatorFactoriesBuilder.add((WorkProcessorOperatorFactory) operatorFactory);
+        }
+
+        List<WorkProcessorOperatorFactory> workProcessorOperatorFactories = workProcessorOperatorFactoriesBuilder.build();
+        if (workProcessorOperatorFactories.isEmpty()) {
+            return toOperatorFactories(operatorFactoriesWithTypes);
+        }
+
+        return ImmutableList.<OperatorFactory>builder()
+                .add(new WorkProcessorPipelineSourceOperatorFactory(
+                        sourceOperatorFactory,
+                        workProcessorOperatorFactories,
+                        operatorFactoriesWithTypes.get(operatorIndex - 1).getTypes(),
+                        minOutputPageSize,
+                        minOutputPageRowCount))
+                .addAll(toOperatorFactories(operatorFactoriesWithTypes.subList(operatorIndex, operatorFactoriesWithTypes.size())))
+                .build();
+    }
+
+    public static List<OperatorFactory> toOperatorFactories(List<OperatorFactoryWithTypes> operatorFactoriesWithTypes)
+    {
+        return operatorFactoriesWithTypes.stream()
+                .map(OperatorFactoryWithTypes::getOperatorFactory)
+                .collect(toImmutableList());
+    }
+
+    private static long deltaAndSet(AtomicLong currentValue, long newValue)
+    {
+        return newValue - currentValue.getAndSet(newValue);
+    }
+
+    @FormatMethod
+    private static Throwable handleOperatorCloseError(Throwable inFlightException, Throwable newException, String message, Object... args)
+    {
+        if (newException instanceof Error) {
+            if (inFlightException == null) {
+                inFlightException = newException;
+            }
+            else {
+                // Self-suppression not permitted
+                if (inFlightException != newException) {
+                    inFlightException.addSuppressed(newException);
+                }
+            }
+        }
+        else {
+            // log normal exceptions instead of rethrowing them
+            log.error(newException, message, args);
+        }
+        return inFlightException;
+    }
+
     private void workProcessorOperatorEntryMonitor(int operatorIndex)
     {
         if (isLastOperator(operatorIndex)) {
@@ -255,11 +281,6 @@ public class WorkProcessorPipelineSourceOperator
                     () -> context.blockedWallNanos.getAndAdd(System.nanoTime() - start),
                     directExecutor());
         }
-    }
-
-    private static long deltaAndSet(AtomicLong currentValue, long newValue)
-    {
-        return newValue - currentValue.getAndSet(newValue);
     }
 
     private Page recordProcessedOutput(Page page, int operatorIndex)
@@ -486,28 +507,6 @@ public class WorkProcessorPipelineSourceOperator
         finish();
     }
 
-    private class Splits
-            implements WorkProcessor.Process<Split>
-    {
-        @Override
-        public ProcessState<Split> process()
-        {
-            boolean noMoreSplits = sourceOperator == null;
-
-            if (pendingSplits.isEmpty()) {
-                if (noMoreSplits) {
-                    return ProcessState.finished();
-                }
-
-                blockedOnSplits = SettableFuture.create();
-                blockedFuture = blockedOnSplits;
-                return ProcessState.blocked(blockedOnSplits);
-            }
-
-            return ProcessState.ofResult(pendingSplits.remove(0));
-        }
-    }
-
     private void closeOperators(int lastOperatorIndex)
     {
         // record the current interrupted status (and clear the flag); we'll reset it later
@@ -554,27 +553,6 @@ public class WorkProcessorPipelineSourceOperator
             throwIfUnchecked(inFlightException);
             throw new RuntimeException(inFlightException);
         }
-    }
-
-    @FormatMethod
-    private static Throwable handleOperatorCloseError(Throwable inFlightException, Throwable newException, String message, Object... args)
-    {
-        if (newException instanceof Error) {
-            if (inFlightException == null) {
-                inFlightException = newException;
-            }
-            else {
-                // Self-suppression not permitted
-                if (inFlightException != newException) {
-                    inFlightException.addSuppressed(newException);
-                }
-            }
-        }
-        else {
-            // log normal exceptions instead of rethrowing them
-            log.error(newException, message, args);
-        }
-        return inFlightException;
     }
 
     private static class InternalLocalMemoryContext
@@ -778,6 +756,28 @@ public class WorkProcessorPipelineSourceOperator
         public void noMoreOperators(Lifespan lifespan)
         {
             this.operatorFactories.forEach(operatorFactory -> operatorFactory.lifespanFinished(lifespan));
+        }
+    }
+
+    private class Splits
+            implements WorkProcessor.Process<Split>
+    {
+        @Override
+        public ProcessState<Split> process()
+        {
+            boolean noMoreSplits = sourceOperator == null;
+
+            if (pendingSplits.isEmpty()) {
+                if (noMoreSplits) {
+                    return ProcessState.finished();
+                }
+
+                blockedOnSplits = SettableFuture.create();
+                blockedFuture = blockedOnSplits;
+                return ProcessState.blocked(blockedOnSplits);
+            }
+
+            return ProcessState.ofResult(pendingSplits.remove(0));
         }
     }
 }

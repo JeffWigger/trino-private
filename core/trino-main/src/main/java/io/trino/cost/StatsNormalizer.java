@@ -42,6 +42,17 @@ import static java.util.Objects.requireNonNull;
  */
 public class StatsNormalizer
 {
+    private static boolean isDiscrete(Type type)
+    {
+        return type.equals(IntegerType.INTEGER) ||
+                type.equals(BigintType.BIGINT) ||
+                type.equals(SmallintType.SMALLINT) ||
+                type.equals(TinyintType.TINYINT) ||
+                type.equals(BooleanType.BOOLEAN) ||
+                type.equals(DateType.DATE) ||
+                type instanceof DecimalType;
+    }
+
     public PlanNodeStatsEstimate normalize(PlanNodeStatsEstimate stats, TypeProvider types)
     {
         return normalize(stats, Optional.empty(), types);
@@ -148,16 +159,5 @@ public class StatsNormalizer
             length *= pow(10, ((DecimalType) type).getScale());
         }
         return floor(length + 1);
-    }
-
-    private static boolean isDiscrete(Type type)
-    {
-        return type.equals(IntegerType.INTEGER) ||
-                type.equals(BigintType.BIGINT) ||
-                type.equals(SmallintType.SMALLINT) ||
-                type.equals(TinyintType.TINYINT) ||
-                type.equals(BooleanType.BOOLEAN) ||
-                type.equals(DateType.DATE) ||
-                type instanceof DecimalType;
     }
 }

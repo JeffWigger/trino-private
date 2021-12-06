@@ -20,16 +20,16 @@ import static java.util.Objects.requireNonNull;
 
 public final class Match
 {
-    public static Match of(Captures captures)
-    {
-        return new Match(captures);
-    }
-
     private final Captures captures;
 
     private Match(Captures captures)
     {
         this.captures = requireNonNull(captures, "captures is null");
+    }
+
+    public static Match of(Captures captures)
+    {
+        return new Match(captures);
     }
 
     public <T> T capture(Capture<T> capture)

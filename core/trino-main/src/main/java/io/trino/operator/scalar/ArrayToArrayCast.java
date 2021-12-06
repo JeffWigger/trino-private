@@ -73,32 +73,6 @@ public class ArrayToArrayCast
                 false);
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return FunctionDependencyDeclaration.builder()
-                .addCastSignature(new TypeSignature("F"), new TypeSignature("T"))
-                .build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        Type fromType = functionBinding.getTypeVariable("F");
-        Type toType = functionBinding.getTypeVariable("T");
-
-        FunctionMetadata castMetadata = functionDependencies.getCastMetadata(fromType, toType);
-        Function<InvocationConvention, FunctionInvoker> castInvokerProvider = invocationConvention -> functionDependencies.getCastInvoker(fromType, toType, invocationConvention);
-        Class<?> castOperatorClass = generateArrayCast(fromType, toType, castMetadata, castInvokerProvider);
-        MethodHandle methodHandle = methodHandle(castOperatorClass, "castArray", ConnectorSession.class, Block.class);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     private static Class<?> generateArrayCast(Type fromElementType, Type toElementType, FunctionMetadata castMetadata, Function<InvocationConvention, FunctionInvoker> castInvokerProvider)
     {
         CallSiteBinder binder = new CallSiteBinder();
@@ -141,5 +115,31 @@ public class ArrayToArrayCast
         constructorBody.ret();
 
         return defineClass(definition, Object.class, binder.getBindings(), ArrayToArrayCast.class.getClassLoader());
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return FunctionDependencyDeclaration.builder()
+                .addCastSignature(new TypeSignature("F"), new TypeSignature("T"))
+                .build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        Type fromType = functionBinding.getTypeVariable("F");
+        Type toType = functionBinding.getTypeVariable("T");
+
+        FunctionMetadata castMetadata = functionDependencies.getCastMetadata(fromType, toType);
+        Function<InvocationConvention, FunctionInvoker> castInvokerProvider = invocationConvention -> functionDependencies.getCastInvoker(fromType, toType, invocationConvention);
+        Class<?> castOperatorClass = generateArrayCast(fromType, toType, castMetadata, castInvokerProvider);
+        MethodHandle methodHandle = methodHandle(castOperatorClass, "castArray", ConnectorSession.class, Block.class);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

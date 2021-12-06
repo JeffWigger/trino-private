@@ -58,15 +58,12 @@ class ClientBuffer
 
     @GuardedBy("this")
     private final LinkedList<SerializedPageReference> pages = new LinkedList<>();
-
-    @GuardedBy("this")
-    private boolean noMorePages;
-
     // destroyed is set when the client sends a DELETE to the buffer
     // this is an acknowledgement that the client has observed the end of the buffer
     @GuardedBy("this")
     private final AtomicBoolean destroyed = new AtomicBoolean();
-
+    @GuardedBy("this")
+    private boolean noMorePages;
     @GuardedBy("this")
     private PendingRead pendingRead;
 
@@ -437,6 +434,19 @@ class ClientBuffer
                 .toString();
     }
 
+    public interface PagesSupplier
+    {
+        /**
+         * Gets pages up to the specified size limit or a single page that exceeds the size limit.
+         */
+        List<SerializedPageReference> getPages(DataSize maxSize);
+
+        /**
+         * @return true if more pages may be produced; false otherwise
+         */
+        boolean mayHaveMorePages();
+    }
+
     @Immutable
     private static class PendingRead
     {
@@ -471,18 +481,5 @@ class ClientBuffer
         {
             resultFuture.set(emptyResults(taskInstanceId, sequenceId, false));
         }
-    }
-
-    public interface PagesSupplier
-    {
-        /**
-         * Gets pages up to the specified size limit or a single page that exceeds the size limit.
-         */
-        List<SerializedPageReference> getPages(DataSize maxSize);
-
-        /**
-         * @return true if more pages may be produced; false otherwise
-         */
-        boolean mayHaveMorePages();
     }
 }

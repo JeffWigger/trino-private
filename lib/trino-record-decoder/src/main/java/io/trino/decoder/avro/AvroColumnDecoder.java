@@ -91,46 +91,6 @@ public class AvroColumnDecoder
         }
     }
 
-    private boolean isSupportedType(Type type)
-    {
-        if (isSupportedPrimitive(type)) {
-            return true;
-        }
-
-        if (type instanceof ArrayType) {
-            checkArgument(type.getTypeParameters().size() == 1, "expecting exactly one type parameter for array");
-            return isSupportedType(type.getTypeParameters().get(0));
-        }
-
-        if (type instanceof MapType) {
-            List<Type> typeParameters = type.getTypeParameters();
-            checkArgument(typeParameters.size() == 2, "expecting exactly two type parameters for map");
-            checkArgument(typeParameters.get(0) instanceof VarcharType, "Unsupported column type '%s' for map key", typeParameters.get(0));
-            return isSupportedType(type.getTypeParameters().get(1));
-        }
-
-        if (type instanceof RowType) {
-            for (Type fieldType : type.getTypeParameters()) {
-                if (!isSupportedType(fieldType)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private boolean isSupportedPrimitive(Type type)
-    {
-        return type instanceof VarcharType || SUPPORTED_PRIMITIVE_TYPES.contains(type);
-    }
-
-    public FieldValueProvider decodeField(GenericRecord avroRecord)
-    {
-        Object avroColumnValue = locateNode(avroRecord, columnMapping);
-        return new ObjectValueProvider(avroColumnValue, columnType, columnName);
-    }
-
     private static Object locateNode(GenericRecord element, String columnMapping)
     {
         Object value = element;
@@ -141,66 +101,6 @@ public class AvroColumnDecoder
             value = ((GenericRecord) value).get(pathElement);
         }
         return value;
-    }
-
-    static class ObjectValueProvider
-            extends FieldValueProvider
-    {
-        private final Object value;
-        private final Type columnType;
-        private final String columnName;
-
-        public ObjectValueProvider(Object value, Type columnType, String columnName)
-        {
-            this.value = value;
-            this.columnType = columnType;
-            this.columnName = columnName;
-        }
-
-        @Override
-        public boolean isNull()
-        {
-            return value == null;
-        }
-
-        @Override
-        public double getDouble()
-        {
-            if (value instanceof Double || value instanceof Float) {
-                return ((Number) value).doubleValue();
-            }
-            throw new TrinoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), columnType, columnName));
-        }
-
-        @Override
-        public boolean getBoolean()
-        {
-            if (value instanceof Boolean) {
-                return (Boolean) value;
-            }
-            throw new TrinoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), columnType, columnName));
-        }
-
-        @Override
-        public long getLong()
-        {
-            if (value instanceof Long || value instanceof Integer) {
-                return ((Number) value).longValue();
-            }
-            throw new TrinoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), columnType, columnName));
-        }
-
-        @Override
-        public Slice getSlice()
-        {
-            return AvroColumnDecoder.getSlice(value, columnType, columnName);
-        }
-
-        @Override
-        public Block getBlock()
-        {
-            return serializeObject(null, value, columnType, columnName);
-        }
     }
 
     private static Slice getSlice(Object value, Type type, String columnName)
@@ -358,5 +258,105 @@ public class AvroColumnDecoder
             return blockBuilder.getObject(0, Block.class);
         }
         return null;
+    }
+
+    private boolean isSupportedType(Type type)
+    {
+        if (isSupportedPrimitive(type)) {
+            return true;
+        }
+
+        if (type instanceof ArrayType) {
+            checkArgument(type.getTypeParameters().size() == 1, "expecting exactly one type parameter for array");
+            return isSupportedType(type.getTypeParameters().get(0));
+        }
+
+        if (type instanceof MapType) {
+            List<Type> typeParameters = type.getTypeParameters();
+            checkArgument(typeParameters.size() == 2, "expecting exactly two type parameters for map");
+            checkArgument(typeParameters.get(0) instanceof VarcharType, "Unsupported column type '%s' for map key", typeParameters.get(0));
+            return isSupportedType(type.getTypeParameters().get(1));
+        }
+
+        if (type instanceof RowType) {
+            for (Type fieldType : type.getTypeParameters()) {
+                if (!isSupportedType(fieldType)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isSupportedPrimitive(Type type)
+    {
+        return type instanceof VarcharType || SUPPORTED_PRIMITIVE_TYPES.contains(type);
+    }
+
+    public FieldValueProvider decodeField(GenericRecord avroRecord)
+    {
+        Object avroColumnValue = locateNode(avroRecord, columnMapping);
+        return new ObjectValueProvider(avroColumnValue, columnType, columnName);
+    }
+
+    static class ObjectValueProvider
+            extends FieldValueProvider
+    {
+        private final Object value;
+        private final Type columnType;
+        private final String columnName;
+
+        public ObjectValueProvider(Object value, Type columnType, String columnName)
+        {
+            this.value = value;
+            this.columnType = columnType;
+            this.columnName = columnName;
+        }
+
+        @Override
+        public boolean isNull()
+        {
+            return value == null;
+        }
+
+        @Override
+        public double getDouble()
+        {
+            if (value instanceof Double || value instanceof Float) {
+                return ((Number) value).doubleValue();
+            }
+            throw new TrinoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), columnType, columnName));
+        }
+
+        @Override
+        public boolean getBoolean()
+        {
+            if (value instanceof Boolean) {
+                return (Boolean) value;
+            }
+            throw new TrinoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), columnType, columnName));
+        }
+
+        @Override
+        public long getLong()
+        {
+            if (value instanceof Long || value instanceof Integer) {
+                return ((Number) value).longValue();
+            }
+            throw new TrinoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), columnType, columnName));
+        }
+
+        @Override
+        public Slice getSlice()
+        {
+            return AvroColumnDecoder.getSlice(value, columnType, columnName);
+        }
+
+        @Override
+        public Block getBlock()
+        {
+            return serializeObject(null, value, columnType, columnName);
+        }
     }
 }

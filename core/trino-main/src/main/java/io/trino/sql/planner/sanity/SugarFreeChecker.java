@@ -45,6 +45,11 @@ public final class SugarFreeChecker
 {
     private static final Visitor VISITOR = new Visitor();
 
+    private static void validate(Expression expression)
+    {
+        VISITOR.process(expression, null);
+    }
+
     @Override
     public void validate(PlanNode planNode,
             Session session,
@@ -57,14 +62,14 @@ public final class SugarFreeChecker
         ExpressionExtractor.forEachExpression(planNode, SugarFreeChecker::validate);
     }
 
-    private static void validate(Expression expression)
-    {
-        VISITOR.process(expression, null);
-    }
-
     private static class Visitor
             extends DefaultExpressionTraversalVisitor<Builder<Symbol>>
     {
+        private static IllegalArgumentException createIllegalNodeException(Node node)
+        {
+            return new IllegalArgumentException(node.getClass().getSimpleName() + " should have been replaced with a function call");
+        }
+
         @Override
         protected Void visitExtract(Extract node, Builder<Symbol> context)
         {
@@ -123,11 +128,6 @@ public final class SugarFreeChecker
         protected Void visitDereferenceExpression(DereferenceExpression node, Builder<Symbol> context)
         {
             throw new IllegalArgumentException("DereferenceExpression should've been replaced with SubscriptExpression");
-        }
-
-        private static IllegalArgumentException createIllegalNodeException(Node node)
-        {
-            return new IllegalArgumentException(node.getClass().getSimpleName() + " should have been replaced with a function call");
         }
     }
 }

@@ -24,12 +24,6 @@ import static java.util.Objects.requireNonNull;
 public class IrAnchor
         extends IrRowPattern
 {
-    public enum Type
-    {
-        PARTITION_START,
-        PARTITION_END
-    }
-
     private final Type type;
 
     @JsonCreator
@@ -73,5 +67,11 @@ public class IrAnchor
     public String toString()
     {
         return type == PARTITION_START ? "^" : "$";
+    }
+
+    public enum Type
+    {
+        PARTITION_START,
+        PARTITION_END
     }
 }

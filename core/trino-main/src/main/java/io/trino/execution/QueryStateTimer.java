@@ -62,6 +62,20 @@ class QueryStateTimer
     // State transitions
     //
 
+    private static Duration nanosSince(AtomicReference<Long> start, long end)
+    {
+        Long startNanos = start.get();
+        if (startNanos == null) {
+            throw new IllegalStateException("Start time not set");
+        }
+        return nanosSince(startNanos, end);
+    }
+
+    private static Duration nanosSince(long start, long now)
+    {
+        return succinctNanos(max(0, now - start));
+    }
+
     public void beginWaitingForResources()
     {
         beginWaitingForResources(tickerNanos());
@@ -129,6 +143,10 @@ class QueryStateTimer
         beginFinishingNanos.compareAndSet(null, now);
     }
 
+    //
+    //  Additional timings
+    //
+
     public void endQuery()
     {
         endQuery(tickerNanos());
@@ -151,10 +169,6 @@ class QueryStateTimer
         }
     }
 
-    //
-    //  Additional timings
-    //
-
     public void beginAnalysis()
     {
         beginAnalysisNanos.compareAndSet(null, tickerNanos());
@@ -165,6 +179,10 @@ class QueryStateTimer
         endAnalysis(tickerNanos());
     }
 
+    //
+    // Stats
+    //
+
     private void endAnalysis(long now)
     {
         analysisTime.compareAndSet(null, nanosSince(beginAnalysisNanos, now));
@@ -174,10 +192,6 @@ class QueryStateTimer
     {
         lastHeartbeatNanos.set(tickerNanos());
     }
-
-    //
-    // Stats
-    //
 
     public DateTime getCreateTime()
     {
@@ -243,6 +257,10 @@ class QueryStateTimer
         return toDateTime(endNanos);
     }
 
+    //
+    // Helper methods
+    //
+
     public Duration getAnalysisTime()
     {
         return getDuration(analysisTime, beginAnalysisNanos);
@@ -253,27 +271,9 @@ class QueryStateTimer
         return toDateTime(lastHeartbeatNanos.get());
     }
 
-    //
-    // Helper methods
-    //
-
     private long tickerNanos()
     {
         return ticker.read();
-    }
-
-    private static Duration nanosSince(AtomicReference<Long> start, long end)
-    {
-        Long startNanos = start.get();
-        if (startNanos == null) {
-            throw new IllegalStateException("Start time not set");
-        }
-        return nanosSince(startNanos, end);
-    }
-
-    private static Duration nanosSince(long start, long now)
-    {
-        return succinctNanos(max(0, now - start));
     }
 
     private Duration getDuration(AtomicReference<Duration> finalDuration, AtomicReference<Long> start)

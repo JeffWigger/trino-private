@@ -29,10 +29,10 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({TYPE, METHOD})
 public @interface ResourceSecurity
 {
+    AccessType value();
+
     enum AccessType
     {
         PUBLIC, WEB_UI, AUTHENTICATED_USER, MANAGEMENT_READ, MANAGEMENT_WRITE, INTERNAL_ONLY
     }
-
-    AccessType value();
 }

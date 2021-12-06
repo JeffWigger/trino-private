@@ -87,6 +87,99 @@ public abstract class AbstractTestOrcReader
         this.tester = tester;
     }
 
+    private static <T> Iterable<T> skipEvery(int n, Iterable<T> iterable)
+    {
+        return () -> new AbstractIterator<>()
+        {
+            private final Iterator<T> delegate = iterable.iterator();
+            private int position;
+
+            @Override
+            protected T computeNext()
+            {
+                while (true) {
+                    if (!delegate.hasNext()) {
+                        return endOfData();
+                    }
+
+                    T next = delegate.next();
+                    position++;
+                    if (position <= n) {
+                        return next;
+                    }
+                    position = 0;
+                }
+            }
+        };
+    }
+
+    private static <T> Iterable<T> repeatEach(int n, Iterable<T> iterable)
+    {
+        return () -> new AbstractIterator<>()
+        {
+            private final Iterator<T> delegate = iterable.iterator();
+            private int position;
+            private T value;
+
+            @Override
+            protected T computeNext()
+            {
+                if (position == 0) {
+                    if (!delegate.hasNext()) {
+                        return endOfData();
+                    }
+                    value = delegate.next();
+                }
+
+                position++;
+                if (position >= n) {
+                    position = 0;
+                }
+                return value;
+            }
+        };
+    }
+
+    protected static List<Double> doubleSequence(double start, double step, int items)
+    {
+        List<Double> values = new ArrayList<>();
+        double nextValue = start;
+        for (int i = 0; i < items; i++) {
+            values.add(nextValue);
+            nextValue += step;
+        }
+        return values;
+    }
+
+    private static List<Float> floatSequence(float start, float step, int items)
+    {
+        ImmutableList.Builder<Float> values = ImmutableList.builder();
+        float nextValue = start;
+        for (int i = 0; i < items; i++) {
+            values.add(nextValue);
+            nextValue += step;
+        }
+        return values.build();
+    }
+
+    private static List<SqlDecimal> decimalSequence(String start, String step, int items, int precision, int scale)
+    {
+        BigInteger decimalStep = new BigInteger(step);
+
+        List<SqlDecimal> values = new ArrayList<>();
+        BigInteger nextValue = new BigInteger(start);
+        for (int i = 0; i < items; i++) {
+            values.add(new SqlDecimal(nextValue, precision, scale));
+            nextValue = nextValue.add(decimalStep);
+        }
+        return values;
+    }
+
+    private static ContiguousSet<Integer> intsBetween(int lowerInclusive, int upperExclusive)
+    {
+        return ContiguousSet.create(Range.closedOpen(lowerInclusive, upperExclusive), DiscreteDomain.integers());
+    }
+
     @BeforeClass
     public void setUp()
     {
@@ -505,98 +598,5 @@ public abstract class AbstractTestOrcReader
             throws Exception
     {
         tester.testRoundTrip(VARBINARY, nCopies(30_000, new SqlVarbinary(new byte[0])));
-    }
-
-    private static <T> Iterable<T> skipEvery(int n, Iterable<T> iterable)
-    {
-        return () -> new AbstractIterator<>()
-        {
-            private final Iterator<T> delegate = iterable.iterator();
-            private int position;
-
-            @Override
-            protected T computeNext()
-            {
-                while (true) {
-                    if (!delegate.hasNext()) {
-                        return endOfData();
-                    }
-
-                    T next = delegate.next();
-                    position++;
-                    if (position <= n) {
-                        return next;
-                    }
-                    position = 0;
-                }
-            }
-        };
-    }
-
-    private static <T> Iterable<T> repeatEach(int n, Iterable<T> iterable)
-    {
-        return () -> new AbstractIterator<>()
-        {
-            private final Iterator<T> delegate = iterable.iterator();
-            private int position;
-            private T value;
-
-            @Override
-            protected T computeNext()
-            {
-                if (position == 0) {
-                    if (!delegate.hasNext()) {
-                        return endOfData();
-                    }
-                    value = delegate.next();
-                }
-
-                position++;
-                if (position >= n) {
-                    position = 0;
-                }
-                return value;
-            }
-        };
-    }
-
-    protected static List<Double> doubleSequence(double start, double step, int items)
-    {
-        List<Double> values = new ArrayList<>();
-        double nextValue = start;
-        for (int i = 0; i < items; i++) {
-            values.add(nextValue);
-            nextValue += step;
-        }
-        return values;
-    }
-
-    private static List<Float> floatSequence(float start, float step, int items)
-    {
-        ImmutableList.Builder<Float> values = ImmutableList.builder();
-        float nextValue = start;
-        for (int i = 0; i < items; i++) {
-            values.add(nextValue);
-            nextValue += step;
-        }
-        return values.build();
-    }
-
-    private static List<SqlDecimal> decimalSequence(String start, String step, int items, int precision, int scale)
-    {
-        BigInteger decimalStep = new BigInteger(step);
-
-        List<SqlDecimal> values = new ArrayList<>();
-        BigInteger nextValue = new BigInteger(start);
-        for (int i = 0; i < items; i++) {
-            values.add(new SqlDecimal(nextValue, precision, scale));
-            nextValue = nextValue.add(decimalStep);
-        }
-        return values;
-    }
-
-    private static ContiguousSet<Integer> intsBetween(int lowerInclusive, int upperExclusive)
-    {
-        return ContiguousSet.create(Range.closedOpen(lowerInclusive, upperExclusive), DiscreteDomain.integers());
     }
 }

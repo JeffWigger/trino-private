@@ -35,6 +35,14 @@ public final class UserMapping
 {
     private final List<Rule> rules;
 
+    @VisibleForTesting
+    UserMapping(List<Rule> rules)
+    {
+        requireNonNull(rules, "rules is null");
+        checkArgument(!rules.isEmpty(), "rules list is empty");
+        this.rules = ImmutableList.copyOf(rules);
+    }
+
     public static UserMapping createUserMapping(Optional<String> userMappingPattern, Optional<File> userMappingFile)
     {
         if (userMappingPattern.isPresent()) {
@@ -48,14 +56,6 @@ public final class UserMapping
         return new UserMapping(ImmutableList.of(new Rule("(.*)")));
     }
 
-    @VisibleForTesting
-    UserMapping(List<Rule> rules)
-    {
-        requireNonNull(rules, "rules is null");
-        checkArgument(!rules.isEmpty(), "rules list is empty");
-        this.rules = ImmutableList.copyOf(rules);
-    }
-
     public String mapUser(String principal)
             throws UserMappingException
     {
@@ -67,23 +67,6 @@ public final class UserMapping
         }
 
         throw new UserMappingException("No user mapping patterns match the principal");
-    }
-
-    public static final class UserMappingRules
-    {
-        private final List<Rule> rules;
-
-        @JsonCreator
-        public UserMappingRules(
-                @JsonProperty("rules") List<Rule> rules)
-        {
-            this.rules = ImmutableList.copyOf(requireNonNull(rules, "rules is null"));
-        }
-
-        public List<Rule> getRules()
-        {
-            return rules;
-        }
     }
 
     enum Case
@@ -111,6 +94,23 @@ public final class UserMapping
         };
 
         public abstract String transform(String value);
+    }
+
+    public static final class UserMappingRules
+    {
+        private final List<Rule> rules;
+
+        @JsonCreator
+        public UserMappingRules(
+                @JsonProperty("rules") List<Rule> rules)
+        {
+            this.rules = ImmutableList.copyOf(requireNonNull(rules, "rules is null"));
+        }
+
+        public List<Rule> getRules()
+        {
+            return rules;
+        }
     }
 
     public static final class Rule

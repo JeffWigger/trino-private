@@ -29,6 +29,15 @@ import static org.testng.Assert.assertEquals;
 
 public class TestParquetTimestampUtils
 {
+    private static void assertTimestampCorrect(LocalDateTime dateTime)
+    {
+        Timestamp timestamp = Timestamp.ofEpochSecond(dateTime.toEpochSecond(UTC), dateTime.getNano());
+        Binary timestampBytes = getNanoTime(timestamp, false).toBinary();
+        DecodedTimestamp decodedTimestamp = decode(timestampBytes);
+        assertEquals(decodedTimestamp.getEpochSeconds(), dateTime.toEpochSecond(UTC));
+        assertEquals(decodedTimestamp.getNanosOfSecond(), dateTime.getNano());
+    }
+
     @Test
     public void testGetTimestampMillis()
     {
@@ -48,14 +57,5 @@ public class TestParquetTimestampUtils
             assertEquals(e.getErrorCode(), NOT_SUPPORTED.toErrorCode());
             assertEquals(e.getMessage(), "Parquet timestamp must be 12 bytes, actual 8");
         }
-    }
-
-    private static void assertTimestampCorrect(LocalDateTime dateTime)
-    {
-        Timestamp timestamp = Timestamp.ofEpochSecond(dateTime.toEpochSecond(UTC), dateTime.getNano());
-        Binary timestampBytes = getNanoTime(timestamp, false).toBinary();
-        DecodedTimestamp decodedTimestamp = decode(timestampBytes);
-        assertEquals(decodedTimestamp.getEpochSeconds(), dateTime.toEpochSecond(UTC));
-        assertEquals(decodedTimestamp.getNanosOfSecond(), dateTime.getNano());
     }
 }

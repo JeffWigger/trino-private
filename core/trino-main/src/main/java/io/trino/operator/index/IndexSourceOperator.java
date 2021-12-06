@@ -40,57 +40,10 @@ import static java.util.Objects.requireNonNull;
 public class IndexSourceOperator
         implements SourceOperator
 {
-    public static class IndexSourceOperatorFactory
-            implements SourceOperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId sourceId;
-        private final ConnectorIndex index;
-        private final Function<RecordSet, RecordSet> probeKeyNormalizer;
-        private boolean closed;
-
-        public IndexSourceOperatorFactory(
-                int operatorId,
-                PlanNodeId sourceId,
-                ConnectorIndex index,
-                Function<RecordSet, RecordSet> probeKeyNormalizer)
-        {
-            this.operatorId = operatorId;
-            this.sourceId = requireNonNull(sourceId, "sourceId is null");
-            this.index = requireNonNull(index, "index is null");
-            this.probeKeyNormalizer = requireNonNull(probeKeyNormalizer, "probeKeyNormalizer is null");
-        }
-
-        @Override
-        public PlanNodeId getSourceId()
-        {
-            return sourceId;
-        }
-
-        @Override
-        public SourceOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, IndexSourceOperator.class.getSimpleName());
-            return new IndexSourceOperator(
-                    operatorContext,
-                    sourceId,
-                    index,
-                    probeKeyNormalizer);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final PlanNodeId planNodeId;
     private final ConnectorIndex index;
     private final Function<RecordSet, RecordSet> probeKeyNormalizer;
-
     private Operator source;
 
     public IndexSourceOperator(
@@ -186,6 +139,52 @@ public class IndexSourceOperator
     {
         if (source != null) {
             source.close();
+        }
+    }
+
+    public static class IndexSourceOperatorFactory
+            implements SourceOperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId sourceId;
+        private final ConnectorIndex index;
+        private final Function<RecordSet, RecordSet> probeKeyNormalizer;
+        private boolean closed;
+
+        public IndexSourceOperatorFactory(
+                int operatorId,
+                PlanNodeId sourceId,
+                ConnectorIndex index,
+                Function<RecordSet, RecordSet> probeKeyNormalizer)
+        {
+            this.operatorId = operatorId;
+            this.sourceId = requireNonNull(sourceId, "sourceId is null");
+            this.index = requireNonNull(index, "index is null");
+            this.probeKeyNormalizer = requireNonNull(probeKeyNormalizer, "probeKeyNormalizer is null");
+        }
+
+        @Override
+        public PlanNodeId getSourceId()
+        {
+            return sourceId;
+        }
+
+        @Override
+        public SourceOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, IndexSourceOperator.class.getSimpleName());
+            return new IndexSourceOperator(
+                    operatorContext,
+                    sourceId,
+                    index,
+                    probeKeyNormalizer);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
         }
     }
 }

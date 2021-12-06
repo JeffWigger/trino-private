@@ -42,14 +42,10 @@ import org.weakref.jmx.Managed;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
-import javax.annotation.concurrent.GuardedBy;
 import javax.inject.Inject;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -64,6 +60,7 @@ import static java.util.Objects.requireNonNull;
 
 public class DispatchManager
 {
+    public final QueryTracker<DispatchQuery> queryTracker;
     private final QueryIdGenerator queryIdGenerator;
     private final QueryPreparer queryPreparer;
     private final ResourceGroupManager<?> resourceGroupManager;
@@ -74,17 +71,11 @@ public class DispatchManager
     private final SessionSupplier sessionSupplier;
     private final SessionPropertyDefaults sessionPropertyDefaults;
     private final SessionPropertyManager sessionPropertyManager;
-
     private final int maxQueryLength;
-
     private final Executor dispatchExecutor;
-
-    public final QueryTracker<DispatchQuery> queryTracker;
-
     private final QueryManagerStats stats = new QueryManagerStats();
 
     // set once a
-
 
     @Inject
     public DispatchManager(
@@ -118,7 +109,6 @@ public class DispatchManager
         this.dispatchExecutor = requireNonNull(dispatchExecutor, "dispatchExecutor is null").getExecutor();
 
         this.queryTracker = new QueryTracker<>(queryManagerConfig, dispatchExecutor.getScheduledExecutor());
-
     }
 
     @PostConstruct

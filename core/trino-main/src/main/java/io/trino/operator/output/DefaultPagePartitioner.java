@@ -64,8 +64,8 @@ public class DefaultPagePartitioner
     private final int nullChannel; // when >= 0, send the position to every partition if this channel is null
     private final AtomicLong rowsAdded = new AtomicLong();
     private final AtomicLong pagesAdded = new AtomicLong();
-    private boolean hasAnyRowBeenReplicated;
     private final OperatorContext operatorContext;
+    private boolean hasAnyRowBeenReplicated;
 
     public DefaultPagePartitioner(
             PartitionFunction partitionFunction,
@@ -115,6 +115,15 @@ public class DefaultPagePartitioner
         }
     }
 
+    private static Supplier<PartitionedOutputInfo> createPartitionedOutputOperatorInfoSupplier(AtomicLong rowsAdded, AtomicLong pagesAdded, OutputBuffer outputBuffer)
+    {
+        // Must be a separate static method to avoid embedding references to "this" in the supplier
+        requireNonNull(rowsAdded, "rowsAdded is null");
+        requireNonNull(pagesAdded, "pagesAdded is null");
+        requireNonNull(outputBuffer, "outputBuffer is null");
+        return () -> new PartitionedOutputInfo(rowsAdded.get(), pagesAdded.get(), outputBuffer.getPeakMemoryUsage());
+    }
+
     @Override
     public ListenableFuture<Void> isFull()
     {
@@ -150,15 +159,6 @@ public class DefaultPagePartitioner
     public Supplier<PartitionedOutputInfo> getOperatorInfoSupplier()
     {
         return createPartitionedOutputOperatorInfoSupplier(rowsAdded, pagesAdded, outputBuffer);
-    }
-
-    private static Supplier<PartitionedOutputInfo> createPartitionedOutputOperatorInfoSupplier(AtomicLong rowsAdded, AtomicLong pagesAdded, OutputBuffer outputBuffer)
-    {
-        // Must be a separate static method to avoid embedding references to "this" in the supplier
-        requireNonNull(rowsAdded, "rowsAdded is null");
-        requireNonNull(pagesAdded, "pagesAdded is null");
-        requireNonNull(outputBuffer, "outputBuffer is null");
-        return () -> new PartitionedOutputInfo(rowsAdded.get(), pagesAdded.get(), outputBuffer.getPeakMemoryUsage());
     }
 
     @Override

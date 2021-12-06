@@ -186,15 +186,50 @@ public final class StreamPropertyDerivations
             this.session = session;
         }
 
-        @Override
-        protected StreamProperties visitPlan(PlanNode node, List<StreamProperties> inputProperties)
+        private static boolean spillPossible(Session session, JoinNode node)
         {
-            throw new UnsupportedOperationException("not yet implemented: " + node.getClass().getName());
+            return isSpillEnabled(session) && node.isSpillable().orElseThrow(() -> new IllegalArgumentException("spillable not yet set"));
         }
 
         //
         // Joins
         //
+
+        private static Optional<Set<Symbol>> getNonConstantSymbols(Set<ColumnHandle> columnHandles, Map<ColumnHandle, Symbol> assignments, Set<ColumnHandle> globalConstants)
+        {
+            // Strip off the constants from the partitioning columns (since those are not required for translation)
+            Set<ColumnHandle> constantsStrippedPartitionColumns = columnHandles.stream()
+                    .filter(column -> !globalConstants.contains(column))
+                    .collect(toImmutableSet());
+            ImmutableSet.Builder<Symbol> builder = ImmutableSet.builder();
+
+            for (ColumnHandle column : constantsStrippedPartitionColumns) {
+                Symbol translated = assignments.get(column);
+                if (translated == null) {
+                    return Optional.empty();
+                }
+                builder.add(translated);
+            }
+
+            return Optional.of(builder.build());
+        }
+
+        private static Map<Symbol, Symbol> computeIdentityTranslations(Map<Symbol, Expression> assignments)
+        {
+            Map<Symbol, Symbol> inputToOutput = new HashMap<>();
+            for (Map.Entry<Symbol, Expression> assignment : assignments.entrySet()) {
+                if (assignment.getValue() instanceof SymbolReference) {
+                    inputToOutput.put(Symbol.from(assignment.getValue()), assignment.getKey());
+                }
+            }
+            return inputToOutput;
+        }
+
+        @Override
+        protected StreamProperties visitPlan(PlanNode node, List<StreamProperties> inputProperties)
+        {
+            throw new UnsupportedOperationException("not yet implemented: " + node.getClass().getName());
+        }
 
         @Override
         public StreamProperties visitJoin(JoinNode node, List<StreamProperties> inputProperties)
@@ -231,10 +266,9 @@ public final class StreamPropertyDerivations
             throw new UnsupportedOperationException("Unsupported join type: " + node.getType());
         }
 
-        private static boolean spillPossible(Session session, JoinNode node)
-        {
-            return isSpillEnabled(session) && node.isSpillable().orElseThrow(() -> new IllegalArgumentException("spillable not yet set"));
-        }
+        //
+        // Source nodes
+        //
 
         @Override
         public StreamProperties visitSpatialJoin(SpatialJoinNode node, List<StreamProperties> inputProperties)
@@ -264,10 +298,6 @@ public final class StreamPropertyDerivations
             }
             throw new UnsupportedOperationException("Unsupported join type: " + node.getType());
         }
-
-        //
-        // Source nodes
-        //
 
         @Override
         public StreamProperties visitValues(ValuesNode node, List<StreamProperties> context)
@@ -302,24 +332,9 @@ public final class StreamPropertyDerivations
             return new StreamProperties(MULTIPLE, streamPartitionSymbols, false);
         }
 
-        private static Optional<Set<Symbol>> getNonConstantSymbols(Set<ColumnHandle> columnHandles, Map<ColumnHandle, Symbol> assignments, Set<ColumnHandle> globalConstants)
-        {
-            // Strip off the constants from the partitioning columns (since those are not required for translation)
-            Set<ColumnHandle> constantsStrippedPartitionColumns = columnHandles.stream()
-                    .filter(column -> !globalConstants.contains(column))
-                    .collect(toImmutableSet());
-            ImmutableSet.Builder<Symbol> builder = ImmutableSet.builder();
-
-            for (ColumnHandle column : constantsStrippedPartitionColumns) {
-                Symbol translated = assignments.get(column);
-                if (translated == null) {
-                    return Optional.empty();
-                }
-                builder.add(translated);
-            }
-
-            return Optional.of(builder.build());
-        }
+        //
+        // Nodes that rewrite and/or drop symbols
+        //
 
         @Override
         public StreamProperties visitExchange(ExchangeNode node, List<StreamProperties> inputProperties)
@@ -353,10 +368,6 @@ public final class StreamPropertyDerivations
             throw new UnsupportedOperationException("not yet implemented");
         }
 
-        //
-        // Nodes that rewrite and/or drop symbols
-        //
-
         @Override
         public StreamProperties visitProject(ProjectNode node, List<StreamProperties> inputProperties)
         {
@@ -365,17 +376,6 @@ public final class StreamPropertyDerivations
             // We can describe properties in terms of inputs that are projected unmodified (i.e., identity projections)
             Map<Symbol, Symbol> identities = computeIdentityTranslations(node.getAssignments().getMap());
             return properties.translate(column -> Optional.ofNullable(identities.get(column)));
-        }
-
-        private static Map<Symbol, Symbol> computeIdentityTranslations(Map<Symbol, Expression> assignments)
-        {
-            Map<Symbol, Symbol> inputToOutput = new HashMap<>();
-            for (Map.Entry<Symbol, Expression> assignment : assignments.entrySet()) {
-                if (assignment.getValue() instanceof SymbolReference) {
-                    inputToOutput.put(Symbol.from(assignment.getValue()), assignment.getKey());
-                }
-            }
-            return inputToOutput;
         }
 
         @Override
@@ -650,28 +650,20 @@ public final class StreamPropertyDerivations
     @Immutable
     public static final class StreamProperties
     {
-        public enum StreamDistribution
-        {
-            SINGLE, MULTIPLE, FIXED
-        }
-
         private final StreamDistribution distribution;
-
         private final Optional<List<Symbol>> partitioningColumns; // if missing => partitioned with some unknown scheme
-
         private final boolean ordered;
-
         // We are only interested in the local properties, but PropertyDerivations requires input
         // ActualProperties, so we hold on to the whole object
         private final ActualProperties otherActualProperties;
-
-        // NOTE: Partitioning on zero columns (or effectively zero columns if the columns are constant) indicates that all
-        // the rows will be partitioned into a single stream.
 
         private StreamProperties(StreamDistribution distribution, Optional<? extends Iterable<Symbol>> partitioningColumns, boolean ordered)
         {
             this(distribution, partitioningColumns, ordered, null);
         }
+
+        // NOTE: Partitioning on zero columns (or effectively zero columns if the columns are constant) indicates that all
+        // the rows will be partitioned into a single stream.
 
         private StreamProperties(
                 StreamDistribution distribution,
@@ -695,12 +687,6 @@ public final class StreamPropertyDerivations
             this.otherActualProperties = otherActualProperties;
         }
 
-        public List<LocalProperty<Symbol>> getLocalProperties()
-        {
-            checkState(otherActualProperties != null, "otherActualProperties not set");
-            return otherActualProperties.getLocalProperties();
-        }
-
         private static StreamProperties singleStream()
         {
             return new StreamProperties(SINGLE, Optional.of(ImmutableSet.of()), false);
@@ -714,6 +700,12 @@ public final class StreamPropertyDerivations
         private static StreamProperties ordered()
         {
             return new StreamProperties(SINGLE, Optional.of(ImmutableSet.of()), true);
+        }
+
+        public List<LocalProperty<Symbol>> getLocalProperties()
+        {
+            checkState(otherActualProperties != null, "otherActualProperties not set");
+            return otherActualProperties.getLocalProperties();
         }
 
         private StreamProperties unordered(boolean unordered)
@@ -831,6 +823,11 @@ public final class StreamPropertyDerivations
                     .add("distribution", distribution)
                     .add("partitioningColumns", partitioningColumns)
                     .toString();
+        }
+
+        public enum StreamDistribution
+        {
+            SINGLE, MULTIPLE, FIXED
         }
     }
 }

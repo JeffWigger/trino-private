@@ -43,8 +43,8 @@ public class IndexLookupSourceFactory
 {
     private final List<Type> outputTypes;
     private final Supplier<IndexLoader> indexLoaderSupplier;
-    private TaskContext taskContext;
     private final SettableFuture<Void> whenTaskContextSet = SettableFuture.create();
+    private TaskContext taskContext;
 
     public IndexLookupSourceFactory(
             Set<Integer> lookupSourceInputChannels,

@@ -119,6 +119,11 @@ class PreferredProperties
                 .build();
     }
 
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
     public Optional<Global> getGlobalProperties()
     {
         return globalProperties;
@@ -158,11 +163,6 @@ class PreferredProperties
         Optional<Global> newGlobalProperties = globalProperties.map(global -> global.translate(translator));
         List<LocalProperty<Symbol>> newLocalProperties = LocalProperties.translate(localProperties, translator);
         return new PreferredProperties(newGlobalProperties, newLocalProperties);
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
     }
 
     public static class Builder
@@ -316,11 +316,6 @@ class PreferredProperties
             checkArgument(partitioning.isEmpty() || partitioning.get().getColumns().equals(partitioningColumns), "Partitioning input must match partitioningColumns");
         }
 
-        public PartitioningProperties withNullsAndAnyReplicated(boolean nullsAndAnyReplicated)
-        {
-            return new PartitioningProperties(partitioningColumns, partitioning, nullsAndAnyReplicated);
-        }
-
         public static PartitioningProperties partitioned(Partitioning partitioning)
         {
             return new PartitioningProperties(partitioning.getColumns(), Optional.of(partitioning), false);
@@ -334,6 +329,11 @@ class PreferredProperties
         public static PartitioningProperties singlePartition()
         {
             return partitioned(ImmutableSet.of());
+        }
+
+        public PartitioningProperties withNullsAndAnyReplicated(boolean nullsAndAnyReplicated)
+        {
+            return new PartitioningProperties(partitioningColumns, partitioning, nullsAndAnyReplicated);
         }
 
         public Set<Symbol> getPartitioningColumns()

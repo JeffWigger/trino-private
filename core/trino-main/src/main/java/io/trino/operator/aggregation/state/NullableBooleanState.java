@@ -22,15 +22,6 @@ import io.trino.spi.type.Type;
 public interface NullableBooleanState
         extends AccumulatorState
 {
-    boolean getBoolean();
-
-    void setBoolean(boolean value);
-
-    @InitialBooleanValue(true)
-    boolean isNull();
-
-    void setNull(boolean value);
-
     static void write(Type type, NullableBooleanState state, BlockBuilder out)
     {
         if (state.isNull()) {
@@ -40,4 +31,13 @@ public interface NullableBooleanState
             type.writeBoolean(out, state.getBoolean());
         }
     }
+
+    boolean getBoolean();
+
+    void setBoolean(boolean value);
+
+    @InitialBooleanValue(true)
+    boolean isNull();
+
+    void setNull(boolean value);
 }

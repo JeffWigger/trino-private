@@ -25,16 +25,8 @@ import static java.util.Objects.requireNonNull;
 
 public class LocalExchangeSink
 {
-    public static LocalExchangeSink finishedLocalExchangeSink()
-    {
-        LocalExchangeSink finishedSink = new LocalExchangeSink(FINISHED, sink -> {});
-        finishedSink.finish();
-        return finishedSink;
-    }
-
     private final LocalExchanger exchanger;
     private final Consumer<LocalExchangeSink> onFinish;
-
     private final AtomicBoolean finished = new AtomicBoolean();
 
     public LocalExchangeSink(
@@ -43,6 +35,13 @@ public class LocalExchangeSink
     {
         this.exchanger = requireNonNull(exchanger, "exchanger is null");
         this.onFinish = requireNonNull(onFinish, "onFinish is null");
+    }
+
+    public static LocalExchangeSink finishedLocalExchangeSink()
+    {
+        LocalExchangeSink finishedSink = new LocalExchangeSink(FINISHED, sink -> {});
+        finishedSink.finish();
+        return finishedSink;
     }
 
     public void finish()

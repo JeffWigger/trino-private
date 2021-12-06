@@ -58,22 +58,17 @@ public class BroadcastOutputBuffer
     private final StateMachine<BufferState> state;
     private final OutputBufferMemoryManager memoryManager;
     private final PagesReleasedListener onPagesReleased;
-
-    @GuardedBy("this")
-    private OutputBuffers outputBuffers = OutputBuffers.createInitialEmptyOutputBuffers(BROADCAST);
-
     @GuardedBy("this")
     private final Map<OutputBufferId, ClientBuffer> buffers = new ConcurrentHashMap<>();
-
     @GuardedBy("this")
     private final List<SerializedPageReference> initialPagesForNewBuffers = new ArrayList<>();
-
     private final AtomicLong totalPagesAdded = new AtomicLong();
     private final AtomicLong totalRowsAdded = new AtomicLong();
     private final AtomicLong totalBufferedPages = new AtomicLong();
-
     private final AtomicBoolean hasBlockedBefore = new AtomicBoolean();
     private final Runnable notifyStatusChanged;
+    @GuardedBy("this")
+    private OutputBuffers outputBuffers = OutputBuffers.createInitialEmptyOutputBuffers(BROADCAST);
 
     public BroadcastOutputBuffer(
             String taskInstanceId,

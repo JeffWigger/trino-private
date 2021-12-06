@@ -283,8 +283,8 @@ public class SimplePagesHashStrategy
         Block rightBlock = channels.get(channel).get(rightBlockIndex);
 
         return (int) comparisonOperators.get(channel)
-            .orElseThrow(() -> new IllegalArgumentException("type is not orderable"))
-            .compare(leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+                .orElseThrow(() -> new IllegalArgumentException("type is not orderable"))
+                .compare(leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
     }
 
     @Override

@@ -386,9 +386,8 @@ public class PlanFragmenter
         private final List<SubPlan> children = new ArrayList<>();
 
         private final PartitioningScheme partitioningScheme;
-
-        private Optional<PartitioningHandle> partitioningHandle = Optional.empty();
         private final Set<PlanNodeId> partitionedSources = new HashSet<>();
+        private Optional<PartitioningHandle> partitioningHandle = Optional.empty();
 
         public FragmentProperties(PartitioningScheme partitioningScheme)
         {

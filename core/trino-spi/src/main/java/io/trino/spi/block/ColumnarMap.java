@@ -23,6 +23,15 @@ public class ColumnarMap
     private final Block keysBlock;
     private final Block valuesBlock;
 
+    private ColumnarMap(Block nullCheckBlock, int offsetsOffset, int[] offsets, Block keysBlock, Block valuesBlock)
+    {
+        this.nullCheckBlock = nullCheckBlock;
+        this.offsetsOffset = offsetsOffset;
+        this.offsets = offsets;
+        this.keysBlock = keysBlock;
+        this.valuesBlock = valuesBlock;
+    }
+
     public static ColumnarMap toColumnarMap(Block block)
     {
         requireNonNull(block, "block is null");
@@ -115,15 +124,6 @@ public class ColumnarMap
                 offsets,
                 new DictionaryBlock(dictionaryIds.length, columnarMap.getKeysBlock(), dictionaryIds),
                 new DictionaryBlock(dictionaryIds.length, columnarMap.getValuesBlock(), dictionaryIds));
-    }
-
-    private ColumnarMap(Block nullCheckBlock, int offsetsOffset, int[] offsets, Block keysBlock, Block valuesBlock)
-    {
-        this.nullCheckBlock = nullCheckBlock;
-        this.offsetsOffset = offsetsOffset;
-        this.offsets = offsets;
-        this.keysBlock = keysBlock;
-        this.valuesBlock = valuesBlock;
     }
 
     public int getPositionCount()

@@ -41,12 +41,107 @@ public class TestDecimalStream
 {
     private static final BigInteger BIG_INTEGER_127_BIT_SET;
 
-    static {
-        BigInteger b = BigInteger.ZERO;
-        for (int i = 0; i < 127; ++i) {
-            b = b.setBit(i);
+    private static Slice encodeValues(List<BigInteger> values)
+            throws IOException
+    {
+        DynamicSliceOutput output = new DynamicSliceOutput(1);
+        for (BigInteger value : values) {
+            writeBigInteger(output, value);
         }
-        BIG_INTEGER_127_BIT_SET = b;
+
+        return output.slice();
+    }
+
+    private static void assertReadsShortValue(long value)
+            throws IOException
+    {
+        DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(BigInteger.valueOf(value)));
+        assertEquals(nextShortDecimalValue(stream), value);
+    }
+
+    private static void assertReadsLongValue(BigInteger value)
+            throws IOException
+    {
+        DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(value));
+        assertEquals(nextLongDecimalValue(stream), value);
+    }
+
+    private static void assertShortValueReadFails(BigInteger value)
+    {
+        assertThatThrownBy(() -> {
+            DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(value));
+            nextShortDecimalValue(stream);
+        }).isInstanceOf(OrcCorruptionException.class)
+                .hasMessageContaining("Malformed ORC file. Decimal does not fit long (invalid table schema?)");
+    }
+
+    private static void assertLongValueReadFails(BigInteger value)
+    {
+        assertThatThrownBy(() -> {
+            DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(value));
+            nextLongDecimalValue(stream);
+        }).isInstanceOf(OrcCorruptionException.class)
+                .hasMessageContaining("Malformed ORC file. Decimal exceeds 128 bits");
+    }
+
+    private static long nextShortDecimalValue(DecimalInputStream stream)
+            throws IOException
+    {
+        long[] values = new long[1];
+        stream.nextShortDecimal(values, 1);
+        return values[0];
+    }
+
+    private static BigInteger nextLongDecimalValue(DecimalInputStream stream)
+            throws IOException
+    {
+        long[] decimal = new long[2];
+        stream.nextLongDecimal(decimal, 1);
+        return unscaledDecimalToBigInteger(Slices.wrappedLongArray(decimal));
+    }
+
+    private static OrcChunkLoader decimalChunkLoader(BigInteger value)
+            throws IOException
+    {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        writeBigInteger(baos, value);
+        return orcChunkLoaderFor(value.toString(), baos.toByteArray());
+    }
+
+    private static OrcChunkLoader orcChunkLoaderFor(String source, byte[] bytes)
+    {
+        return OrcChunkLoader.create(new OrcDataSourceId(source), Slices.wrappedBuffer(bytes), Optional.empty(), newSimpleAggregatedMemoryContext());
+    }
+
+    // copied from org.apache.hadoop.hive.ql.io.orc.SerializationUtils.java
+    private static void writeBigInteger(OutputStream output, BigInteger value)
+            throws IOException
+    {
+        // encode the signed number as a positive integer
+        value = value.shiftLeft(1);
+        int sign = value.signum();
+        if (sign < 0) {
+            value = value.negate();
+            value = value.subtract(ONE);
+        }
+        int length = value.bitLength();
+        while (true) {
+            long lowBits = value.longValue() & 0x7fffffffffffffffL;
+            length -= 63;
+            // write out the next 63 bits worth of data
+            for (int i = 0; i < 9; ++i) {
+                // if this is the last byte, leave the high bit off
+                if (length <= 0 && (lowBits & ~0x7f) == 0) {
+                    output.write((byte) lowBits);
+                    return;
+                }
+                else {
+                    output.write((byte) (0x80 | (lowBits & 0x7f)));
+                    lowBits >>>= 7;
+                }
+            }
+            value = value.shiftRight(63);
+        }
     }
 
     @Test
@@ -169,109 +264,6 @@ public class TestDecimalStream
         assertEquals(nextLongDecimalValue(stream), BigInteger.valueOf(Long.MAX_VALUE));
     }
 
-    private static Slice encodeValues(List<BigInteger> values)
-            throws IOException
-    {
-        DynamicSliceOutput output = new DynamicSliceOutput(1);
-        for (BigInteger value : values) {
-            writeBigInteger(output, value);
-        }
-
-        return output.slice();
-    }
-
-    private static void assertReadsShortValue(long value)
-            throws IOException
-    {
-        DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(BigInteger.valueOf(value)));
-        assertEquals(nextShortDecimalValue(stream), value);
-    }
-
-    private static void assertReadsLongValue(BigInteger value)
-            throws IOException
-    {
-        DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(value));
-        assertEquals(nextLongDecimalValue(stream), value);
-    }
-
-    private static void assertShortValueReadFails(BigInteger value)
-    {
-        assertThatThrownBy(() -> {
-            DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(value));
-            nextShortDecimalValue(stream);
-        }).isInstanceOf(OrcCorruptionException.class)
-                .hasMessageContaining("Malformed ORC file. Decimal does not fit long (invalid table schema?)");
-    }
-
-    private static void assertLongValueReadFails(BigInteger value)
-    {
-        assertThatThrownBy(() -> {
-            DecimalInputStream stream = new DecimalInputStream(decimalChunkLoader(value));
-            nextLongDecimalValue(stream);
-        }).isInstanceOf(OrcCorruptionException.class)
-                .hasMessageContaining("Malformed ORC file. Decimal exceeds 128 bits");
-    }
-
-    private static long nextShortDecimalValue(DecimalInputStream stream)
-            throws IOException
-    {
-        long[] values = new long[1];
-        stream.nextShortDecimal(values, 1);
-        return values[0];
-    }
-
-    private static BigInteger nextLongDecimalValue(DecimalInputStream stream)
-            throws IOException
-    {
-        long[] decimal = new long[2];
-        stream.nextLongDecimal(decimal, 1);
-        return unscaledDecimalToBigInteger(Slices.wrappedLongArray(decimal));
-    }
-
-    private static OrcChunkLoader decimalChunkLoader(BigInteger value)
-            throws IOException
-    {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        writeBigInteger(baos, value);
-        return orcChunkLoaderFor(value.toString(), baos.toByteArray());
-    }
-
-    private static OrcChunkLoader orcChunkLoaderFor(String source, byte[] bytes)
-    {
-        return OrcChunkLoader.create(new OrcDataSourceId(source), Slices.wrappedBuffer(bytes), Optional.empty(), newSimpleAggregatedMemoryContext());
-    }
-
-    // copied from org.apache.hadoop.hive.ql.io.orc.SerializationUtils.java
-    private static void writeBigInteger(OutputStream output, BigInteger value)
-            throws IOException
-    {
-        // encode the signed number as a positive integer
-        value = value.shiftLeft(1);
-        int sign = value.signum();
-        if (sign < 0) {
-            value = value.negate();
-            value = value.subtract(ONE);
-        }
-        int length = value.bitLength();
-        while (true) {
-            long lowBits = value.longValue() & 0x7fffffffffffffffL;
-            length -= 63;
-            // write out the next 63 bits worth of data
-            for (int i = 0; i < 9; ++i) {
-                // if this is the last byte, leave the high bit off
-                if (length <= 0 && (lowBits & ~0x7f) == 0) {
-                    output.write((byte) lowBits);
-                    return;
-                }
-                else {
-                    output.write((byte) (0x80 | (lowBits & 0x7f)));
-                    lowBits >>>= 7;
-                }
-            }
-            value = value.shiftRight(63);
-        }
-    }
-
     private static class TestingChunkLoader
             implements OrcChunkLoader
     {
@@ -312,5 +304,13 @@ public class TestDecimalStream
         public void seekToCheckpoint(long checkpoint)
         {
         }
+    }
+
+    static {
+        BigInteger b = BigInteger.ZERO;
+        for (int i = 0; i < 127; ++i) {
+            b = b.setBit(i);
+        }
+        BIG_INTEGER_127_BIT_SET = b;
     }
 }

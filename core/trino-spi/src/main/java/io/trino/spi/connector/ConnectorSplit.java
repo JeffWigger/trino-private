@@ -25,7 +25,8 @@ public interface ConnectorSplit
 
     Object getInfo();
 
-    default boolean getIsDeltaSplit(){
+    default boolean getIsDeltaSplit()
+    {
         return false;
     }
 }

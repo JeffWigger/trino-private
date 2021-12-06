@@ -45,11 +45,6 @@ public class StatisticAggregationsDescriptor<T>
     private final Map<TableStatisticType, T> tableStatistics;
     private final Map<ColumnStatisticMetadata, T> columnStatistics;
 
-    public static <T> StatisticAggregationsDescriptor<T> empty()
-    {
-        return StatisticAggregationsDescriptor.<T>builder().build();
-    }
-
     @JsonCreator
     public StatisticAggregationsDescriptor(
             @JsonProperty("grouping") Map<String, T> grouping,
@@ -59,6 +54,23 @@ public class StatisticAggregationsDescriptor<T>
         this.grouping = ImmutableMap.copyOf(requireNonNull(grouping, "grouping is null"));
         this.tableStatistics = ImmutableMap.copyOf(requireNonNull(tableStatistics, "tableStatistics is null"));
         this.columnStatistics = ImmutableMap.copyOf(requireNonNull(columnStatistics, "columnStatistics is null"));
+    }
+
+    public static <T> StatisticAggregationsDescriptor<T> empty()
+    {
+        return StatisticAggregationsDescriptor.<T>builder().build();
+    }
+
+    public static <B> Builder<B> builder()
+    {
+        return new Builder<>();
+    }
+
+    private static <K, V1, V2> Map<K, V2> map(Map<K, V1> input, Function<V1, V2> mapper)
+    {
+        return input.entrySet()
+                .stream()
+                .collect(toImmutableMap(Map.Entry::getKey, entry -> mapper.apply(entry.getValue())));
     }
 
     @JsonProperty
@@ -112,24 +124,12 @@ public class StatisticAggregationsDescriptor<T>
                 .toString();
     }
 
-    public static <B> Builder<B> builder()
-    {
-        return new Builder<>();
-    }
-
     public <T2> StatisticAggregationsDescriptor<T2> map(Function<T, T2> mapper)
     {
         return new StatisticAggregationsDescriptor<>(
                 map(this.getGrouping(), mapper),
                 map(this.getTableStatistics(), mapper),
                 map(this.getColumnStatistics(), mapper));
-    }
-
-    private static <K, V1, V2> Map<K, V2> map(Map<K, V1> input, Function<V1, V2> mapper)
-    {
-        return input.entrySet()
-                .stream()
-                .collect(toImmutableMap(Map.Entry::getKey, entry -> mapper.apply(entry.getValue())));
     }
 
     public static class Builder<T>
@@ -162,29 +162,23 @@ public class StatisticAggregationsDescriptor<T>
     public static class ColumnStatisticMetadataKeySerializer
             extends JsonSerializer<ColumnStatisticMetadata>
     {
+        @VisibleForTesting
+        static String serialize(ColumnStatisticMetadata value)
+        {
+            return value.getStatisticType().name() + ":" + value.getColumnName();
+        }
+
         @Override
         public void serialize(ColumnStatisticMetadata value, JsonGenerator gen, SerializerProvider serializers)
                 throws IOException
         {
             gen.writeFieldName(serialize(verifyNotNull(value, "value is null")));
         }
-
-        @VisibleForTesting
-        static String serialize(ColumnStatisticMetadata value)
-        {
-            return value.getStatisticType().name() + ":" + value.getColumnName();
-        }
     }
 
     public static class ColumnStatisticMetadataKeyDeserializer
             extends KeyDeserializer
     {
-        @Override
-        public ColumnStatisticMetadata deserializeKey(String key, DeserializationContext ctxt)
-        {
-            return deserialize(requireNonNull(key, "key is null"));
-        }
-
         @VisibleForTesting
         static ColumnStatisticMetadata deserialize(String value)
         {
@@ -193,6 +187,12 @@ public class StatisticAggregationsDescriptor<T>
             String statisticType = value.substring(0, separatorIndex);
             String column = value.substring(separatorIndex + 1);
             return new ColumnStatisticMetadata(column, ColumnStatisticType.valueOf(statisticType));
+        }
+
+        @Override
+        public ColumnStatisticMetadata deserializeKey(String key, DeserializationContext ctxt)
+        {
+            return deserialize(requireNonNull(key, "key is null"));
         }
     }
 }

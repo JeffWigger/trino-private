@@ -29,46 +29,8 @@ import static java.util.Objects.requireNonNull;
 public class PagesIndexBuilderOperator
         implements Operator
 {
-    public static class PagesIndexBuilderOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final IndexSnapshotBuilder indexSnapshotBuilder;
-        private boolean closed;
-
-        public PagesIndexBuilderOperatorFactory(int operatorId, PlanNodeId planNodeId, IndexSnapshotBuilder indexSnapshotBuilder)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.indexSnapshotBuilder = requireNonNull(indexSnapshotBuilder, "indexSnapshotBuilder is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PagesIndexBuilderOperator.class.getSimpleName());
-            return new PagesIndexBuilderOperator(operatorContext, indexSnapshotBuilder);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new PagesIndexBuilderOperatorFactory(operatorId, planNodeId, indexSnapshotBuilder);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final IndexSnapshotBuilder indexSnapshotBuilder;
-
     private boolean finished;
 
     public PagesIndexBuilderOperator(OperatorContext operatorContext, IndexSnapshotBuilder indexSnapshotBuilder)
@@ -118,5 +80,42 @@ public class PagesIndexBuilderOperator
     public Page getOutput()
     {
         return null;
+    }
+
+    public static class PagesIndexBuilderOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final IndexSnapshotBuilder indexSnapshotBuilder;
+        private boolean closed;
+
+        public PagesIndexBuilderOperatorFactory(int operatorId, PlanNodeId planNodeId, IndexSnapshotBuilder indexSnapshotBuilder)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.indexSnapshotBuilder = requireNonNull(indexSnapshotBuilder, "indexSnapshotBuilder is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PagesIndexBuilderOperator.class.getSimpleName());
+            return new PagesIndexBuilderOperator(operatorContext, indexSnapshotBuilder);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new PagesIndexBuilderOperatorFactory(operatorId, planNodeId, indexSnapshotBuilder);
+        }
     }
 }

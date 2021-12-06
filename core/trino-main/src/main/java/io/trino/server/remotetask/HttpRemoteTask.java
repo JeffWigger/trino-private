@@ -125,68 +125,53 @@ public final class HttpRemoteTask
 
     private final DynamicFiltersCollector outboundDynamicFiltersCollector;
     @GuardedBy("this")
-    // The version of dynamic filters that has been successfully sent to the worker
-    private long sentDynamicFiltersVersion = INITIAL_DYNAMIC_FILTERS_VERSION;
-
-    @GuardedBy("this")
-    private Future<?> currentRequest;
-    @GuardedBy("this")
-    private long currentRequestStartNanos;
-
-    @GuardedBy("this")
     private final SetMultimap<PlanNodeId, ScheduledSplit> pendingSplits = HashMultimap.create();
-
     @GuardedBy("this")
     private final SetMultimap<PlanNodeId, ScheduledSplit> pendingDeltaSplits = HashMultimap.create();
-
     private final int maxUnacknowledgedSplits;
     @GuardedBy("this")
-    private volatile int pendingSourceSplitCount;
-    @GuardedBy("this")
-    private volatile int pendingSourceDeltaSplitCount = 0;
-    @GuardedBy("this")
     private final SetMultimap<PlanNodeId, Lifespan> pendingNoMoreSplitsForLifespan = HashMultimap.create();
-
     @GuardedBy("this")
     private final SetMultimap<PlanNodeId, Lifespan> pendingNoMoreDeltaSplitsForLifespan = HashMultimap.create();
     @GuardedBy("this")
     // The keys of this map represent all plan nodes that have "no more splits".
     // The boolean value of each entry represents whether the "no more splits" notification is pending delivery to workers.
     private final Map<PlanNodeId, Boolean> noMoreSplits = new HashMap<>();
-
-
     @GuardedBy("this")
     // The keys of this map represent all plan nodes that have "no more splits".
     // The boolean value of each entry represents whether the "no more splits" notification is pending delivery to workers.
     private final Map<PlanNodeId, Boolean> noMoreDeltaSplits = new HashMap<>();
-
     @GuardedBy("this")
     private final AtomicReference<OutputBuffers> outputBuffers = new AtomicReference<>();
     private final FutureStateChange<Void> whenSplitQueueHasSpace = new FutureStateChange<>();
+    private final boolean summarizeTaskInfo;
+    private final HttpClient httpClient;
+    private final Executor executor;
+    private final ScheduledExecutorService errorScheduledExecutor;
+    private final JsonCodec<TaskInfo> taskInfoCodec;
+    private final JsonCodec<TaskUpdateRequest> taskUpdateRequestCodec;
+    private final RequestErrorTracker updateErrorTracker;
+    private final AtomicBoolean needsUpdate = new AtomicBoolean(true);
+    private final AtomicBoolean sendPlan = new AtomicBoolean(true);
+    // Do not need an extra one for delta splits
+    private final PartitionedSplitCountTracker partitionedSplitCountTracker;
+    private final AtomicBoolean started = new AtomicBoolean(false);
+    private final AtomicBoolean aborting = new AtomicBoolean(false);
+    @GuardedBy("this")
+    // The version of dynamic filters that has been successfully sent to the worker
+    private long sentDynamicFiltersVersion = INITIAL_DYNAMIC_FILTERS_VERSION;
+    @GuardedBy("this")
+    private Future<?> currentRequest;
+    @GuardedBy("this")
+    private long currentRequestStartNanos;
+    @GuardedBy("this")
+    private volatile int pendingSourceSplitCount;
+    @GuardedBy("this")
+    private volatile int pendingSourceDeltaSplitCount = 0;
     @GuardedBy("this")
     private boolean splitQueueHasSpace = true;
     @GuardedBy("this")
     private OptionalInt whenSplitQueueHasSpaceThreshold = OptionalInt.empty();
-
-    private final boolean summarizeTaskInfo;
-
-    private final HttpClient httpClient;
-    private final Executor executor;
-    private final ScheduledExecutorService errorScheduledExecutor;
-
-    private final JsonCodec<TaskInfo> taskInfoCodec;
-    private final JsonCodec<TaskUpdateRequest> taskUpdateRequestCodec;
-
-    private final RequestErrorTracker updateErrorTracker;
-
-    private final AtomicBoolean needsUpdate = new AtomicBoolean(true);
-    private final AtomicBoolean sendPlan = new AtomicBoolean(true);
-
-    // Do not need an extra one for delta splits
-    private final PartitionedSplitCountTracker partitionedSplitCountTracker;
-
-    private final AtomicBoolean started = new AtomicBoolean(false);
-    private final AtomicBoolean aborting = new AtomicBoolean(false);
 
     public HttpRemoteTask(
             Session session,
@@ -321,6 +306,17 @@ public final class HttpRemoteTask
         }
     }
 
+    private static Backoff createCleanupBackoff()
+    {
+        return new Backoff(10, new Duration(10, TimeUnit.MINUTES), Ticker.systemTicker(), ImmutableList.<Duration>builder()
+                .add(new Duration(0, MILLISECONDS))
+                .add(new Duration(100, MILLISECONDS))
+                .add(new Duration(500, MILLISECONDS))
+                .add(new Duration(1, SECONDS))
+                .add(new Duration(10, SECONDS))
+                .build());
+    }
+
     @Override
     public TaskId getTaskId()
     {
@@ -420,7 +416,7 @@ public final class HttpRemoteTask
 
         // only add pending split if not done
         //if (getTaskStatus().getState().isDone()) {
-          //  return;
+        //  return;
         //}
 
         boolean needsUpdate = false;
@@ -446,7 +442,6 @@ public final class HttpRemoteTask
         if (needsUpdate) {
             triggerUpdate();
         }
-
     }
 
     @Override
@@ -458,7 +453,6 @@ public final class HttpRemoteTask
 
         noMoreDeltaSplits.put(sourceId, true);
         triggerUpdate();
-
     }
 
     @Override
@@ -467,11 +461,11 @@ public final class HttpRemoteTask
         if (pendingNoMoreDeltaSplitsForLifespan.put(sourceId, lifespan)) {
             triggerUpdate();
         }
-
     }
 
     @Override
-    public void resetStateDelta(){
+    public void resetStateDelta()
+    {
         // TODO: implement and call this function
     }
 
@@ -565,7 +559,7 @@ public final class HttpRemoteTask
     private synchronized void processTaskUpdate(TaskInfo newValue, List<TaskSource> sources, boolean isDeltaUpdate)
     {
         updateTaskInfo(newValue);
-        if (isDeltaUpdate){
+        if (isDeltaUpdate) {
             // remove acknowledged splits, which frees memory
             for (TaskSource source : sources) {
                 PlanNodeId planNodeId = source.getPlanNodeId();
@@ -585,7 +579,8 @@ public final class HttpRemoteTask
                     pendingSourceDeltaSplitCount -= removed;
                 }
             }
-        }else {
+        }
+        else {
             // remove acknowledged splits, which frees memory
             for (TaskSource source : sources) {
                 PlanNodeId planNodeId = source.getPlanNodeId();
@@ -711,14 +706,15 @@ public final class HttpRemoteTask
         boolean pendingNoMoreSplits = Boolean.TRUE.equals(this.noMoreSplits.get(planNodeId));
         boolean noMoreSplits = this.noMoreSplits.containsKey(planNodeId);
         Set<Lifespan> noMoreSplitsForLifespan = pendingNoMoreSplitsForLifespan.get(planNodeId);
-        if (!onlyDelta){
+        if (!onlyDelta) {
             Set<ScheduledSplit> splits = pendingSplits.get(planNodeId);
             TaskSource element = null;
             if (!splits.isEmpty() || !noMoreSplitsForLifespan.isEmpty() || pendingNoMoreSplits) {
                 element = new TaskSource(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits);
             }
             return element;
-        }else{
+        }
+        else {
             Set<ScheduledSplit> splits = pendingDeltaSplits.get(planNodeId);
             boolean pendingNoMoreDeltaSplits = Boolean.TRUE.equals(this.noMoreDeltaSplits.get(planNodeId));
             boolean noMoreDeltaSplits = this.noMoreDeltaSplits.containsKey(planNodeId);
@@ -732,7 +728,6 @@ public final class HttpRemoteTask
             }
             return element;
         }
-
     }
 
     @Override
@@ -911,17 +906,6 @@ public final class HttpRemoteTask
             uriBuilder.addParameter("summarize");
         }
         return uriBuilder;
-    }
-
-    private static Backoff createCleanupBackoff()
-    {
-        return new Backoff(10, new Duration(10, TimeUnit.MINUTES), Ticker.systemTicker(), ImmutableList.<Duration>builder()
-                .add(new Duration(0, MILLISECONDS))
-                .add(new Duration(100, MILLISECONDS))
-                .add(new Duration(500, MILLISECONDS))
-                .add(new Duration(1, SECONDS))
-                .add(new Duration(10, SECONDS))
-                .build());
     }
 
     @Override

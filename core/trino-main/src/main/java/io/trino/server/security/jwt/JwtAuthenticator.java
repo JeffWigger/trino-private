@@ -56,8 +56,8 @@ public class JwtAuthenticator
     protected Optional<Principal> extractPrincipalFromToken(String token)
     {
         return Optional.ofNullable(jwtParser.parseClaimsJws(token)
-                .getBody()
-                .get(principalField, String.class))
+                        .getBody()
+                        .get(principalField, String.class))
                 .map(BasicPrincipal::new);
     }
 

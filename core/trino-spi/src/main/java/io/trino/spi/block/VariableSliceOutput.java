@@ -60,7 +60,7 @@ public class VariableSliceOutput
     @Override
     public void reset(int position)
     {
-        if (position >= 0 && position <= size){
+        if (position >= 0 && position <= size) {
             size = position;
         }
     }

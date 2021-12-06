@@ -35,12 +35,10 @@ public class PresentOutputStream
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(PresentOutputStream.class).instanceSize();
     private final OrcOutputBuffer buffer;
-
+    private final List<Integer> groupsCounts = new ArrayList<>();
     // boolean stream will only exist if null values being recorded
     @Nullable
     private BooleanOutputStream booleanOutputStream;
-
-    private final List<Integer> groupsCounts = new ArrayList<>();
     private int currentGroupCount;
 
     private boolean closed;

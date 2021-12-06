@@ -38,6 +38,23 @@ final class SerializedPageReference
         this.referenceCount = referenceCount;
     }
 
+    public static void dereferencePages(List<SerializedPageReference> serializedPageReferences, PagesReleasedListener onPagesReleased)
+    {
+        requireNonNull(serializedPageReferences, "serializedPageReferences is null");
+        requireNonNull(onPagesReleased, "onPagesReleased is null");
+        int releasedPageCount = 0;
+        long releasedMemorySizeInBytes = 0;
+        for (SerializedPageReference serializedPageReference : serializedPageReferences) {
+            if (serializedPageReference.dereferencePage()) {
+                releasedPageCount++;
+                releasedMemorySizeInBytes += serializedPageReference.getRetainedSizeInBytes();
+            }
+        }
+        if (releasedPageCount > 0) {
+            onPagesReleased.onPagesReleased(releasedPageCount, releasedMemorySizeInBytes);
+        }
+    }
+
     public void addReference()
     {
         int oldReferences = REFERENCE_COUNT_UPDATER.getAndIncrement(this);
@@ -74,30 +91,13 @@ final class SerializedPageReference
                 .toString();
     }
 
-    public static void dereferencePages(List<SerializedPageReference> serializedPageReferences, PagesReleasedListener onPagesReleased)
-    {
-        requireNonNull(serializedPageReferences, "serializedPageReferences is null");
-        requireNonNull(onPagesReleased, "onPagesReleased is null");
-        int releasedPageCount = 0;
-        long releasedMemorySizeInBytes = 0;
-        for (SerializedPageReference serializedPageReference : serializedPageReferences) {
-            if (serializedPageReference.dereferencePage()) {
-                releasedPageCount++;
-                releasedMemorySizeInBytes += serializedPageReference.getRetainedSizeInBytes();
-            }
-        }
-        if (releasedPageCount > 0) {
-            onPagesReleased.onPagesReleased(releasedPageCount, releasedMemorySizeInBytes);
-        }
-    }
-
     interface PagesReleasedListener
     {
-        void onPagesReleased(int releasedPagesCount, long releasedMemorySizeInBytes);
-
         static PagesReleasedListener forOutputBufferMemoryManager(OutputBufferMemoryManager memoryManager)
         {
             return (releasedPagesCount, releasedMemorySizeInBytes) -> memoryManager.updateMemoryUsage(-releasedMemorySizeInBytes);
         }
+
+        void onPagesReleased(int releasedPagesCount, long releasedMemorySizeInBytes);
     }
 }

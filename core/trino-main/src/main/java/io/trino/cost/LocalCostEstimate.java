@@ -32,6 +32,17 @@ public class LocalCostEstimate
     private final double maxMemory;
     private final double networkCost;
 
+    @JsonCreator
+    public LocalCostEstimate(
+            @JsonProperty("cpuCost") double cpuCost,
+            @JsonProperty("maxMemory") double maxMemory,
+            @JsonProperty("networkCost") double networkCost)
+    {
+        this.cpuCost = cpuCost;
+        this.maxMemory = maxMemory;
+        this.networkCost = networkCost;
+    }
+
     public static LocalCostEstimate unknown()
     {
         return of(NaN, NaN, NaN);
@@ -57,15 +68,16 @@ public class LocalCostEstimate
         return new LocalCostEstimate(cpuCost, maxMemory, networkCost);
     }
 
-    @JsonCreator
-    public LocalCostEstimate(
-            @JsonProperty("cpuCost") double cpuCost,
-            @JsonProperty("maxMemory") double maxMemory,
-            @JsonProperty("networkCost") double networkCost)
+    /**
+     * Sums partial cost estimates of some (single) plan node.
+     */
+    public static LocalCostEstimate addPartialComponents(LocalCostEstimate one, LocalCostEstimate two, LocalCostEstimate... more)
     {
-        this.cpuCost = cpuCost;
-        this.maxMemory = maxMemory;
-        this.networkCost = networkCost;
+        return Stream.concat(Stream.of(one, two), Stream.of(more))
+                .reduce(zero(), (a, b) -> new LocalCostEstimate(
+                        a.cpuCost + b.cpuCost,
+                        a.maxMemory + b.maxMemory,
+                        a.networkCost + b.networkCost));
     }
 
     @JsonProperty
@@ -124,17 +136,5 @@ public class LocalCostEstimate
     public int hashCode()
     {
         return Objects.hash(cpuCost, maxMemory, networkCost);
-    }
-
-    /**
-     * Sums partial cost estimates of some (single) plan node.
-     */
-    public static LocalCostEstimate addPartialComponents(LocalCostEstimate one, LocalCostEstimate two, LocalCostEstimate... more)
-    {
-        return Stream.concat(Stream.of(one, two), Stream.of(more))
-                .reduce(zero(), (a, b) -> new LocalCostEstimate(
-                        a.cpuCost + b.cpuCost,
-                        a.maxMemory + b.maxMemory,
-                        a.networkCost + b.networkCost));
     }
 }

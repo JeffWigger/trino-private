@@ -52,6 +52,42 @@ class ShortTimestampType
         }
     }
 
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long left, long right)
+    {
+        return left == right;
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long value)
+    {
+        return AbstractLongType.hash(value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long value)
+    {
+        return XxHash64.hash(value);
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Long.compare(left, right);
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return left < right;
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return left <= right;
+    }
+
     @Override
     public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
     {
@@ -123,41 +159,5 @@ class ShortTimestampType
 
         long epochMicros = getLong(block, position);
         return SqlTimestamp.newInstance(getPrecision(), epochMicros, 0);
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
-    {
-        return left == right;
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long value)
-    {
-        return AbstractLongType.hash(value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long value)
-    {
-        return XxHash64.hash(value);
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Long.compare(left, right);
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return left < right;
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return left <= right;
     }
 }

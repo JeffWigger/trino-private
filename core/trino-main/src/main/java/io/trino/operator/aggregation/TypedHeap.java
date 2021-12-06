@@ -32,9 +32,8 @@ public class TypedHeap
     private final BlockPositionComparison comparison;
     private final Type type;
     private final int capacity;
-
-    private int positionCount;
     private final int[] heapIndex;
+    private int positionCount;
     private BlockBuilder heapBlockBuilder;
 
     public TypedHeap(BlockPositionComparison comparison, Type type, int capacity)

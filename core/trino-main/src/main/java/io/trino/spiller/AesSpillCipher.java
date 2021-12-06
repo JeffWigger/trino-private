@@ -35,11 +35,10 @@ public final class AesSpillCipher
     //  256-bit AES CBC mode
     private static final String CIPHER_NAME = "AES/CBC/PKCS5Padding";
     private static final int KEY_BITS = 256;
-
+    private final int ivBytes;
     private SecretKey key;
     //  Instance used only for determining encrypted output lengths
     private Cipher encryptSizer;
-    private final int ivBytes;
 
     @VisibleForTesting
     public AesSpillCipher()
@@ -47,6 +46,60 @@ public final class AesSpillCipher
         this.key = generateNewSecretKey();
         this.encryptSizer = createEncryptCipher(key);
         this.ivBytes = encryptSizer.getIV().length;
+    }
+
+    private static <T> T throwCipherClosedIfNull(T value)
+    {
+        if (value == null) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Spill cipher already closed");
+        }
+        return value;
+    }
+
+    private static Cipher createEncryptCipher(SecretKey key)
+    {
+        Cipher cipher = createUninitializedCipher();
+        try {
+            cipher.init(Cipher.ENCRYPT_MODE, throwCipherClosedIfNull(key));
+            return cipher;
+        }
+        catch (GeneralSecurityException e) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to initialize spill cipher for encryption: " + e.getMessage(), e);
+        }
+    }
+
+    private static Cipher createDecryptCipher(SecretKey key, IvParameterSpec iv)
+    {
+        Cipher cipher = createUninitializedCipher();
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, throwCipherClosedIfNull(key), iv);
+            return cipher;
+        }
+        catch (GeneralSecurityException e) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to initialize spill cipher for decryption: " + e.getMessage(), e);
+        }
+    }
+
+    private static Cipher createUninitializedCipher()
+    {
+        try {
+            return Cipher.getInstance(CIPHER_NAME);
+        }
+        catch (GeneralSecurityException e) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to create spill cipher: " + e.getMessage(), e);
+        }
+    }
+
+    private static SecretKey generateNewSecretKey()
+    {
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            keyGenerator.init(KEY_BITS);
+            return keyGenerator.generateKey();
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to generate new secret key: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -116,59 +169,5 @@ public final class AesSpillCipher
     public String toString()
     {
         return toStringHelper(this).add("closed", key == null).toString();
-    }
-
-    private static <T> T throwCipherClosedIfNull(T value)
-    {
-        if (value == null) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Spill cipher already closed");
-        }
-        return value;
-    }
-
-    private static Cipher createEncryptCipher(SecretKey key)
-    {
-        Cipher cipher = createUninitializedCipher();
-        try {
-            cipher.init(Cipher.ENCRYPT_MODE, throwCipherClosedIfNull(key));
-            return cipher;
-        }
-        catch (GeneralSecurityException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to initialize spill cipher for encryption: " + e.getMessage(), e);
-        }
-    }
-
-    private static Cipher createDecryptCipher(SecretKey key, IvParameterSpec iv)
-    {
-        Cipher cipher = createUninitializedCipher();
-        try {
-            cipher.init(Cipher.DECRYPT_MODE, throwCipherClosedIfNull(key), iv);
-            return cipher;
-        }
-        catch (GeneralSecurityException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to initialize spill cipher for decryption: " + e.getMessage(), e);
-        }
-    }
-
-    private static Cipher createUninitializedCipher()
-    {
-        try {
-            return Cipher.getInstance(CIPHER_NAME);
-        }
-        catch (GeneralSecurityException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to create spill cipher: " + e.getMessage(), e);
-        }
-    }
-
-    private static SecretKey generateNewSecretKey()
-    {
-        try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-            keyGenerator.init(KEY_BITS);
-            return keyGenerator.generateKey();
-        }
-        catch (NoSuchAlgorithmException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to generate new secret key: " + e.getMessage(), e);
-        }
     }
 }

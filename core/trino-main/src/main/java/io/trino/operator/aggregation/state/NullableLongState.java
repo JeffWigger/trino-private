@@ -22,15 +22,6 @@ import io.trino.spi.type.Type;
 public interface NullableLongState
         extends AccumulatorState
 {
-    long getLong();
-
-    void setLong(long value);
-
-    @InitialBooleanValue(true)
-    boolean isNull();
-
-    void setNull(boolean value);
-
     static void write(Type type, NullableLongState state, BlockBuilder out)
     {
         if (state.isNull()) {
@@ -40,4 +31,13 @@ public interface NullableLongState
             type.writeLong(out, state.getLong());
         }
     }
+
+    long getLong();
+
+    void setLong(long value);
+
+    @InitialBooleanValue(true)
+    boolean isNull();
+
+    void setNull(boolean value);
 }

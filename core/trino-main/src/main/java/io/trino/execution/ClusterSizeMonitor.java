@@ -50,14 +50,11 @@ public class ClusterSizeMonitor
     private final InternalNodeManager nodeManager;
     private final boolean includeCoordinator;
     private final ScheduledExecutorService executor;
-
-    private final Consumer<AllNodes> listener = this::updateAllNodes;
-
-    @GuardedBy("this")
-    private int currentCount;
-
     @GuardedBy("this")
     private final PriorityQueue<MinNodesFuture> futuresQueue = new PriorityQueue<>(comparing(MinNodesFuture::getExecutionMinCount));
+    @GuardedBy("this")
+    private int currentCount;
+    private final Consumer<AllNodes> listener = this::updateAllNodes;
 
     @Inject
     public ClusterSizeMonitor(InternalNodeManager nodeManager, NodeSchedulerConfig nodeSchedulerConfig)

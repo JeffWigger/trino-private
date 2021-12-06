@@ -42,15 +42,6 @@ public final class DoubleHistogramAggregation
     {
     }
 
-    @AccumulatorStateMetadata(stateSerializerClass = DoubleHistogramStateSerializer.class, stateFactoryClass = NumericHistogramStateFactory.class)
-    public interface State
-            extends AccumulatorState
-    {
-        NumericHistogram get();
-
-        void set(NumericHistogram value);
-    }
-
     @InputFunction
     public static void add(@AggregationState State state, @SqlType(BIGINT) long buckets, @SqlType(DOUBLE) double value, @SqlType(DOUBLE) double weight)
     {
@@ -100,5 +91,14 @@ public final class DoubleHistogramAggregation
             }
             out.closeEntry();
         }
+    }
+
+    @AccumulatorStateMetadata(stateSerializerClass = DoubleHistogramStateSerializer.class, stateFactoryClass = NumericHistogramStateFactory.class)
+    public interface State
+            extends AccumulatorState
+    {
+        NumericHistogram get();
+
+        void set(NumericHistogram value);
     }
 }

@@ -70,30 +70,6 @@ public final class ArrayConcatFunction
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        if (functionBinding.getArity() < 2) {
-            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more arguments to " + FUNCTION_NAME);
-        }
-
-        Type elementType = functionBinding.getTypeVariable("E");
-
-        VarArgsToArrayAdapterGenerator.MethodHandleAndConstructor methodHandleAndConstructor = generateVarArgsToArrayAdapter(
-                Block.class,
-                Block.class,
-                functionBinding.getArity(),
-                METHOD_HANDLE.bindTo(elementType),
-                USER_STATE_FACTORY.bindTo(elementType));
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                nCopies(functionBinding.getArity(), NEVER_NULL),
-                methodHandleAndConstructor.getMethodHandle(),
-                Optional.of(methodHandleAndConstructor.getConstructor()));
-    }
-
     @UsedByGeneratedCode
     public static Object createState(Type elementType)
     {
@@ -134,5 +110,29 @@ public final class ArrayConcatFunction
         }
         pageBuilder.declarePositions(resultPositionCount);
         return blockBuilder.getRegion(blockBuilder.getPositionCount() - resultPositionCount, resultPositionCount);
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        if (functionBinding.getArity() < 2) {
+            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more arguments to " + FUNCTION_NAME);
+        }
+
+        Type elementType = functionBinding.getTypeVariable("E");
+
+        VarArgsToArrayAdapterGenerator.MethodHandleAndConstructor methodHandleAndConstructor = generateVarArgsToArrayAdapter(
+                Block.class,
+                Block.class,
+                functionBinding.getArity(),
+                METHOD_HANDLE.bindTo(elementType),
+                USER_STATE_FACTORY.bindTo(elementType));
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                nCopies(functionBinding.getArity(), NEVER_NULL),
+                methodHandleAndConstructor.getMethodHandle(),
+                Optional.of(methodHandleAndConstructor.getConstructor()));
     }
 }

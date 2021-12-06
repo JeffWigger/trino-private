@@ -57,15 +57,6 @@ public class PruneTableScanColumns
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
-    @Override
-    protected Optional<PlanNode> pushDownProjectOff(Context context, TableScanNode node, Set<Symbol> referencedOutputs)
-    {
-        Session session = context.getSession();
-        TypeProvider types = context.getSymbolAllocator().getTypes();
-
-        return pruneColumns(metadata, types, session, node, referencedOutputs);
-    }
-
     public static Optional<PlanNode> pruneColumns(Metadata metadata, TypeProvider types, Session session, TableScanNode node, Set<Symbol> referencedOutputs)
     {
         List<Symbol> newOutputs = filteredCopy(node.getOutputSymbols(), referencedOutputs::contains);
@@ -128,5 +119,14 @@ public class PruneTableScanColumns
                 newStatistics,
                 node.isUpdateTarget(),
                 node.getUseConnectorNodePartitioning()));
+    }
+
+    @Override
+    protected Optional<PlanNode> pushDownProjectOff(Context context, TableScanNode node, Set<Symbol> referencedOutputs)
+    {
+        Session session = context.getSession();
+        TypeProvider types = context.getSymbolAllocator().getTypes();
+
+        return pruneColumns(metadata, types, session, node, referencedOutputs);
     }
 }

@@ -21,12 +21,12 @@ import java.util.List;
 
 public interface SingleStreamSpillerFactory
 {
-    SingleStreamSpiller create(List<Type> types, SpillContext spillContext, LocalMemoryContext memoryContext);
-
     static SingleStreamSpillerFactory unsupportedSingleStreamSpillerFactory()
     {
         return (types, spillContext, memoryContext) -> {
             throw new UnsupportedOperationException();
         };
     }
+
+    SingleStreamSpiller create(List<Type> types, SpillContext spillContext, LocalMemoryContext memoryContext);
 }

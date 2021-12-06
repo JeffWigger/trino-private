@@ -36,101 +36,11 @@ import static java.util.Objects.requireNonNull;
 public class SetBuilderOperator
         implements Operator
 {
-    public static class SetSupplier
-    {
-        private final Type type;
-        private final SettableFuture<ChannelSet> channelSetFuture = SettableFuture.create();
-
-        public SetSupplier(Type type)
-        {
-            this.type = requireNonNull(type, "type is null");
-        }
-
-        public Type getType()
-        {
-            return type;
-        }
-
-        public ListenableFuture<ChannelSet> getChannelSet()
-        {
-            return channelSetFuture;
-        }
-
-        void setChannelSet(ChannelSet channelSet)
-        {
-            boolean wasSet = channelSetFuture.set(requireNonNull(channelSet, "channelSet is null"));
-            checkState(wasSet, "ChannelSet already set");
-        }
-    }
-
-    public static class SetBuilderOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Optional<Integer> hashChannel;
-        private final SetSupplier setProvider;
-        private final int setChannel;
-        private final int expectedPositions;
-        private boolean closed;
-        private final JoinCompiler joinCompiler;
-        private final BlockTypeOperators blockTypeOperators;
-
-        public SetBuilderOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                Type type,
-                int setChannel,
-                Optional<Integer> hashChannel,
-                int expectedPositions,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            checkArgument(setChannel >= 0, "setChannel is negative");
-            this.setProvider = new SetSupplier(requireNonNull(type, "type is null"));
-            this.setChannel = setChannel;
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-            this.expectedPositions = expectedPositions;
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        }
-
-        public SetSupplier getSetProvider()
-        {
-            return setProvider;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, SetBuilderOperator.class.getSimpleName());
-            return new SetBuilderOperator(operatorContext, setProvider, setChannel, hashChannel, expectedPositions, joinCompiler, blockTypeOperators);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new SetBuilderOperatorFactory(operatorId, planNodeId, setProvider.getType(), setChannel, hashChannel, expectedPositions, joinCompiler, blockTypeOperators);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final SetSupplier setSupplier;
     private final int[] sourceChannels;
-
     private final ChannelSetBuilder channelSetBuilder;
-
     private boolean finished;
-
     @Nullable
     private Work<?> unfinishedWork;  // The pending work for current page.
 
@@ -231,5 +141,92 @@ public class SetBuilderOperator
     public int getCapacity()
     {
         return channelSetBuilder.getCapacity();
+    }
+
+    public static class SetSupplier
+    {
+        private final Type type;
+        private final SettableFuture<ChannelSet> channelSetFuture = SettableFuture.create();
+
+        public SetSupplier(Type type)
+        {
+            this.type = requireNonNull(type, "type is null");
+        }
+
+        public Type getType()
+        {
+            return type;
+        }
+
+        public ListenableFuture<ChannelSet> getChannelSet()
+        {
+            return channelSetFuture;
+        }
+
+        void setChannelSet(ChannelSet channelSet)
+        {
+            boolean wasSet = channelSetFuture.set(requireNonNull(channelSet, "channelSet is null"));
+            checkState(wasSet, "ChannelSet already set");
+        }
+    }
+
+    public static class SetBuilderOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Optional<Integer> hashChannel;
+        private final SetSupplier setProvider;
+        private final int setChannel;
+        private final int expectedPositions;
+        private final JoinCompiler joinCompiler;
+        private final BlockTypeOperators blockTypeOperators;
+        private boolean closed;
+
+        public SetBuilderOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                Type type,
+                int setChannel,
+                Optional<Integer> hashChannel,
+                int expectedPositions,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            checkArgument(setChannel >= 0, "setChannel is negative");
+            this.setProvider = new SetSupplier(requireNonNull(type, "type is null"));
+            this.setChannel = setChannel;
+            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            this.expectedPositions = expectedPositions;
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        }
+
+        public SetSupplier getSetProvider()
+        {
+            return setProvider;
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, SetBuilderOperator.class.getSimpleName());
+            return new SetBuilderOperator(operatorContext, setProvider, setChannel, hashChannel, expectedPositions, joinCompiler, blockTypeOperators);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new SetBuilderOperatorFactory(operatorId, planNodeId, setProvider.getType(), setChannel, hashChannel, expectedPositions, joinCompiler, blockTypeOperators);
+        }
     }
 }

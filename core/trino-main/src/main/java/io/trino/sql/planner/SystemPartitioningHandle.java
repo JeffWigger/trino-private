@@ -44,16 +44,6 @@ import static java.util.Objects.requireNonNull;
 public final class SystemPartitioningHandle
         implements ConnectorPartitioningHandle
 {
-    private enum SystemPartitioning
-    {
-        SINGLE,
-        FIXED,
-        SOURCE,
-        SCALED,
-        COORDINATOR_ONLY,
-        ARBITRARY
-    }
-
     public static final PartitioningHandle SINGLE_DISTRIBUTION = createSystemPartitioning(SystemPartitioning.SINGLE, SystemPartitionFunction.SINGLE);
     public static final PartitioningHandle COORDINATOR_DISTRIBUTION = createSystemPartitioning(SystemPartitioning.COORDINATOR_ONLY, SystemPartitionFunction.SINGLE);
     public static final PartitioningHandle FIXED_HASH_DISTRIBUTION = createSystemPartitioning(SystemPartitioning.FIXED, SystemPartitionFunction.HASH);
@@ -63,12 +53,6 @@ public final class SystemPartitioningHandle
     public static final PartitioningHandle SOURCE_DISTRIBUTION = createSystemPartitioning(SystemPartitioning.SOURCE, SystemPartitionFunction.UNKNOWN);
     public static final PartitioningHandle ARBITRARY_DISTRIBUTION = createSystemPartitioning(SystemPartitioning.ARBITRARY, SystemPartitionFunction.UNKNOWN);
     public static final PartitioningHandle FIXED_PASSTHROUGH_DISTRIBUTION = createSystemPartitioning(SystemPartitioning.FIXED, SystemPartitionFunction.UNKNOWN);
-
-    private static PartitioningHandle createSystemPartitioning(SystemPartitioning partitioning, SystemPartitionFunction function)
-    {
-        return new PartitioningHandle(Optional.empty(), Optional.empty(), new SystemPartitioningHandle(partitioning, function));
-    }
-
     private final SystemPartitioning partitioning;
     private final SystemPartitionFunction function;
 
@@ -79,6 +63,11 @@ public final class SystemPartitioningHandle
     {
         this.partitioning = requireNonNull(partitioning, "partitioning is null");
         this.function = requireNonNull(function, "function is null");
+    }
+
+    private static PartitioningHandle createSystemPartitioning(SystemPartitioning partitioning, SystemPartitionFunction function)
+    {
+        return new PartitioningHandle(Optional.empty(), Optional.empty(), new SystemPartitioningHandle(partitioning, function));
     }
 
     @JsonProperty
@@ -167,6 +156,16 @@ public final class SystemPartitioningHandle
 
         BucketFunction bucketFunction = function.createBucketFunction(partitionChannelTypes, isHashPrecomputed, bucketToPartition.length, blockTypeOperators);
         return new BucketPartitionFunction(bucketFunction, bucketToPartition);
+    }
+
+    private enum SystemPartitioning
+    {
+        SINGLE,
+        FIXED,
+        SOURCE,
+        SCALED,
+        COORDINATOR_ONLY,
+        ARBITRARY
     }
 
     public enum SystemPartitionFunction

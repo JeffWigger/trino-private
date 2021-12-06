@@ -26,11 +26,6 @@ import static io.trino.orc.OrcWriterStats.FlushReason.MAX_ROWS;
 
 public class OrcWriterStats
 {
-    public enum FlushReason
-    {
-        MAX_ROWS, MAX_BYTES, DICTIONARY_FULL, CLOSED
-    }
-
     private final OrcWriterFlushStats allFlush = new OrcWriterFlushStats("ALL");
     private final OrcWriterFlushStats maxRowsFlush = new OrcWriterFlushStats(MAX_ROWS.name());
     private final OrcWriterFlushStats maxBytesFlush = new OrcWriterFlushStats(MAX_BYTES.name());
@@ -116,5 +111,10 @@ public class OrcWriterStats
                 .add("closedFlush", closedFlush)
                 .add("writerSizeInBytes", writerSizeInBytes.get())
                 .toString();
+    }
+
+    public enum FlushReason
+    {
+        MAX_ROWS, MAX_BYTES, DICTIONARY_FULL, CLOSED
     }
 }

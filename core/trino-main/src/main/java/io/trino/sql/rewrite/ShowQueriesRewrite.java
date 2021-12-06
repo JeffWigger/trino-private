@@ -186,6 +186,120 @@ final class ShowQueriesRewrite
             this.accessControl = requireNonNull(accessControl, "accessControl is null");
         }
 
+        private static Query singleColumnValues(List<Expression> rows, String columnName)
+        {
+            List<String> columns = ImmutableList.of(columnName);
+            if (rows.isEmpty()) {
+                return emptyQuery(columns);
+            }
+            return simpleQuery(
+                    selectList(new AllColumns()),
+                    aliased(new Values(rows), "relation", columns),
+                    ordering(ascending(columnName)));
+        }
+
+        private static <T> Expression getExpression(PropertyMetadata<T> property, Object value)
+                throws TrinoException
+        {
+            return toExpression(property.encode(property.getJavaType().cast(value)));
+        }
+
+        private static Expression toExpression(Object value)
+                throws TrinoException
+        {
+            if (value instanceof String) {
+                return new StringLiteral(value.toString());
+            }
+
+            if (value instanceof Boolean) {
+                return new BooleanLiteral(value.toString());
+            }
+
+            if (value instanceof Long || value instanceof Integer) {
+                return new LongLiteral(value.toString());
+            }
+
+            if (value instanceof Double) {
+                return new DoubleLiteral(value.toString());
+            }
+
+            if (value instanceof List) {
+                List<?> list = (List<?>) value;
+                return new ArrayConstructor(list.stream()
+                        .map(Visitor::toExpression)
+                        .collect(toList()));
+            }
+
+            throw new TrinoException(INVALID_TABLE_PROPERTY, format("Failed to convert object of type %s to expression: %s", value.getClass().getName(), value));
+        }
+
+        private static List<Property> buildProperties(
+                Object objectName,
+                Optional<String> columnName,
+                StandardErrorCode errorCode,
+                Map<String, Object> properties,
+                Map<String, PropertyMetadata<?>> allProperties)
+        {
+            if (properties.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            ImmutableSortedMap.Builder<String, Expression> sqlProperties = ImmutableSortedMap.naturalOrder();
+
+            for (Map.Entry<String, Object> propertyEntry : properties.entrySet()) {
+                String propertyName = propertyEntry.getKey();
+                Object value = propertyEntry.getValue();
+                if (value == null) {
+                    throw new TrinoException(errorCode, format("Property %s for %s cannot have a null value", propertyName, toQualifiedName(objectName, columnName)));
+                }
+
+                PropertyMetadata<?> property = allProperties.get(propertyName);
+                if (property == null) {
+                    throw new TrinoException(errorCode, "No PropertyMetadata for property: " + propertyName);
+                }
+                if (!Primitives.wrap(property.getJavaType()).isInstance(value)) {
+                    throw new TrinoException(errorCode, format(
+                            "Property %s for %s should have value of type %s, not %s",
+                            propertyName,
+                            toQualifiedName(objectName, columnName),
+                            property.getJavaType().getName(),
+                            value.getClass().getName()));
+                }
+
+                Expression sqlExpression = getExpression(property, value);
+                sqlProperties.put(propertyName, sqlExpression);
+            }
+
+            return sqlProperties.build().entrySet().stream()
+                    .map(entry -> new Property(new Identifier(entry.getKey()), entry.getValue()))
+                    .collect(toImmutableList());
+        }
+
+        private static String toQualifiedName(Object objectName, Optional<String> columnName)
+        {
+            return columnName.map(s -> format("column %s of table %s", s, objectName))
+                    .orElseGet(() -> "table " + objectName);
+        }
+
+        private static String getFunctionType(FunctionMetadata function)
+        {
+            FunctionKind kind = function.getKind();
+            switch (kind) {
+                case AGGREGATE:
+                    return "aggregate";
+                case WINDOW:
+                    return "window";
+                case SCALAR:
+                    return "scalar";
+            }
+            throw new IllegalArgumentException("Unsupported function kind: " + kind);
+        }
+
+        private static Relation from(String catalog, SchemaTableName table)
+        {
+            return table(QualifiedName.of(catalog, table.getSchemaName(), table.getTableName()));
+        }
+
         @Override
         protected Node visitExplain(Explain node, Void context)
         {
@@ -336,18 +450,6 @@ final class ShowQueriesRewrite
             return singleColumnValues(rows, "Role Grants");
         }
 
-        private static Query singleColumnValues(List<Expression> rows, String columnName)
-        {
-            List<String> columns = ImmutableList.of(columnName);
-            if (rows.isEmpty()) {
-                return emptyQuery(columns);
-            }
-            return simpleQuery(
-                    selectList(new AllColumns()),
-                    aliased(new Values(rows), "relation", columns),
-                    ordering(ascending(columnName)));
-        }
-
         @Override
         protected Node visitShowSchemas(ShowSchemas node, Void context)
         {
@@ -467,41 +569,6 @@ final class ShowQueriesRewrite
                     from(targetTableName.getCatalogName(), COLUMNS.getSchemaTableName()),
                     predicate,
                     ordering(ascending("ordinal_position")));
-        }
-
-        private static <T> Expression getExpression(PropertyMetadata<T> property, Object value)
-                throws TrinoException
-        {
-            return toExpression(property.encode(property.getJavaType().cast(value)));
-        }
-
-        private static Expression toExpression(Object value)
-                throws TrinoException
-        {
-            if (value instanceof String) {
-                return new StringLiteral(value.toString());
-            }
-
-            if (value instanceof Boolean) {
-                return new BooleanLiteral(value.toString());
-            }
-
-            if (value instanceof Long || value instanceof Integer) {
-                return new LongLiteral(value.toString());
-            }
-
-            if (value instanceof Double) {
-                return new DoubleLiteral(value.toString());
-            }
-
-            if (value instanceof List) {
-                List<?> list = (List<?>) value;
-                return new ArrayConstructor(list.stream()
-                        .map(Visitor::toExpression)
-                        .collect(toList()));
-            }
-
-            throw new TrinoException(INVALID_TABLE_PROPERTY, format("Failed to convert object of type %s to expression: %s", value.getClass().getName(), value));
         }
 
         @Override
@@ -653,54 +720,6 @@ final class ShowQueriesRewrite
             throw new UnsupportedOperationException("SHOW CREATE only supported for schemas, tables and views");
         }
 
-        private static List<Property> buildProperties(
-                Object objectName,
-                Optional<String> columnName,
-                StandardErrorCode errorCode,
-                Map<String, Object> properties,
-                Map<String, PropertyMetadata<?>> allProperties)
-        {
-            if (properties.isEmpty()) {
-                return Collections.emptyList();
-            }
-
-            ImmutableSortedMap.Builder<String, Expression> sqlProperties = ImmutableSortedMap.naturalOrder();
-
-            for (Map.Entry<String, Object> propertyEntry : properties.entrySet()) {
-                String propertyName = propertyEntry.getKey();
-                Object value = propertyEntry.getValue();
-                if (value == null) {
-                    throw new TrinoException(errorCode, format("Property %s for %s cannot have a null value", propertyName, toQualifiedName(objectName, columnName)));
-                }
-
-                PropertyMetadata<?> property = allProperties.get(propertyName);
-                if (property == null) {
-                    throw new TrinoException(errorCode, "No PropertyMetadata for property: " + propertyName);
-                }
-                if (!Primitives.wrap(property.getJavaType()).isInstance(value)) {
-                    throw new TrinoException(errorCode, format(
-                            "Property %s for %s should have value of type %s, not %s",
-                            propertyName,
-                            toQualifiedName(objectName, columnName),
-                            property.getJavaType().getName(),
-                            value.getClass().getName()));
-                }
-
-                Expression sqlExpression = getExpression(property, value);
-                sqlProperties.put(propertyName, sqlExpression);
-            }
-
-            return sqlProperties.build().entrySet().stream()
-                    .map(entry -> new Property(new Identifier(entry.getKey()), entry.getValue()))
-                    .collect(toImmutableList());
-        }
-
-        private static String toQualifiedName(Object objectName, Optional<String> columnName)
-        {
-            return columnName.map(s -> format("column %s of table %s", s, objectName))
-                    .orElseGet(() -> "table " + objectName);
-        }
-
         @Override
         protected Node visitShowFunctions(ShowFunctions node, Void context)
         {
@@ -730,10 +749,10 @@ final class ShowQueriesRewrite
                             .collect(toImmutableList())),
                     aliased(new Values(rows), "functions", ImmutableList.copyOf(columns.keySet())),
                     node.getLikePattern().map(like ->
-                            new LikePredicate(
-                                    identifier("function_name"),
-                                    new StringLiteral(like),
-                                    node.getEscape().map(StringLiteral::new)))
+                                    new LikePredicate(
+                                            identifier("function_name"),
+                                            new StringLiteral(like),
+                                            node.getEscape().map(StringLiteral::new)))
                             .map(Expression.class::cast)
                             .orElse(TRUE_LITERAL),
                     ordering(
@@ -744,20 +763,6 @@ final class ShowQueriesRewrite
                             ascending("return_type"),
                             ascending("argument_types"),
                             ascending("function_type")));
-        }
-
-        private static String getFunctionType(FunctionMetadata function)
-        {
-            FunctionKind kind = function.getKind();
-            switch (kind) {
-                case AGGREGATE:
-                    return "aggregate";
-                case WINDOW:
-                    return "window";
-                case SCALAR:
-                    return "scalar";
-            }
-            throw new IllegalArgumentException("Unsupported function kind: " + kind);
         }
 
         @Override
@@ -818,11 +823,6 @@ final class ShowQueriesRewrite
             catch (ParsingException e) {
                 throw semanticException(INVALID_VIEW, node, e, "Failed parsing stored view '%s': %s", name, e.getMessage());
             }
-        }
-
-        private static Relation from(String catalog, SchemaTableName table)
-        {
-            return table(QualifiedName.of(catalog, table.getSchemaName(), table.getTableName()));
         }
 
         @Override

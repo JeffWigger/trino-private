@@ -35,6 +35,11 @@ public class Metrics
         this.metrics = Map.copyOf(requireNonNull(metrics, "metrics is null"));
     }
 
+    public static Accumulator accumulator()
+    {
+        return new Accumulator();
+    }
+
     @JsonValue
     public Map<String, Metric> getMetrics()
     {
@@ -45,11 +50,6 @@ public class Metrics
     public Metrics mergeWith(Metrics other)
     {
         return accumulator().add(this).add(other).get();
-    }
-
-    public static Accumulator accumulator()
-    {
-        return new Accumulator();
     }
 
     public static class Accumulator

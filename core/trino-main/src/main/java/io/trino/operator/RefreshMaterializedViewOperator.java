@@ -28,51 +28,12 @@ import static java.util.Objects.requireNonNull;
 public class RefreshMaterializedViewOperator
         implements Operator
 {
-    public static class RefreshMaterializedViewOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Metadata metadata;
-        private final QualifiedObjectName viewName;
-        private boolean closed;
-
-        public RefreshMaterializedViewOperatorFactory(int operatorId, PlanNodeId planNodeId, Metadata metadata, QualifiedObjectName viewName)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.metadata = requireNonNull(metadata, "metadata is null");
-            this.viewName = requireNonNull(viewName, "viewName is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ValuesOperator.class.getSimpleName());
-            return new RefreshMaterializedViewOperator(operatorContext, metadata, viewName);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new RefreshMaterializedViewOperatorFactory(operatorId, planNodeId, metadata, viewName);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final Metadata metadata;
     private final QualifiedObjectName viewName;
     @Nullable
     private ListenableFuture<Void> refreshFuture;
     private boolean closed;
-
     public RefreshMaterializedViewOperator(OperatorContext operatorContext, Metadata metadata, QualifiedObjectName viewName)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -147,5 +108,43 @@ public class RefreshMaterializedViewOperator
         }
 
         return refreshFuture.isDone();
+    }
+
+    public static class RefreshMaterializedViewOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Metadata metadata;
+        private final QualifiedObjectName viewName;
+        private boolean closed;
+
+        public RefreshMaterializedViewOperatorFactory(int operatorId, PlanNodeId planNodeId, Metadata metadata, QualifiedObjectName viewName)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.metadata = requireNonNull(metadata, "metadata is null");
+            this.viewName = requireNonNull(viewName, "viewName is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ValuesOperator.class.getSimpleName());
+            return new RefreshMaterializedViewOperator(operatorContext, metadata, viewName);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new RefreshMaterializedViewOperatorFactory(operatorId, planNodeId, metadata, viewName);
+        }
     }
 }

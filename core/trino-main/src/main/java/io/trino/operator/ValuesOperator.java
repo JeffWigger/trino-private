@@ -27,45 +27,8 @@ import static java.util.Objects.requireNonNull;
 public class ValuesOperator
         implements Operator
 {
-    public static class ValuesOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final List<Page> pages;
-        private boolean closed;
-
-        public ValuesOperatorFactory(int operatorId, PlanNodeId planNodeId, List<Page> pages)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.pages = ImmutableList.copyOf(requireNonNull(pages, "pages is null"));
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ValuesOperator.class.getSimpleName());
-            return new ValuesOperator(operatorContext, pages);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new ValuesOperatorFactory(operatorId, planNodeId, pages);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final Iterator<Page> pages;
-
     public ValuesOperator(OperatorContext operatorContext, List<Page> pages)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -116,5 +79,41 @@ public class ValuesOperator
             operatorContext.recordProcessedInput(page.getSizeInBytes(), page.getPositionCount());
         }
         return page;
+    }
+
+    public static class ValuesOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final List<Page> pages;
+        private boolean closed;
+
+        public ValuesOperatorFactory(int operatorId, PlanNodeId planNodeId, List<Page> pages)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.pages = ImmutableList.copyOf(requireNonNull(pages, "pages is null"));
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ValuesOperator.class.getSimpleName());
+            return new ValuesOperator(operatorContext, pages);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new ValuesOperatorFactory(operatorId, planNodeId, pages);
+        }
     }
 }

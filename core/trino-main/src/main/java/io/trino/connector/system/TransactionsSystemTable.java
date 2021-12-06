@@ -73,6 +73,27 @@ public class TransactionsSystemTable
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
     }
 
+    private static Block createStringsBlock(List<CatalogName> values)
+    {
+        VarcharType varchar = createUnboundedVarcharType();
+        BlockBuilder builder = varchar.createBlockBuilder(null, values.size());
+        for (CatalogName value : values) {
+            if (value == null) {
+                builder.appendNull();
+            }
+            else {
+                varchar.writeString(builder, value.getCatalogName());
+            }
+        }
+        return builder.build();
+    }
+
+    private static Long toTimestampWithTimeZoneMillis(DateTime dateTime)
+    {
+        // dateTime.getZone() is the server zone, should be of no interest to the user
+        return packDateTimeWithZone(dateTime.getMillis(), UTC_KEY);
+    }
+
     @Override
     public Distribution getDistribution()
     {
@@ -101,26 +122,5 @@ public class TransactionsSystemTable
                     createStringsBlock(info.getCatalogNames()));
         }
         return table.build().cursor();
-    }
-
-    private static Block createStringsBlock(List<CatalogName> values)
-    {
-        VarcharType varchar = createUnboundedVarcharType();
-        BlockBuilder builder = varchar.createBlockBuilder(null, values.size());
-        for (CatalogName value : values) {
-            if (value == null) {
-                builder.appendNull();
-            }
-            else {
-                varchar.writeString(builder, value.getCatalogName());
-            }
-        }
-        return builder.build();
-    }
-
-    private static Long toTimestampWithTimeZoneMillis(DateTime dateTime)
-    {
-        // dateTime.getZone() is the server zone, should be of no interest to the user
-        return packDateTimeWithZone(dateTime.getMillis(), UTC_KEY);
     }
 }

@@ -39,6 +39,14 @@ public class ResourceAccessType
                 .build();
     }
 
+    private static void verifyNotTrinoResource(ResourceInfo resourceInfo)
+    {
+        Method resourceMethod = resourceInfo.getResourceMethod();
+        if (resourceMethod != null && resourceMethod.getDeclaringClass().getPackageName().startsWith("io.trino.")) {
+            throw new IllegalArgumentException("Trino resource is not annotated with @" + ResourceSecurity.class.getSimpleName() + ": " + resourceInfo.getResourceMethod());
+        }
+    }
+
     public AccessType getAccessType(ResourceInfo resourceInfo)
     {
         for (ResourceAccessTypeLoader resourceAccessTypeLoader : resourceAccessTypeLoaders) {
@@ -66,13 +74,5 @@ public class ResourceAccessType
         // Trino resources are required to have a declared access control
         verifyNotTrinoResource(resourceInfo);
         return MANAGEMENT_READ;
-    }
-
-    private static void verifyNotTrinoResource(ResourceInfo resourceInfo)
-    {
-        Method resourceMethod = resourceInfo.getResourceMethod();
-        if (resourceMethod != null && resourceMethod.getDeclaringClass().getPackageName().startsWith("io.trino.")) {
-            throw new IllegalArgumentException("Trino resource is not annotated with @" + ResourceSecurity.class.getSimpleName() + ": " + resourceInfo.getResourceMethod());
-        }
     }
 }

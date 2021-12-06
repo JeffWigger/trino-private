@@ -32,6 +32,15 @@ class OperatorHashCollisionsStats
         this.inputPositions = inputPositions;
     }
 
+    public static OperatorHashCollisionsStats merge(OperatorHashCollisionsStats first, OperatorHashCollisionsStats second)
+    {
+        return new OperatorHashCollisionsStats(
+                first.weightedHashCollisions + second.weightedHashCollisions,
+                first.weightedSumSquaredHashCollisions + second.weightedSumSquaredHashCollisions,
+                first.weightedExpectedHashCollisions + second.weightedExpectedHashCollisions,
+                first.inputPositions + second.inputPositions);
+    }
+
     public double getWeightedHashCollisions()
     {
         return weightedHashCollisions;
@@ -50,14 +59,5 @@ class OperatorHashCollisionsStats
     public long getInputPositions()
     {
         return inputPositions;
-    }
-
-    public static OperatorHashCollisionsStats merge(OperatorHashCollisionsStats first, OperatorHashCollisionsStats second)
-    {
-        return new OperatorHashCollisionsStats(
-                first.weightedHashCollisions + second.weightedHashCollisions,
-                first.weightedSumSquaredHashCollisions + second.weightedSumSquaredHashCollisions,
-                first.weightedExpectedHashCollisions + second.weightedExpectedHashCollisions,
-                first.inputPositions + second.inputPositions);
     }
 }

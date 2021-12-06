@@ -115,13 +115,11 @@ public class SqlTaskManager
 
     private final long queryMaxMemoryPerNode;
     private final long queryMaxTotalMemoryPerNode;
-
+    private final CounterStat failedTasks = new CounterStat();
     @GuardedBy("this")
     private long currentMemoryPoolAssignmentVersion;
     @GuardedBy("this")
     private String coordinatorId;
-
-    private final CounterStat failedTasks = new CounterStat();
 
     @Inject
     public SqlTaskManager(
@@ -419,9 +417,10 @@ public class SqlTaskManager
 
         sqlTask.recordHeartbeat();
         boolean isDeltaUpdate = sources.stream().allMatch(taskSource -> taskSource.isDeltaSource());
-        if (isDeltaUpdate){
+        if (isDeltaUpdate) {
             return sqlTask.deltaUpdateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
-        }else{
+        }
+        else {
             return sqlTask.updateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
         }
     }
@@ -446,19 +445,18 @@ public class SqlTaskManager
         requireNonNull(taskId, "taskId is null");
         // this should not recreate it if it does not exist
         SqlTask sqlTask = tasks.asMap().getOrDefault(taskId, null);
-        if (sqlTask != null){
+        if (sqlTask != null) {
             synchronized (this) {
                 pendingFinishingTasks.add(taskId);
             }
             sqlTask.recordHeartbeat();
             TaskInfo finalTaskInfo = sqlTask.finish();
             return finalTaskInfo;
-        }else{
-            System.out.println("Task "+ taskId.toString()+"does already not exist");
+        }
+        else {
+            System.out.println("Task " + taskId.toString() + "does already not exist");
             return null;
         }
-
-
     }
 
     @Override
@@ -520,12 +518,13 @@ public class SqlTaskManager
                         DateTime endTime = taskInfo.getStats().getEndTime();
                         if (endTime != null && endTime.isBefore(oldestAllowedTask)) {
                             tasks.asMap().remove(taskId);
-                            synchronized (this){
+                            synchronized (this) {
                                 if (pendingFinishingTasks.contains(taskId)) {
                                     pendingFinishingTasks.remove(taskId);
-                                }else{
-                                    System.out.println("removed task that was not finished: "+ taskId);
-                                    log.warn("removed task that was not finished: "+ taskId);
+                                }
+                                else {
+                                    System.out.println("removed task that was not finished: " + taskId);
+                                    log.warn("removed task that was not finished: " + taskId);
                                 }
                             }
                         }

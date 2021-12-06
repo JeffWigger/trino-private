@@ -95,63 +95,6 @@ public class PushPredicateIntoTableScan
         this.domainTranslator = new DomainTranslator(metadata);
     }
 
-    @Override
-    public Pattern<FilterNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public boolean isEnabled(Session session)
-    {
-        return isAllowPushdownIntoConnectors(session);
-    }
-
-    @Override
-    public Result apply(FilterNode filterNode, Captures captures, Context context)
-    {
-        TableScanNode tableScan = captures.get(TABLE_SCAN);
-
-        Optional<PlanNode> rewritten = pushFilterIntoTableScan(
-                filterNode,
-                tableScan,
-                false,
-                context.getSession(),
-                context.getSymbolAllocator(),
-                metadata,
-                typeOperators,
-                typeAnalyzer,
-                context.getStatsProvider(),
-                domainTranslator);
-
-        if (rewritten.isEmpty() || arePlansSame(filterNode, tableScan, rewritten.get())) {
-            return Result.empty();
-        }
-
-        return Result.ofPlanNode(rewritten.get());
-    }
-
-    private boolean arePlansSame(FilterNode filter, TableScanNode tableScan, PlanNode rewritten)
-    {
-        if (!(rewritten instanceof FilterNode)) {
-            return false;
-        }
-
-        FilterNode rewrittenFilter = (FilterNode) rewritten;
-        if (!Objects.equals(filter.getPredicate(), rewrittenFilter.getPredicate())) {
-            return false;
-        }
-
-        if (!(rewrittenFilter.getSource() instanceof TableScanNode)) {
-            return false;
-        }
-
-        TableScanNode rewrittenTableScan = (TableScanNode) rewrittenFilter.getSource();
-
-        return Objects.equals(tableScan.getEnforcedConstraint(), rewrittenTableScan.getEnforcedConstraint()) &&
-                Objects.equals(tableScan.getTable(), rewrittenTableScan.getTable());
-    }
-
     public static Optional<PlanNode> pushFilterIntoTableScan(
             FilterNode filterNode,
             TableScanNode node,
@@ -347,6 +290,63 @@ public class PushPredicateIntoTableScan
         expression = SimplifyExpressions.rewrite(expression, session, symbolAllocator, metadata, new LiteralEncoder(metadata), typeAnalyzer);
 
         return expression;
+    }
+
+    @Override
+    public Pattern<FilterNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public boolean isEnabled(Session session)
+    {
+        return isAllowPushdownIntoConnectors(session);
+    }
+
+    @Override
+    public Result apply(FilterNode filterNode, Captures captures, Context context)
+    {
+        TableScanNode tableScan = captures.get(TABLE_SCAN);
+
+        Optional<PlanNode> rewritten = pushFilterIntoTableScan(
+                filterNode,
+                tableScan,
+                false,
+                context.getSession(),
+                context.getSymbolAllocator(),
+                metadata,
+                typeOperators,
+                typeAnalyzer,
+                context.getStatsProvider(),
+                domainTranslator);
+
+        if (rewritten.isEmpty() || arePlansSame(filterNode, tableScan, rewritten.get())) {
+            return Result.empty();
+        }
+
+        return Result.ofPlanNode(rewritten.get());
+    }
+
+    private boolean arePlansSame(FilterNode filter, TableScanNode tableScan, PlanNode rewritten)
+    {
+        if (!(rewritten instanceof FilterNode)) {
+            return false;
+        }
+
+        FilterNode rewrittenFilter = (FilterNode) rewritten;
+        if (!Objects.equals(filter.getPredicate(), rewrittenFilter.getPredicate())) {
+            return false;
+        }
+
+        if (!(rewrittenFilter.getSource() instanceof TableScanNode)) {
+            return false;
+        }
+
+        TableScanNode rewrittenTableScan = (TableScanNode) rewrittenFilter.getSource();
+
+        return Objects.equals(tableScan.getEnforcedConstraint(), rewrittenTableScan.getEnforcedConstraint()) &&
+                Objects.equals(tableScan.getTable(), rewrittenTableScan.getTable());
     }
 
     private static class LayoutConstraintEvaluator

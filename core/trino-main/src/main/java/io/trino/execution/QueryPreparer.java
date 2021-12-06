@@ -49,6 +49,17 @@ public class QueryPreparer
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
     }
 
+    private static void validateParameters(Statement node, List<Expression> parameterValues)
+    {
+        int parameterCount = getParameterCount(node);
+        if (parameterValues.size() != parameterCount) {
+            throw semanticException(INVALID_PARAMETER_USAGE, node, "Incorrect number of parameters: expected %s but found %s", parameterCount, parameterValues.size());
+        }
+        for (Expression expression : parameterValues) {
+            verifyExpressionIsConstant(emptySet(), expression);
+        }
+    }
+
     public PreparedQuery prepareQuery(Session session, String query)
             throws ParsingException, TrinoException
     {
@@ -79,17 +90,6 @@ public class QueryPreparer
         }
         validateParameters(statement, parameters);
         return new PreparedQuery(statement, parameters, prepareSql);
-    }
-
-    private static void validateParameters(Statement node, List<Expression> parameterValues)
-    {
-        int parameterCount = getParameterCount(node);
-        if (parameterValues.size() != parameterCount) {
-            throw semanticException(INVALID_PARAMETER_USAGE, node, "Incorrect number of parameters: expected %s but found %s", parameterCount, parameterValues.size());
-        }
-        for (Expression expression : parameterValues) {
-            verifyExpressionIsConstant(emptySet(), expression);
-        }
     }
 
     public static class PreparedQuery

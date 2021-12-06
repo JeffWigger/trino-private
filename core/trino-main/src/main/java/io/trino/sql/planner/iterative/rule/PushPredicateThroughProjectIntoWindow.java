@@ -123,6 +123,50 @@ public class PushPredicateThroughProjectIntoWindow
         return null;
     }
 
+    private static OptionalInt extractUpperBound(TupleDomain<Symbol> tupleDomain, Symbol symbol)
+    {
+        if (tupleDomain.isNone()) {
+            return OptionalInt.empty();
+        }
+
+        Domain rankingDomain = tupleDomain.getDomains().get().get(symbol);
+        if (rankingDomain == null) {
+            return OptionalInt.empty();
+        }
+        ValueSet values = rankingDomain.getValues();
+        if (values.isAll() || values.isNone() || values.getRanges().getRangeCount() <= 0) {
+            return OptionalInt.empty();
+        }
+
+        Range span = values.getRanges().getSpan();
+
+        if (span.isHighUnbounded()) {
+            return OptionalInt.empty();
+        }
+
+        long upperBound = (Long) span.getHighBoundedValue();
+        if (!span.isHighInclusive()) {
+            upperBound--;
+        }
+
+        if (upperBound >= Integer.MIN_VALUE && upperBound <= Integer.MAX_VALUE) {
+            return OptionalInt.of(toIntExact(upperBound));
+        }
+        return OptionalInt.empty();
+    }
+
+    private static boolean allRankingValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
+    {
+        if (tupleDomain.isNone()) {
+            return false;
+        }
+        Domain domain = tupleDomain.getDomains().get().get(symbol);
+        if (domain == null) {
+            return true;
+        }
+        return domain.getValues().contains(ValueSet.ofRanges(range(domain.getType(), 0L, true, upperBound, true)));
+    }
+
     @Override
     public Pattern<FilterNode> getPattern()
     {
@@ -179,49 +223,5 @@ public class PushPredicateThroughProjectIntoWindow
             return Result.ofPlanNode(project);
         }
         return Result.ofPlanNode(new FilterNode(filter.getId(), project, newPredicate));
-    }
-
-    private static OptionalInt extractUpperBound(TupleDomain<Symbol> tupleDomain, Symbol symbol)
-    {
-        if (tupleDomain.isNone()) {
-            return OptionalInt.empty();
-        }
-
-        Domain rankingDomain = tupleDomain.getDomains().get().get(symbol);
-        if (rankingDomain == null) {
-            return OptionalInt.empty();
-        }
-        ValueSet values = rankingDomain.getValues();
-        if (values.isAll() || values.isNone() || values.getRanges().getRangeCount() <= 0) {
-            return OptionalInt.empty();
-        }
-
-        Range span = values.getRanges().getSpan();
-
-        if (span.isHighUnbounded()) {
-            return OptionalInt.empty();
-        }
-
-        long upperBound = (Long) span.getHighBoundedValue();
-        if (!span.isHighInclusive()) {
-            upperBound--;
-        }
-
-        if (upperBound >= Integer.MIN_VALUE && upperBound <= Integer.MAX_VALUE) {
-            return OptionalInt.of(toIntExact(upperBound));
-        }
-        return OptionalInt.empty();
-    }
-
-    private static boolean allRankingValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
-    {
-        if (tupleDomain.isNone()) {
-            return false;
-        }
-        Domain domain = tupleDomain.getDomains().get().get(symbol);
-        if (domain == null) {
-            return true;
-        }
-        return domain.getValues().contains(ValueSet.ofRanges(range(domain.getType(), 0L, true, upperBound, true)));
     }
 }

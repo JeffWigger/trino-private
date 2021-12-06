@@ -78,20 +78,6 @@ public class ArrayAggregationFunction
                 true);
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type type = functionBinding.getTypeVariable("T");
-        return ImmutableList.of(new ArrayAggregationStateSerializer(type).getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type type = functionBinding.getTypeVariable("T");
-        return generateAggregation(type);
-    }
-
     private static InternalAggregationFunction generateAggregation(Type type)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(ArrayAggregationFunction.class.getClassLoader());
@@ -151,5 +137,19 @@ public class ArrayAggregationFunction
             state.forEach((block, position) -> elementType.appendTo(block, position, entryBuilder));
             out.closeEntry();
         }
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type type = functionBinding.getTypeVariable("T");
+        return ImmutableList.of(new ArrayAggregationStateSerializer(type).getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type type = functionBinding.getTypeVariable("T");
+        return generateAggregation(type);
     }
 }

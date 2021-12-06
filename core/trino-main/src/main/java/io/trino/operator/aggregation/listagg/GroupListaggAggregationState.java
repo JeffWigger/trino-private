@@ -38,21 +38,15 @@ public final class GroupListaggAggregationState
     }
 
     @Override
-    public void setSeparator(Slice separator)
-    {
-        this.separator = separator;
-    }
-
-    @Override
     public Slice getSeparator()
     {
         return separator;
     }
 
     @Override
-    public void setOverflowFiller(Slice overflowFiller)
+    public void setSeparator(Slice separator)
     {
-        this.overflowFiller = overflowFiller;
+        this.separator = separator;
     }
 
     @Override
@@ -62,15 +56,21 @@ public final class GroupListaggAggregationState
     }
 
     @Override
-    public void setOverflowError(boolean overflowError)
+    public void setOverflowFiller(Slice overflowFiller)
     {
-        this.overflowError = overflowError;
+        this.overflowFiller = overflowFiller;
     }
 
     @Override
     public boolean isOverflowError()
     {
         return overflowError;
+    }
+
+    @Override
+    public void setOverflowError(boolean overflowError)
+    {
+        this.overflowError = overflowError;
     }
 
     @Override

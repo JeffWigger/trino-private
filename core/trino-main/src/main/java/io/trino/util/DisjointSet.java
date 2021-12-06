@@ -24,46 +24,6 @@ import static com.google.common.base.Verify.verify;
 
 public class DisjointSet<T>
 {
-    private static class Entry<T>
-    {
-        private T parent;
-        private int rank; // Without path compression, this would be equal to depth. Depth of 1-node tree is considered 0.
-
-        Entry()
-        {
-            this(null, 0);
-        }
-
-        private Entry(T parent, int rank)
-        {
-            this.parent = parent;
-            this.rank = rank;
-        }
-
-        public T getParent()
-        {
-            return parent;
-        }
-
-        public void setParent(T parent)
-        {
-            this.parent = parent;
-            this.rank = -1;
-        }
-
-        public int getRank()
-        {
-            checkState(parent == null);
-            return rank;
-        }
-
-        public void incrementRank()
-        {
-            checkState(parent == null);
-            rank++;
-        }
-    }
-
     private final Map<T, Entry<T>> map;
 
     public DisjointSet()
@@ -138,5 +98,45 @@ public class DisjointSet<T>
             rootToTreeElements.get(root).add(node);
         }
         return rootToTreeElements.values();
+    }
+
+    private static class Entry<T>
+    {
+        private T parent;
+        private int rank; // Without path compression, this would be equal to depth. Depth of 1-node tree is considered 0.
+
+        Entry()
+        {
+            this(null, 0);
+        }
+
+        private Entry(T parent, int rank)
+        {
+            this.parent = parent;
+            this.rank = rank;
+        }
+
+        public T getParent()
+        {
+            return parent;
+        }
+
+        public void setParent(T parent)
+        {
+            this.parent = parent;
+            this.rank = -1;
+        }
+
+        public int getRank()
+        {
+            checkState(parent == null);
+            return rank;
+        }
+
+        public void incrementRank()
+        {
+            checkState(parent == null);
+            rank++;
+        }
     }
 }

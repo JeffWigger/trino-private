@@ -30,6 +30,13 @@ import static com.google.common.base.Verify.verify;
 
 public final class ExpressionSymbolInliner
 {
+    private final Function<Symbol, Expression> mapping;
+
+    private ExpressionSymbolInliner(Function<Symbol, Expression> mapping)
+    {
+        this.mapping = mapping;
+    }
+
     public static Expression inlineSymbols(Map<Symbol, ? extends Expression> mapping, Expression expression)
     {
         return inlineSymbols(mapping::get, expression);
@@ -38,13 +45,6 @@ public final class ExpressionSymbolInliner
     public static Expression inlineSymbols(Function<Symbol, Expression> mapping, Expression expression)
     {
         return new ExpressionSymbolInliner(mapping).rewrite(expression);
-    }
-
-    private final Function<Symbol, Expression> mapping;
-
-    private ExpressionSymbolInliner(Function<Symbol, Expression> mapping)
-    {
-        this.mapping = mapping;
     }
 
     private Expression rewrite(Expression expression)

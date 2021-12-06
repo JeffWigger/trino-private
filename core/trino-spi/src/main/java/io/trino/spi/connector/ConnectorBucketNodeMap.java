@@ -25,16 +25,6 @@ public final class ConnectorBucketNodeMap
     private final int bucketCount;
     private final Optional<List<Node>> bucketToNode;
 
-    public static ConnectorBucketNodeMap createBucketNodeMap(int bucketCount)
-    {
-        return new ConnectorBucketNodeMap(bucketCount, Optional.empty());
-    }
-
-    public static ConnectorBucketNodeMap createBucketNodeMap(List<Node> bucketToNode)
-    {
-        return new ConnectorBucketNodeMap(bucketToNode.size(), Optional.of(bucketToNode));
-    }
-
     private ConnectorBucketNodeMap(int bucketCount, Optional<List<Node>> bucketToNode)
     {
         if (bucketCount <= 0) {
@@ -45,6 +35,16 @@ public final class ConnectorBucketNodeMap
         }
         this.bucketCount = bucketCount;
         this.bucketToNode = bucketToNode.map(List::copyOf);
+    }
+
+    public static ConnectorBucketNodeMap createBucketNodeMap(int bucketCount)
+    {
+        return new ConnectorBucketNodeMap(bucketCount, Optional.empty());
+    }
+
+    public static ConnectorBucketNodeMap createBucketNodeMap(List<Node> bucketToNode)
+    {
+        return new ConnectorBucketNodeMap(bucketToNode.size(), Optional.of(bucketToNode));
     }
 
     public int getBucketCount()

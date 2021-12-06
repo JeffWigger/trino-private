@@ -47,6 +47,14 @@ public class Long2LongOpenBigHashMap
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(Long2LongOpenBigHashMap.class).instanceSize();
     private static final boolean ASSERTS = false;
     /**
+     * We never resize below this threshold, which is the construction-time {#n}.
+     */
+    protected final long minN;
+    /**
+     * The acceptable load factor.
+     */
+    protected final float f;
+    /**
      * The array of keys.
      */
     protected LongBigArray key;
@@ -71,17 +79,9 @@ public class Long2LongOpenBigHashMap
      */
     protected long maxFill;
     /**
-     * We never resize below this threshold, which is the construction-time {#n}.
-     */
-    protected final long minN;
-    /**
      * Number of entries in the set (including the key zero, if present).
      */
     protected long size;
-    /**
-     * The acceptable load factor.
-     */
-    protected final float f;
     /**
      * Cached set of entries.
      */
@@ -772,6 +772,174 @@ public class Long2LongOpenBigHashMap
         return size == 0;
     }
 
+    @Override
+    public FastEntrySet long2LongEntrySet()
+    {
+        if (entries == null) {
+            entries = new MapEntrySet();
+        }
+        return entries;
+    }
+
+    @Override
+    public LongSet keySet()
+    {
+        if (keys == null) {
+            keys = new KeySet();
+        }
+        return keys;
+    }
+
+    @Override
+    public LongCollection values()
+    {
+        if (values == null) {
+            values = new AbstractLongCollection()
+            {
+                @Override
+                public LongIterator iterator()
+                {
+                    return new ValueIterator();
+                }
+
+                @Override
+                public int size()
+                {
+                    return toIntExact(size);
+                }
+
+                @Override
+                public boolean contains(long v)
+                {
+                    return containsValue(v);
+                }
+
+                @Override
+                public void clear()
+                {
+                    Long2LongOpenBigHashMap.this.clear();
+                }
+
+                /** {@inheritDoc} */
+                @Override
+                public void forEach(final java.util.function.LongConsumer consumer)
+                {
+                    if (containsNullKey) {
+                        consumer.accept(value.get(n));
+                    }
+                    for (long pos = n; pos-- != 0; ) {
+                        if (!((key.get(pos)) == (0))) {
+                            consumer.accept(value.get(pos));
+                        }
+                    }
+                }
+            };
+        }
+        return values;
+    }
+
+    /**
+     * Rehashes the map, making the table as small as possible.
+     *
+     * <p>
+     * This method rehashes the table to the smallest size satisfying the load
+     * factor. It can be used when the set will not be changed anymore, so to
+     * optimize access speed and size.
+     *
+     * <p>
+     * If the table size is already the minimum possible, this method does nothing.
+     *
+     * @return true if there was enough memory to trim the map.
+     * @see #trim(long)
+     */
+    public boolean trim()
+    {
+        return trim(size);
+    }
+
+    /**
+     * Rehashes this map if the table is too large.
+     *
+     * <p>
+     * Let <var>N</var> be the smallest table size that can hold
+     * <code>max(n,{@link #size()})</code> entries, still satisfying the load
+     * factor. If the current table size is smaller than or equal to <var>N</var>,
+     * this method does nothing. Otherwise, it rehashes this map in a table of size
+     * <var>N</var>.
+     *
+     * <p>
+     * This method is useful when reusing maps. {@linkplain #clear() Clearing a map}
+     * leaves the table size untouched. If you are reusing a map many times, you can
+     * call this method with a typical size to avoid keeping around a very large
+     * table just because of a few large transient maps.
+     *
+     * @param n the threshold for the trimming.
+     * @return true if there was enough memory to trim the map.
+     * @see #trim()
+     */
+    public boolean trim(final long n)
+    {
+        final long l = bigArraySize(n, f);
+        if (l >= this.n || size > maxFill(l, f)) {
+            return true;
+        }
+        try {
+            rehash(l);
+        }
+        catch (OutOfMemoryError cantDoIt) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Rehashes the map.
+     *
+     * <p>
+     * This method implements the basic rehashing strategy, and may be overridden by
+     * subclasses implementing different rehashing strategies (e.g., disk-based
+     * rehashing). However, you should not override this method unless you
+     * understand the internal workings of this class.
+     *
+     * @param newN the new size
+     */
+    protected void rehash(final long newN)
+    {
+        final LongBigArray key = this.key;
+        final LongBigArray value = this.value;
+        final long mask = newN - 1; // Note that this is used by the hashing macro
+        final LongBigArray newKey = new LongBigArray();
+        newKey.ensureCapacity(newN + 1);
+        final LongBigArray newValue = new LongBigArray();
+        newValue.ensureCapacity(newN + 1);
+        long i = n;
+        long pos;
+        for (long j = realSize(); j-- != 0; ) {
+            while (((key.get(--i)) == (0))) {
+                // Skip
+            }
+            pos = it.unimi.dsi.fastutil.HashCommon.mix((key.get(i))) & mask;
+            if (!((newKey.get(pos)) == (0))) {
+                pos = (pos + 1) & mask;
+                while (!((newKey.get(pos)) == (0))) {
+                    pos = (pos + 1) & mask;
+                }
+            }
+            newKey.set(pos, key.get(i));
+            newValue.set(pos, value.get(i));
+        }
+        newValue.set(newN, value.get(n));
+        n = newN;
+        this.mask = mask;
+        maxFill = maxFill(n, f);
+        this.key = newKey;
+        this.value = newValue;
+    }
+
+    private void checkTable()
+    {
+    }
+
     /**
      * The entry class for a hash map does not record key and value, but rather the
      * position in the hash table of the corresponding entry. This is necessary so
@@ -1202,15 +1370,6 @@ public class Long2LongOpenBigHashMap
         }
     }
 
-    @Override
-    public FastEntrySet long2LongEntrySet()
-    {
-        if (entries == null) {
-            entries = new MapEntrySet();
-        }
-        return entries;
-    }
-
     /**
      * An iterator on keys.
      *
@@ -1289,15 +1448,6 @@ public class Long2LongOpenBigHashMap
         }
     }
 
-    @Override
-    public LongSet keySet()
-    {
-        if (keys == null) {
-            keys = new KeySet();
-        }
-        return keys;
-    }
-
     /**
      * An iterator on values.
      *
@@ -1321,155 +1471,5 @@ public class Long2LongOpenBigHashMap
         {
             return value.get(nextEntry());
         }
-    }
-
-    @Override
-    public LongCollection values()
-    {
-        if (values == null) {
-            values = new AbstractLongCollection()
-            {
-                @Override
-                public LongIterator iterator()
-                {
-                    return new ValueIterator();
-                }
-
-                @Override
-                public int size()
-                {
-                    return toIntExact(size);
-                }
-
-                @Override
-                public boolean contains(long v)
-                {
-                    return containsValue(v);
-                }
-
-                @Override
-                public void clear()
-                {
-                    Long2LongOpenBigHashMap.this.clear();
-                }
-
-                /** {@inheritDoc} */
-                @Override
-                public void forEach(final java.util.function.LongConsumer consumer)
-                {
-                    if (containsNullKey) {
-                        consumer.accept(value.get(n));
-                    }
-                    for (long pos = n; pos-- != 0; ) {
-                        if (!((key.get(pos)) == (0))) {
-                            consumer.accept(value.get(pos));
-                        }
-                    }
-                }
-            };
-        }
-        return values;
-    }
-
-    /**
-     * Rehashes the map, making the table as small as possible.
-     *
-     * <p>
-     * This method rehashes the table to the smallest size satisfying the load
-     * factor. It can be used when the set will not be changed anymore, so to
-     * optimize access speed and size.
-     *
-     * <p>
-     * If the table size is already the minimum possible, this method does nothing.
-     *
-     * @return true if there was enough memory to trim the map.
-     * @see #trim(long)
-     */
-    public boolean trim()
-    {
-        return trim(size);
-    }
-
-    /**
-     * Rehashes this map if the table is too large.
-     *
-     * <p>
-     * Let <var>N</var> be the smallest table size that can hold
-     * <code>max(n,{@link #size()})</code> entries, still satisfying the load
-     * factor. If the current table size is smaller than or equal to <var>N</var>,
-     * this method does nothing. Otherwise, it rehashes this map in a table of size
-     * <var>N</var>.
-     *
-     * <p>
-     * This method is useful when reusing maps. {@linkplain #clear() Clearing a map}
-     * leaves the table size untouched. If you are reusing a map many times, you can
-     * call this method with a typical size to avoid keeping around a very large
-     * table just because of a few large transient maps.
-     *
-     * @param n the threshold for the trimming.
-     * @return true if there was enough memory to trim the map.
-     * @see #trim()
-     */
-    public boolean trim(final long n)
-    {
-        final long l = bigArraySize(n, f);
-        if (l >= this.n || size > maxFill(l, f)) {
-            return true;
-        }
-        try {
-            rehash(l);
-        }
-        catch (OutOfMemoryError cantDoIt) {
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Rehashes the map.
-     *
-     * <p>
-     * This method implements the basic rehashing strategy, and may be overridden by
-     * subclasses implementing different rehashing strategies (e.g., disk-based
-     * rehashing). However, you should not override this method unless you
-     * understand the internal workings of this class.
-     *
-     * @param newN the new size
-     */
-    protected void rehash(final long newN)
-    {
-        final LongBigArray key = this.key;
-        final LongBigArray value = this.value;
-        final long mask = newN - 1; // Note that this is used by the hashing macro
-        final LongBigArray newKey = new LongBigArray();
-        newKey.ensureCapacity(newN + 1);
-        final LongBigArray newValue = new LongBigArray();
-        newValue.ensureCapacity(newN + 1);
-        long i = n;
-        long pos;
-        for (long j = realSize(); j-- != 0; ) {
-            while (((key.get(--i)) == (0))) {
-                // Skip
-            }
-            pos = it.unimi.dsi.fastutil.HashCommon.mix((key.get(i))) & mask;
-            if (!((newKey.get(pos)) == (0))) {
-                pos = (pos + 1) & mask;
-                while (!((newKey.get(pos)) == (0))) {
-                    pos = (pos + 1) & mask;
-                }
-            }
-            newKey.set(pos, key.get(i));
-            newValue.set(pos, value.get(i));
-        }
-        newValue.set(newN, value.get(n));
-        n = newN;
-        this.mask = mask;
-        maxFill = maxFill(n, f);
-        this.key = newKey;
-        this.value = newValue;
-    }
-
-    private void checkTable()
-    {
     }
 }

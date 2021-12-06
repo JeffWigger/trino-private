@@ -46,10 +46,6 @@ import static io.trino.sql.analyzer.TypeSignatureTranslator.parseTypeSignature;
 
 public interface ImplementationDependency
 {
-    void declareDependencies(FunctionDependencyDeclarationBuilder builder);
-
-    Object resolve(FunctionBinding functionBinding, FunctionDependencies functionDependencies);
-
     static boolean isImplementationDependencyAnnotation(Annotation annotation)
     {
         return annotation instanceof TypeParameter ||
@@ -94,6 +90,10 @@ public interface ImplementationDependency
             }
         }
     }
+
+    void declareDependencies(FunctionDependencyDeclarationBuilder builder);
+
+    Object resolve(FunctionBinding functionBinding, FunctionDependencies functionDependencies);
 
     final class Factory
     {

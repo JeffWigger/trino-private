@@ -90,34 +90,6 @@ public final class MapConstructor
                 SCALAR));
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return FunctionDependencyDeclaration.builder()
-                .addOperatorSignature(HASH_CODE, ImmutableList.of(new TypeSignature("K")))
-                .addOperatorSignature(EQUAL, ImmutableList.of(new TypeSignature("K"), new TypeSignature("K")))
-                .addOperatorSignature(INDETERMINATE, ImmutableList.of(new TypeSignature("K")))
-                .build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-
-        MethodHandle keyIndeterminate = functionDependencies.getOperatorInvoker(INDETERMINATE, ImmutableList.of(keyType), simpleConvention(FAIL_ON_NULL, NEVER_NULL)).getMethodHandle();
-
-        Type mapType = functionBinding.getBoundSignature().getReturnType();
-        MethodHandle instanceFactory = constructorMethodHandle(State.class, MapType.class).bindTo(mapType);
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL),
-                METHOD_HANDLE.bindTo(mapType).bindTo(keyIndeterminate),
-                Optional.of(instanceFactory));
-    }
-
     @UsedByGeneratedCode
     public static Block createMap(
             MapType mapType,
@@ -167,6 +139,34 @@ public final class MapConstructor
         }
 
         return mapType.getObject(mapBlockBuilder, mapBlockBuilder.getPositionCount() - 1);
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return FunctionDependencyDeclaration.builder()
+                .addOperatorSignature(HASH_CODE, ImmutableList.of(new TypeSignature("K")))
+                .addOperatorSignature(EQUAL, ImmutableList.of(new TypeSignature("K"), new TypeSignature("K")))
+                .addOperatorSignature(INDETERMINATE, ImmutableList.of(new TypeSignature("K")))
+                .build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+
+        MethodHandle keyIndeterminate = functionDependencies.getOperatorInvoker(INDETERMINATE, ImmutableList.of(keyType), simpleConvention(FAIL_ON_NULL, NEVER_NULL)).getMethodHandle();
+
+        Type mapType = functionBinding.getBoundSignature().getReturnType();
+        MethodHandle instanceFactory = constructorMethodHandle(State.class, MapType.class).bindTo(mapType);
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL),
+                METHOD_HANDLE.bindTo(mapType).bindTo(keyIndeterminate),
+                Optional.of(instanceFactory));
     }
 
     public static final class State

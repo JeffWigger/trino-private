@@ -161,10 +161,9 @@ public class QueryStateMachine
     private final WarningCollector warningCollector;
 
     private final Optional<QueryType> queryType;
-
+    private final Object dynamicFiltersStatsSupplierLock = new Object();
     @GuardedBy("dynamicFiltersStatsSupplierLock")
     private Supplier<DynamicFiltersStats> dynamicFiltersStatsSupplier = () -> DynamicFiltersStats.EMPTY;
-    private final Object dynamicFiltersStatsSupplierLock = new Object();
 
     private QueryStateMachine(
             String query,
@@ -266,6 +265,74 @@ public class QueryStateMachine
         queryStateMachine.addStateChangeListener(newState -> QUERY_STATE_LOG.debug("Query %s is %s", queryStateMachine.getQueryId(), newState));
 
         return queryStateMachine;
+    }
+
+    private static boolean isScheduled(Optional<StageInfo> rootStage)
+    {
+        if (rootStage.isEmpty()) {
+            return false;
+        }
+        return getAllStages(rootStage).stream()
+                .map(StageInfo::getState)
+                .allMatch(state -> state == StageState.RUNNING || state == StageState.FLUSHING || state.isDone());
+    }
+
+    private static QueryStats pruneQueryStats(QueryStats queryStats)
+    {
+        return new QueryStats(
+                queryStats.getCreateTime(),
+                queryStats.getExecutionStartTime(),
+                queryStats.getLastHeartbeat(),
+                queryStats.getEndTime(),
+                queryStats.getElapsedTime(),
+                queryStats.getQueuedTime(),
+                queryStats.getResourceWaitingTime(),
+                queryStats.getDispatchingTime(),
+                queryStats.getExecutionTime(),
+                queryStats.getAnalysisTime(),
+                queryStats.getPlanningTime(),
+                queryStats.getFinishingTime(),
+                queryStats.getTotalTasks(),
+                queryStats.getRunningTasks(),
+                queryStats.getCompletedTasks(),
+                queryStats.getTotalDrivers(),
+                queryStats.getQueuedDrivers(),
+                queryStats.getRunningDrivers(),
+                queryStats.getBlockedDrivers(),
+                queryStats.getCompletedDrivers(),
+                queryStats.getCumulativeUserMemory(),
+                queryStats.getCumulativeSystemMemory(),
+                queryStats.getUserMemoryReservation(),
+                queryStats.getRevocableMemoryReservation(),
+                queryStats.getTotalMemoryReservation(),
+                queryStats.getPeakUserMemoryReservation(),
+                queryStats.getPeakRevocableMemoryReservation(),
+                queryStats.getPeakNonRevocableMemoryReservation(),
+                queryStats.getPeakTotalMemoryReservation(),
+                queryStats.getPeakTaskUserMemory(),
+                queryStats.getPeakTaskRevocableMemory(),
+                queryStats.getPeakTaskTotalMemory(),
+                queryStats.isScheduled(),
+                queryStats.getTotalScheduledTime(),
+                queryStats.getTotalCpuTime(),
+                queryStats.getTotalBlockedTime(),
+                queryStats.isFullyBlocked(),
+                queryStats.getBlockedReasons(),
+                queryStats.getPhysicalInputDataSize(),
+                queryStats.getPhysicalInputPositions(),
+                queryStats.getPhysicalInputReadTime(),
+                queryStats.getInternalNetworkInputDataSize(),
+                queryStats.getInternalNetworkInputPositions(),
+                queryStats.getRawInputDataSize(),
+                queryStats.getRawInputPositions(),
+                queryStats.getProcessedInputDataSize(),
+                queryStats.getProcessedInputPositions(),
+                queryStats.getOutputDataSize(),
+                queryStats.getOutputPositions(),
+                queryStats.getPhysicalWrittenDataSize(),
+                queryStats.getStageGcStatistics(),
+                queryStats.getDynamicFiltersStats(),
+                ImmutableList.of()); // Remove the operator summaries as OperatorInfo (especially ExchangeClientStatus) can hold onto a large amount of memory
     }
 
     public QueryId getQueryId()
@@ -707,15 +774,15 @@ public class QueryStateMachine
         setSchema.set(requireNonNull(schema, "schema is null"));
     }
 
+    public String getSetPath()
+    {
+        return setPath.get();
+    }
+
     public void setSetPath(String path)
     {
         requireNonNull(path, "path is null");
         setPath.set(path);
-    }
-
-    public String getSetPath()
-    {
-        return setPath.get();
     }
 
     public void addSetSessionProperties(String key, String value)
@@ -1030,16 +1097,6 @@ public class QueryStateMachine
         return queryStateTimer.getEndTime();
     }
 
-    private static boolean isScheduled(Optional<StageInfo> rootStage)
-    {
-        if (rootStage.isEmpty()) {
-            return false;
-        }
-        return getAllStages(rootStage).stream()
-                .map(StageInfo::getState)
-                .allMatch(state -> state == StageState.RUNNING || state == StageState.FLUSHING || state.isDone());
-    }
-
     public Optional<ExecutionFailureInfo> getFailureInfo()
     {
         if (queryState.get() != FAILED) {
@@ -1117,77 +1174,18 @@ public class QueryStateMachine
         finalQueryInfo.compareAndSet(finalInfo, Optional.of(prunedQueryInfo));
     }
 
-    private static QueryStats pruneQueryStats(QueryStats queryStats)
-    {
-        return new QueryStats(
-                queryStats.getCreateTime(),
-                queryStats.getExecutionStartTime(),
-                queryStats.getLastHeartbeat(),
-                queryStats.getEndTime(),
-                queryStats.getElapsedTime(),
-                queryStats.getQueuedTime(),
-                queryStats.getResourceWaitingTime(),
-                queryStats.getDispatchingTime(),
-                queryStats.getExecutionTime(),
-                queryStats.getAnalysisTime(),
-                queryStats.getPlanningTime(),
-                queryStats.getFinishingTime(),
-                queryStats.getTotalTasks(),
-                queryStats.getRunningTasks(),
-                queryStats.getCompletedTasks(),
-                queryStats.getTotalDrivers(),
-                queryStats.getQueuedDrivers(),
-                queryStats.getRunningDrivers(),
-                queryStats.getBlockedDrivers(),
-                queryStats.getCompletedDrivers(),
-                queryStats.getCumulativeUserMemory(),
-                queryStats.getCumulativeSystemMemory(),
-                queryStats.getUserMemoryReservation(),
-                queryStats.getRevocableMemoryReservation(),
-                queryStats.getTotalMemoryReservation(),
-                queryStats.getPeakUserMemoryReservation(),
-                queryStats.getPeakRevocableMemoryReservation(),
-                queryStats.getPeakNonRevocableMemoryReservation(),
-                queryStats.getPeakTotalMemoryReservation(),
-                queryStats.getPeakTaskUserMemory(),
-                queryStats.getPeakTaskRevocableMemory(),
-                queryStats.getPeakTaskTotalMemory(),
-                queryStats.isScheduled(),
-                queryStats.getTotalScheduledTime(),
-                queryStats.getTotalCpuTime(),
-                queryStats.getTotalBlockedTime(),
-                queryStats.isFullyBlocked(),
-                queryStats.getBlockedReasons(),
-                queryStats.getPhysicalInputDataSize(),
-                queryStats.getPhysicalInputPositions(),
-                queryStats.getPhysicalInputReadTime(),
-                queryStats.getInternalNetworkInputDataSize(),
-                queryStats.getInternalNetworkInputPositions(),
-                queryStats.getRawInputDataSize(),
-                queryStats.getRawInputPositions(),
-                queryStats.getProcessedInputDataSize(),
-                queryStats.getProcessedInputPositions(),
-                queryStats.getOutputDataSize(),
-                queryStats.getOutputPositions(),
-                queryStats.getPhysicalWrittenDataSize(),
-                queryStats.getStageGcStatistics(),
-                queryStats.getDynamicFiltersStats(),
-                ImmutableList.of()); // Remove the operator summaries as OperatorInfo (especially ExchangeClientStatus) can hold onto a large amount of memory
-    }
-
     public static class QueryOutputManager
     {
         private final Executor executor;
 
         @GuardedBy("this")
         private final List<Consumer<QueryOutputInfo>> outputInfoListeners = new ArrayList<>();
-
+        @GuardedBy("this")
+        private final Set<URI> exchangeLocations = new LinkedHashSet<>();
         @GuardedBy("this")
         private List<String> columnNames;
         @GuardedBy("this")
         private List<Type> columnTypes;
-        @GuardedBy("this")
-        private final Set<URI> exchangeLocations = new LinkedHashSet<>();
         @GuardedBy("this")
         private boolean noMoreExchangeLocations;
 

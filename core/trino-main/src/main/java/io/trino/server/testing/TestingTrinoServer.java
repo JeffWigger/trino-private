@@ -120,16 +120,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 public class TestingTrinoServer
         implements Closeable
 {
-    public static TestingTrinoServer create()
-    {
-        return builder().build();
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
     private final Injector injector;
     private final Path baseDataDir;
     private final boolean preserveData;
@@ -161,34 +151,6 @@ public class TestingTrinoServer
     private final ShutdownAction shutdownAction;
     private final MBeanServer mBeanServer;
     private final boolean coordinator;
-
-    public static class TestShutdownAction
-            implements ShutdownAction
-    {
-        private final CountDownLatch shutdownCalled = new CountDownLatch(1);
-
-        @GuardedBy("this")
-        private boolean isWorkerShutdown;
-
-        @Override
-        public synchronized void onShutdown()
-        {
-            isWorkerShutdown = true;
-            shutdownCalled.countDown();
-        }
-
-        public void waitForShutdownComplete(long millis)
-                throws InterruptedException
-        {
-            shutdownCalled.await(millis, MILLISECONDS);
-        }
-
-        public synchronized boolean isWorkerShutdown()
-        {
-            return isWorkerShutdown;
-        }
-    }
-
     private TestingTrinoServer(
             boolean coordinator,
             Map<String, String> properties,
@@ -328,6 +290,60 @@ public class TestingTrinoServer
         announcer.forceAnnounce();
 
         refreshNodes();
+    }
+
+    public static TestingTrinoServer create()
+    {
+        return builder().build();
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    private static void updateConnectorIdAnnouncement(Announcer announcer, CatalogName catalogName, InternalNodeManager nodeManager)
+    {
+        //
+        // This code was copied from TrinoServer, and is a hack that should be removed when the connectorId property is removed
+        //
+
+        // get existing announcement
+        ServiceAnnouncement announcement = getTrinoAnnouncement(announcer.getServiceAnnouncements());
+
+        // update connectorIds property
+        Map<String, String> properties = new LinkedHashMap<>(announcement.getProperties());
+        String property = nullToEmpty(properties.get("connectorIds"));
+        Set<String> connectorIds = new LinkedHashSet<>(Splitter.on(',').trimResults().omitEmptyStrings().splitToList(property));
+        connectorIds.add(catalogName.toString());
+        properties.put("connectorIds", Joiner.on(',').join(connectorIds));
+
+        // update announcement
+        announcer.removeServiceAnnouncement(announcement.getId());
+        announcer.addServiceAnnouncement(serviceAnnouncement(announcement.getType()).addProperties(properties).build());
+        announcer.forceAnnounce();
+
+        nodeManager.refreshNodes();
+    }
+
+    private static ServiceAnnouncement getTrinoAnnouncement(Set<ServiceAnnouncement> announcements)
+    {
+        for (ServiceAnnouncement announcement : announcements) {
+            if (announcement.getType().equals("trino")) {
+                return announcement;
+            }
+        }
+        throw new RuntimeException("Trino announcement not found: " + announcements);
+    }
+
+    private static Path tempDirectory()
+    {
+        try {
+            return createTempDirectory("TrinoTest");
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override
@@ -548,47 +564,30 @@ public class TestingTrinoServer
         return injector.getInstance(key);
     }
 
-    private static void updateConnectorIdAnnouncement(Announcer announcer, CatalogName catalogName, InternalNodeManager nodeManager)
+    public static class TestShutdownAction
+            implements ShutdownAction
     {
-        //
-        // This code was copied from TrinoServer, and is a hack that should be removed when the connectorId property is removed
-        //
+        private final CountDownLatch shutdownCalled = new CountDownLatch(1);
 
-        // get existing announcement
-        ServiceAnnouncement announcement = getTrinoAnnouncement(announcer.getServiceAnnouncements());
+        @GuardedBy("this")
+        private boolean isWorkerShutdown;
 
-        // update connectorIds property
-        Map<String, String> properties = new LinkedHashMap<>(announcement.getProperties());
-        String property = nullToEmpty(properties.get("connectorIds"));
-        Set<String> connectorIds = new LinkedHashSet<>(Splitter.on(',').trimResults().omitEmptyStrings().splitToList(property));
-        connectorIds.add(catalogName.toString());
-        properties.put("connectorIds", Joiner.on(',').join(connectorIds));
-
-        // update announcement
-        announcer.removeServiceAnnouncement(announcement.getId());
-        announcer.addServiceAnnouncement(serviceAnnouncement(announcement.getType()).addProperties(properties).build());
-        announcer.forceAnnounce();
-
-        nodeManager.refreshNodes();
-    }
-
-    private static ServiceAnnouncement getTrinoAnnouncement(Set<ServiceAnnouncement> announcements)
-    {
-        for (ServiceAnnouncement announcement : announcements) {
-            if (announcement.getType().equals("trino")) {
-                return announcement;
-            }
+        @Override
+        public synchronized void onShutdown()
+        {
+            isWorkerShutdown = true;
+            shutdownCalled.countDown();
         }
-        throw new RuntimeException("Trino announcement not found: " + announcements);
-    }
 
-    private static Path tempDirectory()
-    {
-        try {
-            return createTempDirectory("TrinoTest");
+        public void waitForShutdownComplete(long millis)
+                throws InterruptedException
+        {
+            shutdownCalled.await(millis, MILLISECONDS);
         }
-        catch (IOException e) {
-            throw new UncheckedIOException(e);
+
+        public synchronized boolean isWorkerShutdown()
+        {
+            return isWorkerShutdown;
         }
     }
 

@@ -301,28 +301,6 @@ public class PushJoinIntoTableScan
         return Optional.empty();
     }
 
-    private static class FilterSplitResult
-    {
-        private final List<JoinCondition> pushableConditions;
-        private final Expression remainingFilter;
-
-        public FilterSplitResult(List<JoinCondition> pushableConditions, Expression remainingFilter)
-        {
-            this.pushableConditions = requireNonNull(pushableConditions, "pushableConditions is null");
-            this.remainingFilter = requireNonNull(remainingFilter, "remainingFilter is null");
-        }
-
-        public List<JoinCondition> getPushableConditions()
-        {
-            return pushableConditions;
-        }
-
-        public Expression getRemainingFilter()
-        {
-            return remainingFilter;
-        }
-    }
-
     private JoinCondition.Operator joinConditionOperator(ComparisonExpression.Operator operator)
     {
         switch (operator) {
@@ -357,5 +335,27 @@ public class PushJoinIntoTableScan
                 return JoinType.FULL_OUTER;
         }
         throw new IllegalArgumentException("Unknown join type: " + joinNode.getType());
+    }
+
+    private static class FilterSplitResult
+    {
+        private final List<JoinCondition> pushableConditions;
+        private final Expression remainingFilter;
+
+        public FilterSplitResult(List<JoinCondition> pushableConditions, Expression remainingFilter)
+        {
+            this.pushableConditions = requireNonNull(pushableConditions, "pushableConditions is null");
+            this.remainingFilter = requireNonNull(remainingFilter, "remainingFilter is null");
+        }
+
+        public List<JoinCondition> getPushableConditions()
+        {
+            return pushableConditions;
+        }
+
+        public Expression getRemainingFilter()
+        {
+            return remainingFilter;
+        }
     }
 }

@@ -30,53 +30,44 @@ import static java.util.Objects.requireNonNull;
 public class TopNPeerGroupLookup
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(TopNPeerGroupLookup.class).instanceSize();
-
-    /**
-     * The buffer containing key and value data.
-     */
-    private Buffer buffer;
-
-    /**
-     * The mask for wrapping a position counter.
-     */
-    private long mask;
-
     /**
      * The hash strategy.
      */
     private final RowIdHashStrategy strategy;
-
-    /**
-     * The current allocated table size.
-     */
-    private long tableSize;
-
-    /**
-     * Threshold after which we rehash.
-     */
-    private long maxFill;
-
     /**
      * The acceptable load factor.
      */
     private final float fillFactor;
-
-    /**
-     * Number of entries in the set.
-     */
-    private long entryCount;
-
     /**
      * The value denoting unmapped group IDs. Since group IDs need to co-exist at all times with row IDs,
      * we only need to use one of the two IDs to indicate that a slot is unused. Group IDs have been arbitrarily selected
      * for that purpose.
      */
     private final long unmappedGroupId;
-
     /**
      * The default return value for {@code get()}, {@code put()} and {@code remove()}.
      */
     private final long defaultReturnValue;
+    /**
+     * The buffer containing key and value data.
+     */
+    private Buffer buffer;
+    /**
+     * The mask for wrapping a position counter.
+     */
+    private long mask;
+    /**
+     * The current allocated table size.
+     */
+    private long tableSize;
+    /**
+     * Threshold after which we rehash.
+     */
+    private long maxFill;
+    /**
+     * Number of entries in the set.
+     */
+    private long entryCount;
 
     /**
      * Standard hash table parameters are expected. {@code unmappedGroupId} specifies the internal marker value for unmapped group IDs.
@@ -99,6 +90,11 @@ public class TopNPeerGroupLookup
     public TopNPeerGroupLookup(long expected, RowIdHashStrategy strategy, long unmappedGroupId, long defaultReturnValue)
     {
         this(expected, 0.75f, strategy, unmappedGroupId, defaultReturnValue);
+    }
+
+    private static long twosComplement(long value)
+    {
+        return -(value + 1);
     }
 
     /**
@@ -323,11 +319,6 @@ public class TopNPeerGroupLookup
         mask = newMask;
         maxFill = maxFill(tableSize, fillFactor);
         buffer = newBuffer;
-    }
-
-    private static long twosComplement(long value)
-    {
-        return -(value + 1);
     }
 
     private static class Buffer

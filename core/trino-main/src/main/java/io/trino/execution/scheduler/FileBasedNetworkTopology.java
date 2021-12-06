@@ -69,32 +69,6 @@ public final class FileBasedNetworkTopology
         refreshTopology();
     }
 
-    @Managed
-    public synchronized void refreshTopology()
-    {
-        lastUpdate = ticker.read();
-        topology = loadTopologyFile(networkTopologyFile);
-    }
-
-    private synchronized Map<String, NetworkLocation> getTopology()
-    {
-        if (ticker.read() - lastUpdate >= refreshPeriodNanos) {
-            try {
-                refreshTopology();
-            }
-            catch (RuntimeException e) {
-                log.error(e);
-            }
-        }
-        return topology;
-    }
-
-    @Override
-    public NetworkLocation locate(HostAddress address)
-    {
-        return getTopology().getOrDefault(address.getHostText(), ROOT_LOCATION);
-    }
-
     private static Map<String, NetworkLocation> loadTopologyFile(File topologyFile)
     {
         ImmutableMap.Builder<String, NetworkLocation> topology = ImmutableMap.builder();
@@ -137,5 +111,31 @@ public final class FileBasedNetworkTopology
     private static RuntimeException invalidFile(int lineNumber, String message)
     {
         return new RuntimeException(format("Error in network topology file line %s: %s", lineNumber, message));
+    }
+
+    @Managed
+    public synchronized void refreshTopology()
+    {
+        lastUpdate = ticker.read();
+        topology = loadTopologyFile(networkTopologyFile);
+    }
+
+    private synchronized Map<String, NetworkLocation> getTopology()
+    {
+        if (ticker.read() - lastUpdate >= refreshPeriodNanos) {
+            try {
+                refreshTopology();
+            }
+            catch (RuntimeException e) {
+                log.error(e);
+            }
+        }
+        return topology;
+    }
+
+    @Override
+    public NetworkLocation locate(HostAddress address)
+    {
+        return getTopology().getOrDefault(address.getHostText(), ROOT_LOCATION);
     }
 }

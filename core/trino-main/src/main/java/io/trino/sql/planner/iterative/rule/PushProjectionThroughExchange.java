@@ -73,6 +73,20 @@ public class PushProjectionThroughExchange
             .matching(project -> !isSymbolToSymbolProjection(project))
             .with(source().matching(exchange().capturedAs(CHILD)));
 
+    private static boolean isSymbolToSymbolProjection(ProjectNode project)
+    {
+        return project.getAssignments().getExpressions().stream().allMatch(SymbolReference.class::isInstance);
+    }
+
+    private static Map<Symbol, Symbol> mapExchangeOutputToInput(ExchangeNode exchange, int sourceIndex)
+    {
+        ImmutableMap.Builder<Symbol, Symbol> outputToInputMap = ImmutableMap.builder();
+        for (int i = 0; i < exchange.getOutputSymbols().size(); i++) {
+            outputToInputMap.put(exchange.getOutputSymbols().get(i), exchange.getInputs().get(sourceIndex).get(i));
+        }
+        return outputToInputMap.build();
+    }
+
     @Override
     public Pattern<ProjectNode> getPattern()
     {
@@ -185,19 +199,5 @@ public class PushProjectionThroughExchange
 
         // we need to strip unnecessary symbols (hash, partitioning columns).
         return Result.ofPlanNode(restrictOutputs(context.getIdAllocator(), result, ImmutableSet.copyOf(project.getOutputSymbols())).orElse(result));
-    }
-
-    private static boolean isSymbolToSymbolProjection(ProjectNode project)
-    {
-        return project.getAssignments().getExpressions().stream().allMatch(SymbolReference.class::isInstance);
-    }
-
-    private static Map<Symbol, Symbol> mapExchangeOutputToInput(ExchangeNode exchange, int sourceIndex)
-    {
-        ImmutableMap.Builder<Symbol, Symbol> outputToInputMap = ImmutableMap.builder();
-        for (int i = 0; i < exchange.getOutputSymbols().size(); i++) {
-            outputToInputMap.put(exchange.getOutputSymbols().get(i), exchange.getInputs().get(sourceIndex).get(i));
-        }
-        return outputToInputMap.build();
     }
 }

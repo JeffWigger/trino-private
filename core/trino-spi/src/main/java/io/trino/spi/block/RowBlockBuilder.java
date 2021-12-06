@@ -37,12 +37,10 @@ public class RowBlockBuilder
 
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
-
+    private final BlockBuilder[] fieldBlockBuilders;
     private int positionCount;
     private int[] fieldBlockOffsets;
     private boolean[] rowIsNull;
-    private final BlockBuilder[] fieldBlockBuilders;
-
     private boolean currentEntryOpened;
     private boolean hasNullRow;
 

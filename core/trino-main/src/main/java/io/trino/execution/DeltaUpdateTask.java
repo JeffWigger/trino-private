@@ -24,6 +24,8 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.BoundedExecutor;
+import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
+import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 import io.airlift.json.JsonCodec;
 import io.trino.Session;
@@ -45,31 +47,19 @@ import io.trino.operator.ExchangeClient;
 import io.trino.operator.ExchangeClientSupplier;
 import io.trino.security.AccessControl;
 import io.trino.server.BasicQueryInfo;
-import io.trino.spi.DeltaFlagRequest;
 import io.trino.server.SessionContext;
 import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.BlockEncodingSerde;
 import io.trino.spi.connector.ColumnSchema;
-import io.trino.spi.eventlistener.TableInfo;
 import io.trino.spi.type.Type;
 import io.trino.sql.analyzer.Output;
-import io.trino.sql.planner.InputExtractor;
-import io.trino.sql.planner.PlanFragment;
-import io.trino.sql.planner.SubPlan;
 import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.Expression;
-import io.trino.sql.tree.Table;
 import io.trino.transaction.TransactionManager;
-
-import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static io.airlift.http.client.FullJsonResponseHandler.createFullJsonResponseHandler;
-import static io.airlift.http.client.HttpStatus.OK;
-import static io.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
-import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
-import io.airlift.http.client.HttpClient;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -88,8 +78,12 @@ import java.util.function.Consumer;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
+import static io.airlift.http.client.FullJsonResponseHandler.createFullJsonResponseHandler;
+import static io.airlift.http.client.HttpStatus.OK;
 import static io.airlift.http.client.Request.Builder.preparePost;
+import static io.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
 import static io.trino.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.trino.spi.StandardErrorCode.COLUMN_NOT_FOUND;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -100,9 +94,6 @@ import static io.trino.spi.StandardErrorCode.SYNTAX_ERROR;
 import static io.trino.spi.StandardErrorCode.TYPE_MISMATCH;
 import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 import static java.lang.String.format;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
 
 public class DeltaUpdateTask
         implements DataDefinitionTask<DeltaUpdate>
@@ -136,11 +127,9 @@ public class DeltaUpdateTask
     @GuardedBy("this")
     private Map<QueryId, Boolean> allDone = new HashMap<>();
 
-
     private SettableFuture<Void> phaseIFuture = SettableFuture.create();
 
     private SettableFuture<Void> phaseIIFuture = SettableFuture.create();
-
 
     public DeltaUpdateTask(DispatchManager dispatchManager,
             QueryManager queryManager,
@@ -167,7 +156,6 @@ public class DeltaUpdateTask
         this.httpClient = httpClient;
         this.locationFactory = locationFactory;
         this.deltaFlagRequestCodec = deltaFlagRequestCodec;
-
     }
 
     @Override
@@ -211,18 +199,18 @@ public class DeltaUpdateTask
         return phaseIIFuture;
     }
 
-    public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
+    public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
     {
         List<QualifiedObjectName> updatedTablesNames = this.updatedTables.stream().map(TableSchema::getQualifiedName).collect(toImmutableList());
-        System.out.println("Current delta flag value: "+ DeltaFlagRequest.globalDeltaUpdateInProcess);
+        System.out.println("Current delta flag value: " + DeltaFlagRequest.globalDeltaUpdateInProcess);
         SqlQueryManager queryManager = (SqlQueryManager) this.queryManager;
         Map<QueryId, List<QualifiedObjectName>> perQueryTablesToUpdate = new HashMap<>();
-        for( BasicQueryInfo bqi : this.dispatchManager.getQueries() ){
+        for (BasicQueryInfo bqi : this.dispatchManager.getQueries()) {
             QueryId queryId = bqi.getQueryId();
-            if(bqi.getState() == QueryState.RUNNING) { //What about Starting, Queued, waiting_for_Resources
+            if (bqi.getState() == QueryState.RUNNING) { //What about Starting, Queued, waiting_for_Resources
                 QueryInfo fqi = this.dispatchManager.getFullQueryInfo(bqi.getQueryId()).get();
                 //List<TableInfo> tiList = fqi.getReferencedTables();
-                Set<Input> inputs =  fqi.getInputs();
+                Set<Input> inputs = fqi.getInputs();
                 /*for (TableInfo ti : tiList){
                     QualifiedObjectName referencedTableName = new QualifiedObjectName(ti.getCatalog(), ti.getSchema(), ti.getTable());
                     System.out.println(queryId.toString()+ ": gets referenced Tables: " + referencedTableName);
@@ -231,24 +219,24 @@ public class DeltaUpdateTask
                     }
                 }*/
                 List<QualifiedObjectName> tablesToUpdate = new ArrayList<>();
-                for(Input i : inputs){
+                for (Input i : inputs) {
                     QualifiedObjectName referencedTableName = new QualifiedObjectName(i.getCatalogName(), i.getSchema(), i.getTable());
-                    System.out.println(queryId.toString()+ ": gets referenced Tables: " + referencedTableName);
-                    if(updatedTablesNames.contains(referencedTableName)){
+                    System.out.println(queryId.toString() + ": gets referenced Tables: " + referencedTableName);
+                    if (updatedTablesNames.contains(referencedTableName)) {
                         // get SqlQueryExecution
                         tablesToUpdate.add(referencedTableName);
                     }
                 }
-                if (!tablesToUpdate.isEmpty()){
+                if (!tablesToUpdate.isEmpty()) {
                     perQueryTablesToUpdate.putIfAbsent(queryId, tablesToUpdate);
                 }
             }
         }
 
-        for (QueryId qid : perQueryTablesToUpdate.keySet()){
+        for (QueryId qid : perQueryTablesToUpdate.keySet()) {
             QueryExecution queryExecution = queryManager.queryTracker.getQuery(qid);
             // could be an update/dataDefinitionExecution
-            if (!(queryExecution instanceof SqlQueryExecution)){
+            if (!(queryExecution instanceof SqlQueryExecution)) {
                 continue;
             }
             SqlQueryExecution sqlQueryExecution = (SqlQueryExecution) queryExecution;
@@ -257,10 +245,8 @@ public class DeltaUpdateTask
             SqlQueryScheduler sqlQueryScheduler = sqlQueryExecution.queryScheduler.get();
             // should not change after the scheduling is finished, and we work on Running queries.
 
-
             sqlQueryScheduler.scheduleDelta();
             // TODO: figure out when it finished
-
 
             // the following is useless as we need to update all stages in the query
             /*
@@ -293,7 +279,6 @@ public class DeltaUpdateTask
 
         //queryManager.queryTracker.getQuery();
 
-
         // last step of the execution flow
         // unset the delta flag on all the nodes
         unmarkDeltaUpdate(phaseIIFuture, outputConsumer);
@@ -303,17 +288,18 @@ public class DeltaUpdateTask
      * Unsets flag on all the nodes that use the memory connector.
      * By setting that flag to false all regular MemoryPagesStore::getPages are again free to continue.
      */
-    public void unmarkDeltaUpdate(SettableFuture<Void> future, Consumer<Optional<Output>> outputConsumer){
+    public void unmarkDeltaUpdate(SettableFuture<Void> future, Consumer<Optional<Output>> outputConsumer)
+    {
 
         // TODO: make sure we unmark all that were active when we marked them
         Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
-        if(memoryNodes.isEmpty()){
+        if (memoryNodes.isEmpty()) {
             throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
         }
         DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(false);
         List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
-        for (InternalNode node : memoryNodes){
-            System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
+        for (InternalNode node : memoryNodes) {
+            System.out.println("sending delta update Flag request to: " + node.getNodeIdentifier());
             URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
             Request request = preparePost()
                     .setUri(flagSignalPoint)
@@ -324,7 +310,7 @@ public class DeltaUpdateTask
 
             responseFutures.add(responseFuture);
         }
-        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture= Futures.successfulAsList(responseFutures);
+        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture = Futures.successfulAsList(responseFutures);
         Futures.addCallback(allAsListFuture, new FutureCallback<>()
         {
             @Override
@@ -343,19 +329,20 @@ public class DeltaUpdateTask
                             success = false;
                         }
                     }
-                }else{
+                }
+                else {
                     success = false;
                 }
-                if(success){
+                if (success) {
                     // start next part of execution
                     outputConsumer.accept(Optional.empty());
                     phaseIIFuture.set(null);
                     System.out.println("SUCCESSFULLY unset the delta update flag on all nodes");
                     future.set(null);
-                }else{
+                }
+                else {
                     future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
                 }
-
             }
 
             @Override
@@ -371,7 +358,8 @@ public class DeltaUpdateTask
      * Sets a flag on all the nodes that use the memory connector.
      * By setting that flag all regular MemoryPagesStore::getPages are blocked until the delta update is finished.
      */
-    public void markDeltaUpdate(SettableFuture<Void> future){
+    public void markDeltaUpdate(SettableFuture<Void> future)
+    {
         // Could add a flag or state to QueryState / StateMachine indicating that a delta update is going on
         // splits will already be on the nodes, so this is mute unless we inform first all queries and have them
         // then inform all their tasks
@@ -379,13 +367,13 @@ public class DeltaUpdateTask
         // Or we inform all nodes that run a memoryDB that they need to block further page polls
         //TODO: Need to store them such that we can check in unmarkDeltaUpdate that we unmarked all of them successfully
         Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
-        if(memoryNodes.isEmpty()){
+        if (memoryNodes.isEmpty()) {
             throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
         }
         DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(true);
         List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
-        for (InternalNode node : memoryNodes){
-            System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
+        for (InternalNode node : memoryNodes) {
+            System.out.println("sending delta update Flag request to: " + node.getNodeIdentifier());
             URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
             Request request = preparePost()
                     .setUri(flagSignalPoint)
@@ -396,7 +384,7 @@ public class DeltaUpdateTask
 
             responseFutures.add(responseFuture);
         }
-        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture= Futures.successfulAsList(responseFutures);
+        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture = Futures.successfulAsList(responseFutures);
         Futures.addCallback(allAsListFuture, new FutureCallback<>()
         {
             @Override
@@ -415,19 +403,20 @@ public class DeltaUpdateTask
                             success = false;
                         }
                     }
-                }else{
+                }
+                else {
                     success = false;
                 }
-                if(success){
+                if (success) {
                     // start next part of execution
                     //outputConsumer.accept(Optional.empty());
                     //phaseIIFuture.set(null);
                     System.out.println("SUCCESSFULLY set the delta update flag on all nodes");
                     future.set(null);
-                }else{
+                }
+                else {
                     future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
                 }
-
             }
 
             @Override
@@ -439,7 +428,6 @@ public class DeltaUpdateTask
         }, directExecutor());
     }
 
-
     private void ExecuteInserts(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
     {
         // doing what they do in visitInsert of StatementAnalyzer
@@ -449,14 +437,14 @@ public class DeltaUpdateTask
         sourceTableH = sourceQualifiedObjectNames.stream().map(qon -> metadata.getTableHandle(session, qon))
                 .filter(Optional::isPresent).map(Optional::get).collect(toImmutableList());
 
-        if (sourceTableH.size() == 0){
+        if (sourceTableH.size() == 0) {
             throw semanticException(MISSING_TABLE, deltaUpdate, "Deltaupdate: Source table(s) do(es) not exist");
         }
 
         targetTableH = targetQualifiedObjectNames.stream().map(qon -> metadata.getTableHandle(session, qon))
                 .filter(Optional::isPresent).map(Optional::get).collect(toImmutableList());
 
-        if (targetTableH.size() == 0){
+        if (targetTableH.size() == 0) {
             throw semanticException(MISSING_TABLE, deltaUpdate, "Deltaupdate: Target table(s) do(es) not exist");
         }
 
@@ -498,7 +486,6 @@ public class DeltaUpdateTask
             TableSchema targetSchema = metadata.getTableSchema(session, targetTableHandle);
 
             updatedTables.add(targetSchema);
-
 
             // check for the columns to be matching
 
@@ -560,7 +547,7 @@ public class DeltaUpdateTask
             //INSERT INTO memory.d1.test
             //SELECT * FROM memory.d2.test;
             // TODO: Does this work for every loop iteration or only on the first one?
-            Futures.addCallback(settableFuture,  new FutureCallback<>()
+            Futures.addCallback(settableFuture, new FutureCallback<>()
             {
 
                 @Override
@@ -590,7 +577,8 @@ public class DeltaUpdateTask
         }
     }
 
-    private void exitFlushing(QueryId queryId,  Consumer<Optional<Output>> outputConsumer){
+    private void exitFlushing(QueryId queryId, Consumer<Optional<Output>> outputConsumer)
+    {
         // addSuccessCallback uses the Thread that calls the executable to run the callback, not suited for long running functions.
         // but is used everywhere in dispatch query.
         // if weird errors appear change this.
@@ -598,7 +586,7 @@ public class DeltaUpdateTask
         dispatchManager.getQuery(queryId).addStateChangeListener(state ->
         {
             System.out.println(state);
-            if (state.equals(QueryState.RUNNING)){
+            if (state.equals(QueryState.RUNNING)) {
                 // based on code from Query.java and ExecutingStatementResource.java
                 // Flushing does not exist as a query state it only exists as a task state
                 ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
@@ -626,15 +614,14 @@ public class DeltaUpdateTask
                         addSuccessCallback(exchangeClient.isBlocked(), () -> {
                             nextIsBlocked(exchangeClient, queryId);
                         });
-
                     } // else failure?
                 });
             }
 
-            if (state.isDone()){
-                synchronized (this){
+            if (state.isDone()) {
+                synchronized (this) {
                     allDone.put(queryId, true);
-                    if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
+                    if (allDone.values().stream().reduce(true, (a, b) -> a && b)) {
                         // documentation warns of not doing this when holding a lock
                         outputConsumer.accept(Optional.empty());
                         boolean tvalue = phaseIFuture.set(null);
@@ -645,41 +632,42 @@ public class DeltaUpdateTask
         });
     }
 
-
     /*
      * This function polls pages from the output exchangeClient. This is normally done by the client that executes the query.
      * If the pages are not polled then the output stage is stuck in the FLUSHING state
      */
-    private void nextIsBlocked(ExchangeClient exchangeClient, QueryId id){
-         if (!exchangeClient.isClosed()) {
+    private void nextIsBlocked(ExchangeClient exchangeClient, QueryId id)
+    {
+        if (!exchangeClient.isClosed()) {
             //TODO: in the ExchangeOperator::getOutput, they do operatorContext.recordProcessedInput for stats?
-             int i = 0;
-             while(!exchangeClient.isFinished()){
-                 // it looks like this does not always work, sometimes we make an extra loop when we get the page in the previous round
-                 SerializedPage p = exchangeClient.pollPage();
-                 // should I again call is blocked here? - In Query they don't
-                 if (p != null) {
-                     System.out.println("Got page: " + p.getPositionCount() + " id: " + id+ " i: "+i);
-                     System.out.println("Got page: " + p);
-                     i++;
-                     //System.out.println("Blocked?: " + exchangeClient.isBlocked());
-                 }
-                 else {
-                     // look at Query::waitForResults for how to make this properly.
-                     // for these queries it is good enough
-                     // in Query::removePagesFromExchange they break when it returns null
-                     // If query is not yet finished it starts a new callback
-                     if(!exchangeClient.isFinished() ||!exchangeClient.isClosed()){
-                         System.out.println("Page was null: " + " id: " + id+ " i: "+i);
-                         addSuccessCallback(exchangeClient.isBlocked(), () -> {nextIsBlocked(exchangeClient, id);});
-                         System.out.println("Ret: " + " id: " + id);
-                         return;
-                     }else{
-                         System.out.println("???: " + " id: " + id);
-                         return;
-                     }
-                 }
-             }
+            int i = 0;
+            while (!exchangeClient.isFinished()) {
+                // it looks like this does not always work, sometimes we make an extra loop when we get the page in the previous round
+                SerializedPage p = exchangeClient.pollPage();
+                // should I again call is blocked here? - In Query they don't
+                if (p != null) {
+                    System.out.println("Got page: " + p.getPositionCount() + " id: " + id + " i: " + i);
+                    System.out.println("Got page: " + p);
+                    i++;
+                    //System.out.println("Blocked?: " + exchangeClient.isBlocked());
+                }
+                else {
+                    // look at Query::waitForResults for how to make this properly.
+                    // for these queries it is good enough
+                    // in Query::removePagesFromExchange they break when it returns null
+                    // If query is not yet finished it starts a new callback
+                    if (!exchangeClient.isFinished() || !exchangeClient.isClosed()) {
+                        System.out.println("Page was null: " + " id: " + id + " i: " + i);
+                        addSuccessCallback(exchangeClient.isBlocked(), () -> {nextIsBlocked(exchangeClient, id);});
+                        System.out.println("Ret: " + " id: " + id);
+                        return;
+                    }
+                    else {
+                        System.out.println("???: " + " id: " + id);
+                        return;
+                    }
+                }
+            }
         }
         System.out.println("Finished" + " id: " + id);
         // Query::closeExchangeClientIfNecessary
@@ -687,7 +675,6 @@ public class DeltaUpdateTask
         // TDOD: potentially call this twice, seems not to be an issue
         exchangeClient.close();
     }
-
 
     private void processSourceAndTarget()
     {

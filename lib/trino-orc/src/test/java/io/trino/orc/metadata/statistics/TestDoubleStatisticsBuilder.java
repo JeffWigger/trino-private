@@ -40,6 +40,13 @@ public class TestDoubleStatisticsBuilder
         super(DOUBLE, () -> new DoubleStatisticsBuilder(new NoOpBloomFilterBuilder()), DoubleStatisticsBuilder::addValue);
     }
 
+    private static List<Double> toDoubleList(Double minValue, Double maxValue, List<Long> values)
+    {
+        return values.stream()
+                .flatMap(value -> Stream.of(maxValue - value, minValue + value))
+                .collect(toImmutableList());
+    }
+
     @Test
     public void testMinMaxValues()
     {
@@ -57,13 +64,6 @@ public class TestDoubleStatisticsBuilder
         assertValues(0.0, 88.88, toDoubleList(0.0, 88.88, ZERO_TO_42));
         assertValues(-88.88, 0.0, toDoubleList(-88.88, 0.0, ZERO_TO_42));
         assertValues(-44.44, 44.44, toDoubleList(-44.44, 44.44, ZERO_TO_42));
-    }
-
-    private static List<Double> toDoubleList(Double minValue, Double maxValue, List<Long> values)
-    {
-        return values.stream()
-                .flatMap(value -> Stream.of(maxValue - value, minValue + value))
-                .collect(toImmutableList());
     }
 
     @Test

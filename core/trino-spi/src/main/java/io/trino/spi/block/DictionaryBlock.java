@@ -42,13 +42,13 @@ public class DictionaryBlock
     private final int idsOffset;
     private final int[] ids;
     private final long retainedSizeInBytes;
+    private final DictionaryId dictionarySourceId;
+    private final boolean mayHaveNull;
     private volatile long sizeInBytes = -1;
     private volatile long logicalSizeInBytes = -1;
     private volatile int uniqueIds = -1;
     // isSequentialIds is only valid when uniqueIds is computed
     private volatile boolean isSequentialIds;
-    private final DictionaryId dictionarySourceId;
-    private final boolean mayHaveNull;
 
     public DictionaryBlock(Block dictionary, int[] ids)
     {

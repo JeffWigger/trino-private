@@ -27,13 +27,15 @@ public interface SourceOperator
 
     Supplier<Optional<UpdatablePageSource>> addSplit(Split split);
 
-    default Supplier<Optional<UpdatablePageSource>> addDeltaSplit(Split split){
+    default Supplier<Optional<UpdatablePageSource>> addDeltaSplit(Split split)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 
     void noMoreSplits();
 
-    default void noMoreDeltaSplits(){
+    default void noMoreDeltaSplits()
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 }

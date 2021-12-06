@@ -106,6 +106,38 @@ public class TransformQuantifiedComparisonApplyToCorrelatedJoin
             this.metadata = requireNonNull(metadata, "metadata is null");
         }
 
+        private static boolean shouldCompareValueWithLowerBound(QuantifiedComparisonExpression quantifiedComparison)
+        {
+            switch (quantifiedComparison.getQuantifier()) {
+                case ALL:
+                    switch (quantifiedComparison.getOperator()) {
+                        case LESS_THAN:
+                        case LESS_THAN_OR_EQUAL:
+                            return true;
+                        case GREATER_THAN:
+                        case GREATER_THAN_OR_EQUAL:
+                            return false;
+                        default:
+                            // Caller guarantees no other cases need to be handled here
+                    }
+                    break;
+                case ANY:
+                case SOME:
+                    switch (quantifiedComparison.getOperator()) {
+                        case LESS_THAN:
+                        case LESS_THAN_OR_EQUAL:
+                            return false;
+                        case GREATER_THAN:
+                        case GREATER_THAN_OR_EQUAL:
+                            return true;
+                        default:
+                            // Caller guarantees no other cases need to be handled here
+                    }
+                    break;
+            }
+            throw new IllegalArgumentException("Unexpected quantifier: " + quantifiedComparison.getQuantifier());
+        }
+
         @Override
         public PlanNode visitApply(ApplyNode node, RewriteContext<PlanNode> context)
         {
@@ -240,38 +272,6 @@ public class TransformQuantifiedComparisonApplyToCorrelatedJoin
                 return new ComparisonExpression(quantifiedComparison.getOperator(), quantifiedComparison.getValue(), boundValue.toSymbolReference());
             }
             throw new IllegalArgumentException("Unsupported quantified comparison: " + quantifiedComparison);
-        }
-
-        private static boolean shouldCompareValueWithLowerBound(QuantifiedComparisonExpression quantifiedComparison)
-        {
-            switch (quantifiedComparison.getQuantifier()) {
-                case ALL:
-                    switch (quantifiedComparison.getOperator()) {
-                        case LESS_THAN:
-                        case LESS_THAN_OR_EQUAL:
-                            return true;
-                        case GREATER_THAN:
-                        case GREATER_THAN_OR_EQUAL:
-                            return false;
-                        default:
-                            // Caller guarantees no other cases need to be handled here
-                    }
-                    break;
-                case ANY:
-                case SOME:
-                    switch (quantifiedComparison.getOperator()) {
-                        case LESS_THAN:
-                        case LESS_THAN_OR_EQUAL:
-                            return false;
-                        case GREATER_THAN:
-                        case GREATER_THAN_OR_EQUAL:
-                            return true;
-                        default:
-                            // Caller guarantees no other cases need to be handled here
-                    }
-                    break;
-            }
-            throw new IllegalArgumentException("Unexpected quantifier: " + quantifiedComparison.getQuantifier());
         }
 
         private ProjectNode projectExpressions(PlanNode input, Assignments subqueryAssignments)

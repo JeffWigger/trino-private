@@ -116,6 +116,11 @@ public class ScanFilterAndProjectOperator
                         avoidPageMaterialization));
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
     @Override
     public Supplier<Optional<UpdatablePageSource>> getUpdatablePageSourceSupplier()
     {
@@ -189,6 +194,134 @@ public class ScanFilterAndProjectOperator
         }
         else if (cursor != null) {
             cursor.close();
+        }
+    }
+
+    public static class ScanFilterAndProjectOperatorFactory
+            implements SourceOperatorFactory, AdapterWorkProcessorSourceOperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Supplier<CursorProcessor> cursorProcessor;
+        private final Supplier<PageProcessor> pageProcessor;
+        private final PlanNodeId sourceId;
+        private final PageSourceProvider pageSourceProvider;
+        private final TableHandle table;
+        private final List<ColumnHandle> columns;
+        private final DynamicFilter dynamicFilter;
+        private final List<Type> types;
+        private final DataSize minOutputPageSize;
+        private final int minOutputPageRowCount;
+        private boolean closed;
+
+        public ScanFilterAndProjectOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                PlanNodeId sourceId,
+                PageSourceProvider pageSourceProvider,
+                Supplier<CursorProcessor> cursorProcessor,
+                Supplier<PageProcessor> pageProcessor,
+                TableHandle table,
+                Iterable<ColumnHandle> columns,
+                DynamicFilter dynamicFilter,
+                List<Type> types,
+                DataSize minOutputPageSize,
+                int minOutputPageRowCount)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.cursorProcessor = requireNonNull(cursorProcessor, "cursorProcessor is null");
+            this.pageProcessor = requireNonNull(pageProcessor, "pageProcessor is null");
+            this.sourceId = requireNonNull(sourceId, "sourceId is null");
+            this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
+            this.table = requireNonNull(table, "table is null");
+            this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
+            this.dynamicFilter = dynamicFilter;
+            this.types = requireNonNull(types, "types is null");
+            this.minOutputPageSize = requireNonNull(minOutputPageSize, "minOutputPageSize is null");
+            this.minOutputPageRowCount = minOutputPageRowCount;
+        }
+
+        @Override
+        public int getOperatorId()
+        {
+            return operatorId;
+        }
+
+        @Override
+        public PlanNodeId getSourceId()
+        {
+            return sourceId;
+        }
+
+        @Override
+        public PlanNodeId getPlanNodeId()
+        {
+            return planNodeId;
+        }
+
+        @Override
+        public String getOperatorType()
+        {
+            return ScanFilterAndProjectOperator.class.getSimpleName();
+        }
+
+        @Override
+        public SourceOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, getOperatorType());
+            return new WorkProcessorSourceOperatorAdapter(operatorContext, this);
+        }
+
+        @Override
+        public WorkProcessorSourceOperator create(
+                Session session,
+                MemoryTrackingContext memoryTrackingContext,
+                DriverYieldSignal yieldSignal,
+                WorkProcessor<Split> splits)
+        {
+            return create(session, memoryTrackingContext, yieldSignal, splits, true);
+        }
+
+        @Override
+        public WorkProcessorSourceOperator createAdapterOperator(
+                Session session,
+                MemoryTrackingContext memoryTrackingContext,
+                DriverYieldSignal yieldSignal,
+                WorkProcessor<Split> splits)
+        {
+            return create(session, memoryTrackingContext, yieldSignal, splits, false);
+        }
+
+        private ScanFilterAndProjectOperator create(
+                Session session,
+                MemoryTrackingContext memoryTrackingContext,
+                DriverYieldSignal yieldSignal,
+                WorkProcessor<Split> splits,
+                boolean avoidPageMaterialization)
+        {
+            return new ScanFilterAndProjectOperator(
+                    session,
+                    memoryTrackingContext,
+                    yieldSignal,
+                    splits,
+                    pageSourceProvider,
+                    cursorProcessor.get(),
+                    pageProcessor.get(),
+                    table,
+                    columns,
+                    dynamicFilter,
+                    types,
+                    minOutputPageSize,
+                    minOutputPageRowCount,
+                    avoidPageMaterialization);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
         }
     }
 
@@ -409,139 +542,6 @@ public class ScanFilterAndProjectOperator
             metrics = pageSource.getMetrics();
 
             return ProcessState.ofResult(page);
-        }
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
-    }
-
-    public static class ScanFilterAndProjectOperatorFactory
-            implements SourceOperatorFactory, AdapterWorkProcessorSourceOperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Supplier<CursorProcessor> cursorProcessor;
-        private final Supplier<PageProcessor> pageProcessor;
-        private final PlanNodeId sourceId;
-        private final PageSourceProvider pageSourceProvider;
-        private final TableHandle table;
-        private final List<ColumnHandle> columns;
-        private final DynamicFilter dynamicFilter;
-        private final List<Type> types;
-        private final DataSize minOutputPageSize;
-        private final int minOutputPageRowCount;
-        private boolean closed;
-
-        public ScanFilterAndProjectOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                PlanNodeId sourceId,
-                PageSourceProvider pageSourceProvider,
-                Supplier<CursorProcessor> cursorProcessor,
-                Supplier<PageProcessor> pageProcessor,
-                TableHandle table,
-                Iterable<ColumnHandle> columns,
-                DynamicFilter dynamicFilter,
-                List<Type> types,
-                DataSize minOutputPageSize,
-                int minOutputPageRowCount)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.cursorProcessor = requireNonNull(cursorProcessor, "cursorProcessor is null");
-            this.pageProcessor = requireNonNull(pageProcessor, "pageProcessor is null");
-            this.sourceId = requireNonNull(sourceId, "sourceId is null");
-            this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
-            this.table = requireNonNull(table, "table is null");
-            this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
-            this.dynamicFilter = dynamicFilter;
-            this.types = requireNonNull(types, "types is null");
-            this.minOutputPageSize = requireNonNull(minOutputPageSize, "minOutputPageSize is null");
-            this.minOutputPageRowCount = minOutputPageRowCount;
-        }
-
-        @Override
-        public int getOperatorId()
-        {
-            return operatorId;
-        }
-
-        @Override
-        public PlanNodeId getSourceId()
-        {
-            return sourceId;
-        }
-
-        @Override
-        public PlanNodeId getPlanNodeId()
-        {
-            return planNodeId;
-        }
-
-        @Override
-        public String getOperatorType()
-        {
-            return ScanFilterAndProjectOperator.class.getSimpleName();
-        }
-
-        @Override
-        public SourceOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, getOperatorType());
-            return new WorkProcessorSourceOperatorAdapter(operatorContext, this);
-        }
-
-        @Override
-        public WorkProcessorSourceOperator create(
-                Session session,
-                MemoryTrackingContext memoryTrackingContext,
-                DriverYieldSignal yieldSignal,
-                WorkProcessor<Split> splits)
-        {
-            return create(session, memoryTrackingContext, yieldSignal, splits, true);
-        }
-
-        @Override
-        public WorkProcessorSourceOperator createAdapterOperator(
-                Session session,
-                MemoryTrackingContext memoryTrackingContext,
-                DriverYieldSignal yieldSignal,
-                WorkProcessor<Split> splits)
-        {
-            return create(session, memoryTrackingContext, yieldSignal, splits, false);
-        }
-
-        private ScanFilterAndProjectOperator create(
-                Session session,
-                MemoryTrackingContext memoryTrackingContext,
-                DriverYieldSignal yieldSignal,
-                WorkProcessor<Split> splits,
-                boolean avoidPageMaterialization)
-        {
-            return new ScanFilterAndProjectOperator(
-                    session,
-                    memoryTrackingContext,
-                    yieldSignal,
-                    splits,
-                    pageSourceProvider,
-                    cursorProcessor.get(),
-                    pageProcessor.get(),
-                    table,
-                    columns,
-                    dynamicFilter,
-                    types,
-                    minOutputPageSize,
-                    minOutputPageRowCount,
-                    avoidPageMaterialization);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
         }
     }
 }

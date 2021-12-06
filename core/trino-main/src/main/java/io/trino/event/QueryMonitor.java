@@ -131,204 +131,6 @@ public class QueryMonitor
         this.maxJsonLimit = toIntExact(requireNonNull(config, "config is null").getMaxOutputStageJsonSize().toBytes());
     }
 
-    public void queryCreatedEvent(BasicQueryInfo queryInfo)
-    {
-        eventListenerManager.queryCreated(
-                new QueryCreatedEvent(
-                        queryInfo.getQueryStats().getCreateTime().toDate().toInstant(),
-                        createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId(), queryInfo.getQueryType()),
-                        new QueryMetadata(
-                                queryInfo.getQueryId().toString(),
-                                queryInfo.getSession().getTransactionId().map(TransactionId::toString),
-                                queryInfo.getQuery(),
-                                queryInfo.getUpdateType(),
-                                queryInfo.getPreparedQuery(),
-                                QUEUED.toString(),
-                                ImmutableList.of(),
-                                ImmutableList.of(),
-                                queryInfo.getSelf(),
-                                Optional.empty(),
-                                Optional.empty())));
-    }
-
-    public void queryImmediateFailureEvent(BasicQueryInfo queryInfo, ExecutionFailureInfo failure)
-    {
-        eventListenerManager.queryCompleted(new QueryCompletedEvent(
-                new QueryMetadata(
-                        queryInfo.getQueryId().toString(),
-                        queryInfo.getSession().getTransactionId().map(TransactionId::toString),
-                        queryInfo.getQuery(),
-                        queryInfo.getUpdateType(),
-                        queryInfo.getPreparedQuery(),
-                        queryInfo.getState().toString(),
-                        ImmutableList.of(),
-                        ImmutableList.of(),
-                        queryInfo.getSelf(),
-                        Optional.empty(),
-                        Optional.empty()),
-                new QueryStatistics(
-                        ofMillis(0),
-                        ofMillis(0),
-                        ofMillis(queryInfo.getQueryStats().getQueuedTime().toMillis()),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        ImmutableList.of(),
-                        0,
-                        true,
-                        ImmutableList.of(),
-                        ImmutableList.of(),
-                        Optional.empty()),
-                createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId(), queryInfo.getQueryType()),
-                new QueryIOMetadata(ImmutableList.of(), Optional.empty()),
-                createQueryFailureInfo(failure, Optional.empty()),
-                ImmutableList.of(),
-                ofEpochMilli(queryInfo.getQueryStats().getCreateTime().getMillis()),
-                ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis()),
-                ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis())));
-
-        logQueryTimeline(queryInfo);
-    }
-
-    public void queryCompletedEvent(QueryInfo queryInfo)
-    {
-        QueryStats queryStats = queryInfo.getQueryStats();
-        eventListenerManager.queryCompleted(
-                new QueryCompletedEvent(
-                        createQueryMetadata(queryInfo),
-                        createQueryStatistics(queryInfo),
-                        createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId(), queryInfo.getQueryType()),
-                        getQueryIOMetadata(queryInfo),
-                        createQueryFailureInfo(queryInfo.getFailureInfo(), queryInfo.getOutputStage()),
-                        queryInfo.getWarnings(),
-                        ofEpochMilli(queryStats.getCreateTime().getMillis()),
-                        ofEpochMilli(queryStats.getExecutionStartTime().getMillis()),
-                        ofEpochMilli(queryStats.getEndTime() != null ? queryStats.getEndTime().getMillis() : 0)));
-
-        logQueryTimeline(queryInfo);
-    }
-
-    private QueryMetadata createQueryMetadata(QueryInfo queryInfo)
-    {
-        return new QueryMetadata(
-                queryInfo.getQueryId().toString(),
-                queryInfo.getSession().getTransactionId().map(TransactionId::toString),
-                queryInfo.getQuery(),
-                Optional.ofNullable(queryInfo.getUpdateType()),
-                queryInfo.getPreparedQuery(),
-                queryInfo.getState().toString(),
-                queryInfo.getReferencedTables(),
-                queryInfo.getRoutines(),
-                queryInfo.getSelf(),
-                createTextQueryPlan(queryInfo),
-                queryInfo.getOutputStage().flatMap(stage -> stageInfoCodec.toJsonWithLengthLimit(stage, maxJsonLimit)));
-    }
-
-    private QueryStatistics createQueryStatistics(QueryInfo queryInfo)
-    {
-        ImmutableList.Builder<String> operatorSummaries = ImmutableList.builder();
-        for (OperatorStats summary : queryInfo.getQueryStats().getOperatorSummaries()) {
-            operatorSummaries.add(operatorStatsCodec.toJson(summary));
-        }
-
-        Optional<StatsAndCosts> planNodeStatsAndCosts = queryInfo.getOutputStage().map(StatsAndCosts::create);
-        Optional<String> serializedPlanNodeStatsAndCosts = planNodeStatsAndCosts.map(statsAndCostsCodec::toJson);
-
-        QueryStats queryStats = queryInfo.getQueryStats();
-        return new QueryStatistics(
-                ofMillis(queryStats.getTotalCpuTime().toMillis()),
-                ofMillis(queryStats.getElapsedTime().toMillis()),
-                ofMillis(queryStats.getQueuedTime().toMillis()),
-                Optional.of(ofMillis(queryStats.getTotalScheduledTime().toMillis())),
-                Optional.of(ofMillis(queryStats.getResourceWaitingTime().toMillis())),
-                Optional.of(ofMillis(queryStats.getAnalysisTime().toMillis())),
-                Optional.of(ofMillis(queryStats.getPlanningTime().toMillis())),
-                Optional.of(ofMillis(queryStats.getExecutionTime().toMillis())),
-                queryStats.getPeakUserMemoryReservation().toBytes(),
-                queryStats.getPeakNonRevocableMemoryReservation().toBytes(),
-                queryStats.getPeakTaskUserMemory().toBytes(),
-                queryStats.getPeakTaskTotalMemory().toBytes(),
-                queryStats.getPhysicalInputDataSize().toBytes(),
-                queryStats.getPhysicalInputPositions(),
-                queryStats.getInternalNetworkInputDataSize().toBytes(),
-                queryStats.getInternalNetworkInputPositions(),
-                queryStats.getRawInputDataSize().toBytes(),
-                queryStats.getRawInputPositions(),
-                queryStats.getOutputDataSize().toBytes(),
-                queryStats.getOutputPositions(),
-                queryStats.getLogicalWrittenDataSize().toBytes(),
-                queryStats.getWrittenPositions(),
-                queryStats.getCumulativeUserMemory(),
-                queryStats.getCumulativeSystemMemory(),
-                queryStats.getStageGcStatistics(),
-                queryStats.getCompletedDrivers(),
-                queryInfo.isCompleteInfo(),
-                getCpuDistributions(queryInfo),
-                operatorSummaries.build(),
-                serializedPlanNodeStatsAndCosts);
-    }
-
-    private QueryContext createQueryContext(SessionRepresentation session, Optional<ResourceGroupId> resourceGroup, Optional<QueryType> queryType)
-    {
-        return new QueryContext(
-                session.getUser(),
-                session.getPrincipal(),
-                session.getGroups(),
-                session.getTraceToken(),
-                session.getRemoteUserAddress(),
-                session.getUserAgent(),
-                session.getClientInfo(),
-                session.getClientTags(),
-                session.getClientCapabilities(),
-                session.getSource(),
-                session.getCatalog(),
-                session.getSchema(),
-                resourceGroup,
-                mergeSessionAndCatalogProperties(session),
-                session.getResourceEstimates(),
-                serverAddress,
-                serverVersion,
-                environment,
-                queryType);
-    }
-
-    private Optional<String> createTextQueryPlan(QueryInfo queryInfo)
-    {
-        try {
-            if (queryInfo.getOutputStage().isPresent()) {
-                return Optional.of(textDistributedPlan(
-                        queryInfo.getOutputStage().get(),
-                        queryInfo.getQueryStats(),
-                        new ValuePrinter(metadata, queryInfo.getSession().toSession(sessionPropertyManager)),
-                        false));
-            }
-        }
-        catch (Exception e) {
-            // Sometimes it is expected to fail. For example if generated plan is too long.
-            // Don't fail to create event if the plan cannot be created.
-            log.warn(e, "Error creating explain plan for query %s", queryInfo.getQueryId());
-        }
-        return Optional.empty();
-    }
-
     private static QueryIOMetadata getQueryIOMetadata(QueryInfo queryInfo)
     {
         Multimap<FragmentNode, OperatorStats> planNodeStats = extractPlanNodeStats(queryInfo);
@@ -428,23 +230,6 @@ public class QueryMonitor
                     }
                 },
                 ImmutableList.of());
-    }
-
-    private Optional<QueryFailureInfo> createQueryFailureInfo(ExecutionFailureInfo failureInfo, Optional<StageInfo> outputStage)
-    {
-        if (failureInfo == null) {
-            return Optional.empty();
-        }
-
-        Optional<TaskInfo> failedTask = outputStage.flatMap(QueryMonitor::findFailedTask);
-
-        return Optional.of(new QueryFailureInfo(
-                failureInfo.getErrorCode(),
-                Optional.ofNullable(failureInfo.getType()),
-                Optional.ofNullable(failureInfo.getMessage()),
-                failedTask.map(task -> task.getTaskStatus().getTaskId().toString()),
-                failedTask.map(task -> task.getTaskStatus().getSelf().getHost()),
-                executionFailureInfoCodec.toJson(failureInfo)));
     }
 
     private static Optional<TaskInfo> findFailedTask(StageInfo stageInfo)
@@ -643,6 +428,221 @@ public class QueryMonitor
                 (long) snapshot.getMax(),
                 (long) snapshot.getTotal(),
                 snapshot.getTotal() / snapshot.getCount());
+    }
+
+    public void queryCreatedEvent(BasicQueryInfo queryInfo)
+    {
+        eventListenerManager.queryCreated(
+                new QueryCreatedEvent(
+                        queryInfo.getQueryStats().getCreateTime().toDate().toInstant(),
+                        createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId(), queryInfo.getQueryType()),
+                        new QueryMetadata(
+                                queryInfo.getQueryId().toString(),
+                                queryInfo.getSession().getTransactionId().map(TransactionId::toString),
+                                queryInfo.getQuery(),
+                                queryInfo.getUpdateType(),
+                                queryInfo.getPreparedQuery(),
+                                QUEUED.toString(),
+                                ImmutableList.of(),
+                                ImmutableList.of(),
+                                queryInfo.getSelf(),
+                                Optional.empty(),
+                                Optional.empty())));
+    }
+
+    public void queryImmediateFailureEvent(BasicQueryInfo queryInfo, ExecutionFailureInfo failure)
+    {
+        eventListenerManager.queryCompleted(new QueryCompletedEvent(
+                new QueryMetadata(
+                        queryInfo.getQueryId().toString(),
+                        queryInfo.getSession().getTransactionId().map(TransactionId::toString),
+                        queryInfo.getQuery(),
+                        queryInfo.getUpdateType(),
+                        queryInfo.getPreparedQuery(),
+                        queryInfo.getState().toString(),
+                        ImmutableList.of(),
+                        ImmutableList.of(),
+                        queryInfo.getSelf(),
+                        Optional.empty(),
+                        Optional.empty()),
+                new QueryStatistics(
+                        ofMillis(0),
+                        ofMillis(0),
+                        ofMillis(queryInfo.getQueryStats().getQueuedTime().toMillis()),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        ImmutableList.of(),
+                        0,
+                        true,
+                        ImmutableList.of(),
+                        ImmutableList.of(),
+                        Optional.empty()),
+                createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId(), queryInfo.getQueryType()),
+                new QueryIOMetadata(ImmutableList.of(), Optional.empty()),
+                createQueryFailureInfo(failure, Optional.empty()),
+                ImmutableList.of(),
+                ofEpochMilli(queryInfo.getQueryStats().getCreateTime().getMillis()),
+                ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis()),
+                ofEpochMilli(queryInfo.getQueryStats().getEndTime().getMillis())));
+
+        logQueryTimeline(queryInfo);
+    }
+
+    public void queryCompletedEvent(QueryInfo queryInfo)
+    {
+        QueryStats queryStats = queryInfo.getQueryStats();
+        eventListenerManager.queryCompleted(
+                new QueryCompletedEvent(
+                        createQueryMetadata(queryInfo),
+                        createQueryStatistics(queryInfo),
+                        createQueryContext(queryInfo.getSession(), queryInfo.getResourceGroupId(), queryInfo.getQueryType()),
+                        getQueryIOMetadata(queryInfo),
+                        createQueryFailureInfo(queryInfo.getFailureInfo(), queryInfo.getOutputStage()),
+                        queryInfo.getWarnings(),
+                        ofEpochMilli(queryStats.getCreateTime().getMillis()),
+                        ofEpochMilli(queryStats.getExecutionStartTime().getMillis()),
+                        ofEpochMilli(queryStats.getEndTime() != null ? queryStats.getEndTime().getMillis() : 0)));
+
+        logQueryTimeline(queryInfo);
+    }
+
+    private QueryMetadata createQueryMetadata(QueryInfo queryInfo)
+    {
+        return new QueryMetadata(
+                queryInfo.getQueryId().toString(),
+                queryInfo.getSession().getTransactionId().map(TransactionId::toString),
+                queryInfo.getQuery(),
+                Optional.ofNullable(queryInfo.getUpdateType()),
+                queryInfo.getPreparedQuery(),
+                queryInfo.getState().toString(),
+                queryInfo.getReferencedTables(),
+                queryInfo.getRoutines(),
+                queryInfo.getSelf(),
+                createTextQueryPlan(queryInfo),
+                queryInfo.getOutputStage().flatMap(stage -> stageInfoCodec.toJsonWithLengthLimit(stage, maxJsonLimit)));
+    }
+
+    private QueryStatistics createQueryStatistics(QueryInfo queryInfo)
+    {
+        ImmutableList.Builder<String> operatorSummaries = ImmutableList.builder();
+        for (OperatorStats summary : queryInfo.getQueryStats().getOperatorSummaries()) {
+            operatorSummaries.add(operatorStatsCodec.toJson(summary));
+        }
+
+        Optional<StatsAndCosts> planNodeStatsAndCosts = queryInfo.getOutputStage().map(StatsAndCosts::create);
+        Optional<String> serializedPlanNodeStatsAndCosts = planNodeStatsAndCosts.map(statsAndCostsCodec::toJson);
+
+        QueryStats queryStats = queryInfo.getQueryStats();
+        return new QueryStatistics(
+                ofMillis(queryStats.getTotalCpuTime().toMillis()),
+                ofMillis(queryStats.getElapsedTime().toMillis()),
+                ofMillis(queryStats.getQueuedTime().toMillis()),
+                Optional.of(ofMillis(queryStats.getTotalScheduledTime().toMillis())),
+                Optional.of(ofMillis(queryStats.getResourceWaitingTime().toMillis())),
+                Optional.of(ofMillis(queryStats.getAnalysisTime().toMillis())),
+                Optional.of(ofMillis(queryStats.getPlanningTime().toMillis())),
+                Optional.of(ofMillis(queryStats.getExecutionTime().toMillis())),
+                queryStats.getPeakUserMemoryReservation().toBytes(),
+                queryStats.getPeakNonRevocableMemoryReservation().toBytes(),
+                queryStats.getPeakTaskUserMemory().toBytes(),
+                queryStats.getPeakTaskTotalMemory().toBytes(),
+                queryStats.getPhysicalInputDataSize().toBytes(),
+                queryStats.getPhysicalInputPositions(),
+                queryStats.getInternalNetworkInputDataSize().toBytes(),
+                queryStats.getInternalNetworkInputPositions(),
+                queryStats.getRawInputDataSize().toBytes(),
+                queryStats.getRawInputPositions(),
+                queryStats.getOutputDataSize().toBytes(),
+                queryStats.getOutputPositions(),
+                queryStats.getLogicalWrittenDataSize().toBytes(),
+                queryStats.getWrittenPositions(),
+                queryStats.getCumulativeUserMemory(),
+                queryStats.getCumulativeSystemMemory(),
+                queryStats.getStageGcStatistics(),
+                queryStats.getCompletedDrivers(),
+                queryInfo.isCompleteInfo(),
+                getCpuDistributions(queryInfo),
+                operatorSummaries.build(),
+                serializedPlanNodeStatsAndCosts);
+    }
+
+    private QueryContext createQueryContext(SessionRepresentation session, Optional<ResourceGroupId> resourceGroup, Optional<QueryType> queryType)
+    {
+        return new QueryContext(
+                session.getUser(),
+                session.getPrincipal(),
+                session.getGroups(),
+                session.getTraceToken(),
+                session.getRemoteUserAddress(),
+                session.getUserAgent(),
+                session.getClientInfo(),
+                session.getClientTags(),
+                session.getClientCapabilities(),
+                session.getSource(),
+                session.getCatalog(),
+                session.getSchema(),
+                resourceGroup,
+                mergeSessionAndCatalogProperties(session),
+                session.getResourceEstimates(),
+                serverAddress,
+                serverVersion,
+                environment,
+                queryType);
+    }
+
+    private Optional<String> createTextQueryPlan(QueryInfo queryInfo)
+    {
+        try {
+            if (queryInfo.getOutputStage().isPresent()) {
+                return Optional.of(textDistributedPlan(
+                        queryInfo.getOutputStage().get(),
+                        queryInfo.getQueryStats(),
+                        new ValuePrinter(metadata, queryInfo.getSession().toSession(sessionPropertyManager)),
+                        false));
+            }
+        }
+        catch (Exception e) {
+            // Sometimes it is expected to fail. For example if generated plan is too long.
+            // Don't fail to create event if the plan cannot be created.
+            log.warn(e, "Error creating explain plan for query %s", queryInfo.getQueryId());
+        }
+        return Optional.empty();
+    }
+
+    private Optional<QueryFailureInfo> createQueryFailureInfo(ExecutionFailureInfo failureInfo, Optional<StageInfo> outputStage)
+    {
+        if (failureInfo == null) {
+            return Optional.empty();
+        }
+
+        Optional<TaskInfo> failedTask = outputStage.flatMap(QueryMonitor::findFailedTask);
+
+        return Optional.of(new QueryFailureInfo(
+                failureInfo.getErrorCode(),
+                Optional.ofNullable(failureInfo.getType()),
+                Optional.ofNullable(failureInfo.getMessage()),
+                failedTask.map(task -> task.getTaskStatus().getTaskId().toString()),
+                failedTask.map(task -> task.getTaskStatus().getSelf().getHost()),
+                executionFailureInfoCodec.toJson(failureInfo)));
     }
 
     private static class FragmentNode

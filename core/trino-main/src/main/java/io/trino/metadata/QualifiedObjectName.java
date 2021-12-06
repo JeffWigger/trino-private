@@ -34,6 +34,17 @@ import static java.util.Objects.requireNonNull;
 @Immutable
 public class QualifiedObjectName
 {
+    private final String catalogName;
+    private final String schemaName;
+    private final String objectName;
+    public QualifiedObjectName(String catalogName, String schemaName, String objectName)
+    {
+        checkObjectName(catalogName, schemaName, objectName);
+        this.catalogName = catalogName;
+        this.schemaName = schemaName;
+        this.objectName = objectName;
+    }
+
     @JsonCreator
     public static QualifiedObjectName valueOf(String name)
     {
@@ -45,16 +56,9 @@ public class QualifiedObjectName
         return new QualifiedObjectName(ids.get(0), ids.get(1), ids.get(2));
     }
 
-    private final String catalogName;
-    private final String schemaName;
-    private final String objectName;
-
-    public QualifiedObjectName(String catalogName, String schemaName, String objectName)
+    public static Function<SchemaTableName, QualifiedObjectName> convertFromSchemaTableName(String catalogName)
     {
-        checkObjectName(catalogName, schemaName, objectName);
-        this.catalogName = catalogName;
-        this.schemaName = schemaName;
-        this.objectName = objectName;
+        return input -> new QualifiedObjectName(catalogName, input.getSchemaName(), input.getTableName());
     }
 
     public String getCatalogName()
@@ -123,10 +127,5 @@ public class QualifiedObjectName
     public String toString()
     {
         return catalogName + '.' + schemaName + '.' + objectName;
-    }
-
-    public static Function<SchemaTableName, QualifiedObjectName> convertFromSchemaTableName(String catalogName)
-    {
-        return input -> new QualifiedObjectName(catalogName, input.getSchemaName(), input.getTableName());
     }
 }

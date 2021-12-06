@@ -106,6 +106,15 @@ public class OptimizeMixedDistinctAggregations
             this.metadata = requireNonNull(metadata, "metadata is null");
         }
 
+        // creates if clause specific to use case here, default value always null
+        private static IfExpression createIfExpression(Expression left, Expression right, ComparisonExpression.Operator operator, Expression result, Type trueValueType)
+        {
+            return new IfExpression(
+                    new ComparisonExpression(operator, left, right),
+                    result,
+                    new Cast(new NullLiteral(), toSqlType(trueValueType)));
+        }
+
         @Override
         public PlanNode visitAggregation(AggregationNode node, RewriteContext<Optional<AggregateInfo>> context)
         {
@@ -459,15 +468,6 @@ public class OptimizeMixedDistinctAggregations
                     SINGLE,
                     originalNode.getHashSymbol(),
                     Optional.empty());
-        }
-
-        // creates if clause specific to use case here, default value always null
-        private static IfExpression createIfExpression(Expression left, Expression right, ComparisonExpression.Operator operator, Expression result, Type trueValueType)
-        {
-            return new IfExpression(
-                    new ComparisonExpression(operator, left, right),
-                    result,
-                    new Cast(new NullLiteral(), toSqlType(trueValueType)));
         }
     }
 

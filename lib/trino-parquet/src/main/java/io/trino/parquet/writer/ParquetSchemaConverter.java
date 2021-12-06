@@ -54,8 +54,8 @@ import static org.apache.parquet.schema.Type.Repetition.OPTIONAL;
 
 public class ParquetSchemaConverter
 {
-    private Map<List<String>, Type> primitiveTypes = new HashMap<>();
     private final MessageType messageType;
+    private Map<List<String>, Type> primitiveTypes = new HashMap<>();
 
     public ParquetSchemaConverter(List<Type> types, List<String> columnNames)
     {

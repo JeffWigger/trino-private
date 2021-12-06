@@ -34,26 +34,6 @@ public class BlockBuilderStatus
         this.pageBuilderStatus = requireNonNull(pageBuilderStatus, "pageBuilderStatus must not be null");
     }
 
-    public int getMaxPageSizeInBytes()
-    {
-        return pageBuilderStatus.getMaxPageSizeInBytes();
-    }
-
-    public void addBytes(int bytes)
-    {
-        currentSize += bytes;
-        pageBuilderStatus.addBytes(bytes);
-    }
-
-    @Override
-    public String toString()
-    {
-        StringBuilder buffer = new StringBuilder("BlockBuilderStatus{");
-        buffer.append(", currentSize=").append(currentSize);
-        buffer.append('}');
-        return buffer.toString();
-    }
-
     /**
      * Computes the size of an instance of this class assuming that all reference fields are non-null
      */
@@ -79,5 +59,25 @@ public class BlockBuilderStatus
             }
         }
         return size;
+    }
+
+    public int getMaxPageSizeInBytes()
+    {
+        return pageBuilderStatus.getMaxPageSizeInBytes();
+    }
+
+    public void addBytes(int bytes)
+    {
+        currentSize += bytes;
+        pageBuilderStatus.addBytes(bytes);
+    }
+
+    @Override
+    public String toString()
+    {
+        StringBuilder buffer = new StringBuilder("BlockBuilderStatus{");
+        buffer.append(", currentSize=").append(currentSize);
+        buffer.append('}');
+        return buffer.toString();
     }
 }

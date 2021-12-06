@@ -23,14 +23,30 @@ import static java.util.Objects.requireNonNull;
 public class DateStatisticsBuilder
         implements LongValueStatisticsBuilder
 {
+    private final BloomFilterBuilder bloomFilterBuilder;
     private long nonNullValueCount;
     private int minimum = Integer.MAX_VALUE;
     private int maximum = Integer.MIN_VALUE;
-    private final BloomFilterBuilder bloomFilterBuilder;
 
     public DateStatisticsBuilder(BloomFilterBuilder bloomFilterBuilder)
     {
         this.bloomFilterBuilder = requireNonNull(bloomFilterBuilder, "bloomFilterBuilder is nulll");
+    }
+
+    public static Optional<DateStatistics> mergeDateStatistics(List<ColumnStatistics> stats)
+    {
+        DateStatisticsBuilder dateStatisticsBuilder = new DateStatisticsBuilder(new NoOpBloomFilterBuilder());
+        for (ColumnStatistics columnStatistics : stats) {
+            DateStatistics partialStatistics = columnStatistics.getDateStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null) {
+                    // there are non null values but no statistics, so we cannot say anything about the data
+                    return Optional.empty();
+                }
+                dateStatisticsBuilder.addDateStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return dateStatisticsBuilder.buildDateStatistics();
     }
 
     @Override
@@ -79,21 +95,5 @@ public class DateStatisticsBuilder
                 null,
                 null,
                 bloomFilterBuilder.buildBloomFilter());
-    }
-
-    public static Optional<DateStatistics> mergeDateStatistics(List<ColumnStatistics> stats)
-    {
-        DateStatisticsBuilder dateStatisticsBuilder = new DateStatisticsBuilder(new NoOpBloomFilterBuilder());
-        for (ColumnStatistics columnStatistics : stats) {
-            DateStatistics partialStatistics = columnStatistics.getDateStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null) {
-                    // there are non null values but no statistics, so we cannot say anything about the data
-                    return Optional.empty();
-                }
-                dateStatisticsBuilder.addDateStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return dateStatisticsBuilder.buildDateStatistics();
     }
 }

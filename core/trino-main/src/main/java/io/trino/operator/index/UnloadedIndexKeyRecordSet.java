@@ -109,6 +109,17 @@ public class UnloadedIndexKeyRecordSet
         pageAndPositions = builder.build();
     }
 
+    private static boolean containsNullValue(int position, Page page)
+    {
+        for (int channel = 0; channel < page.getChannelCount(); channel++) {
+            Block block = page.getBlock(channel);
+            if (block.isNull(position)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public List<Type> getColumnTypes()
     {
@@ -119,17 +130,6 @@ public class UnloadedIndexKeyRecordSet
     public UnloadedIndexKeyRecordCursor cursor()
     {
         return new UnloadedIndexKeyRecordCursor(types, pageAndPositions);
-    }
-
-    private static boolean containsNullValue(int position, Page page)
-    {
-        for (int channel = 0; channel < page.getChannelCount(); channel++) {
-            Block block = page.getBlock(channel);
-            if (block.isNull(position)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public static class UnloadedIndexKeyRecordCursor

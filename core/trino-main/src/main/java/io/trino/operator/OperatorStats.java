@@ -201,6 +201,22 @@ public class OperatorStats
         this.info = info;
     }
 
+    @SuppressWarnings("unchecked")
+    private static Mergeable<OperatorInfo> getMergeableInfoOrNull(OperatorInfo info)
+    {
+        Mergeable<OperatorInfo> base = null;
+        if (info instanceof Mergeable) {
+            base = (Mergeable<OperatorInfo>) info;
+        }
+        return base;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Mergeable<T> mergeInfo(Mergeable<T> base, T other)
+    {
+        return (Mergeable<T>) base.mergeWith(other);
+    }
+
     @JsonProperty
     public int getStageId()
     {
@@ -604,22 +620,6 @@ public class OperatorStats
                 blockedReason,
 
                 (OperatorInfo) base);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Mergeable<OperatorInfo> getMergeableInfoOrNull(OperatorInfo info)
-    {
-        Mergeable<OperatorInfo> base = null;
-        if (info instanceof Mergeable) {
-            base = (Mergeable<OperatorInfo>) info;
-        }
-        return base;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> Mergeable<T> mergeInfo(Mergeable<T> base, T other)
-    {
-        return (Mergeable<T>) base.mergeWith(other);
     }
 
     public OperatorStats summarize()

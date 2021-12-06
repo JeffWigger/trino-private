@@ -69,6 +69,15 @@ public class StructColumnWriter
         this.presentStream = new PresentOutputStream(compression, bufferSize);
     }
 
+    private static List<Integer> createStructColumnPositionList(
+            boolean compressed,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        return positionList.build();
+    }
+
     @Override
     public List<ColumnWriter> getNestedColumnWriters()
     {
@@ -200,15 +209,6 @@ public class StructColumnWriter
     public List<StreamDataOutput> getBloomFilters(CompressedMetadataWriter metadataWriter)
     {
         return ImmutableList.of();
-    }
-
-    private static List<Integer> createStructColumnPositionList(
-            boolean compressed,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        return positionList.build();
     }
 
     @Override

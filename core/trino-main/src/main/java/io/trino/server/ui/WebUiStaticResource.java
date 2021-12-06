@@ -35,6 +35,16 @@ import static javax.ws.rs.core.Response.Status.NOT_FOUND;
 @Path("")
 public class WebUiStaticResource
 {
+    private static boolean isCanonical(String fullPath)
+    {
+        try {
+            return new URI(fullPath).normalize().getPath().equals(fullPath);
+        }
+        catch (URISyntaxException e) {
+            return false;
+        }
+    }
+
     @ResourceSecurity(PUBLIC)
     @GET
     @Path("/")
@@ -104,15 +114,5 @@ public class WebUiStaticResource
         }
 
         return Response.ok(resource.openStream(), servletContext.getMimeType(resource.toString())).build();
-    }
-
-    private static boolean isCanonical(String fullPath)
-    {
-        try {
-            return new URI(fullPath).normalize().getPath().equals(fullPath);
-        }
-        catch (URISyntaxException e) {
-            return false;
-        }
     }
 }

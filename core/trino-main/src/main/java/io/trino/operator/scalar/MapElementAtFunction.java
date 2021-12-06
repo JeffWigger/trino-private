@@ -69,43 +69,6 @@ public class MapElementAtFunction
                 SCALAR));
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return FunctionDependencyDeclaration.builder()
-                .addOperatorSignature(EQUAL, ImmutableList.of(new TypeSignature("K"), new TypeSignature("K")))
-                .build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V");
-
-        MethodHandle methodHandle;
-        if (keyType.getJavaType() == boolean.class) {
-            methodHandle = METHOD_HANDLE_BOOLEAN;
-        }
-        else if (keyType.getJavaType() == long.class) {
-            methodHandle = METHOD_HANDLE_LONG;
-        }
-        else if (keyType.getJavaType() == double.class) {
-            methodHandle = METHOD_HANDLE_DOUBLE;
-        }
-        else {
-            methodHandle = METHOD_HANDLE_OBJECT;
-        }
-        methodHandle = methodHandle.bindTo(valueType);
-        methodHandle = methodHandle.asType(methodHandle.type().changeReturnType(Primitives.wrap(valueType.getJavaType())));
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                NULLABLE_RETURN,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Object elementAt(Type valueType, Block map, boolean key)
     {
@@ -148,5 +111,42 @@ public class MapElementAtFunction
             return null;
         }
         return readNativeValue(valueType, mapBlock, valuePosition);
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return FunctionDependencyDeclaration.builder()
+                .addOperatorSignature(EQUAL, ImmutableList.of(new TypeSignature("K"), new TypeSignature("K")))
+                .build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V");
+
+        MethodHandle methodHandle;
+        if (keyType.getJavaType() == boolean.class) {
+            methodHandle = METHOD_HANDLE_BOOLEAN;
+        }
+        else if (keyType.getJavaType() == long.class) {
+            methodHandle = METHOD_HANDLE_LONG;
+        }
+        else if (keyType.getJavaType() == double.class) {
+            methodHandle = METHOD_HANDLE_DOUBLE;
+        }
+        else {
+            methodHandle = METHOD_HANDLE_OBJECT;
+        }
+        methodHandle = methodHandle.bindTo(valueType);
+        methodHandle = methodHandle.asType(methodHandle.type().changeReturnType(Primitives.wrap(valueType.getJavaType())));
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                NULLABLE_RETURN,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL),
+                methodHandle);
     }
 }

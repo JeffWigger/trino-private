@@ -120,6 +120,28 @@ public class AddLocalExchanges
         return result.getNode();
     }
 
+    private static class PlanWithProperties
+    {
+        private final PlanNode node;
+        private final StreamProperties properties;
+
+        public PlanWithProperties(PlanNode node, StreamProperties properties)
+        {
+            this.node = requireNonNull(node, "node is null");
+            this.properties = requireNonNull(properties, "properties is null");
+        }
+
+        public PlanNode getNode()
+        {
+            return node;
+        }
+
+        public StreamProperties getProperties()
+        {
+            return properties;
+        }
+    }
+
     private class Rewriter
             extends PlanVisitor<PlanWithProperties, StreamPreferredProperties>
     {
@@ -882,28 +904,6 @@ public class AddLocalExchanges
         private PlanWithProperties deriveProperties(PlanNode result, List<StreamProperties> inputProperties)
         {
             return new PlanWithProperties(result, StreamPropertyDerivations.deriveProperties(result, inputProperties, metadata, typeOperators, session, types, typeAnalyzer));
-        }
-    }
-
-    private static class PlanWithProperties
-    {
-        private final PlanNode node;
-        private final StreamProperties properties;
-
-        public PlanWithProperties(PlanNode node, StreamProperties properties)
-        {
-            this.node = requireNonNull(node, "node is null");
-            this.properties = requireNonNull(properties, "properties is null");
-        }
-
-        public PlanNode getNode()
-        {
-            return node;
-        }
-
-        public StreamProperties getProperties()
-        {
-            return properties;
         }
     }
 }

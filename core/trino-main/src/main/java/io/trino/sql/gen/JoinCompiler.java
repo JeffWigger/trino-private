@@ -112,68 +112,6 @@ public class JoinCompiler
         this.typeOperators = requireNonNull(typeOperators, "typeOperators is null");
     }
 
-    @Managed
-    @Nested
-    public CacheStatsMBean getLookupSourceStats()
-    {
-        return new CacheStatsMBean(lookupSourceFactories);
-    }
-
-    @Managed
-    @Nested
-    public CacheStatsMBean getHashStrategiesStats()
-    {
-        return new CacheStatsMBean(hashStrategies);
-    }
-
-    public LookupSourceSupplierFactory compileLookupSourceFactory(List<? extends Type> types, List<Integer> joinChannels, Optional<Integer> sortChannel, Optional<List<Integer>> outputChannels)
-    {
-        return lookupSourceFactories.getUnchecked(new CacheKey(
-                types,
-                outputChannels.orElse(rangeList(types.size())),
-                joinChannels,
-                sortChannel));
-    }
-
-    public PagesHashStrategyFactory compilePagesHashStrategyFactory(List<Type> types, List<Integer> joinChannels)
-    {
-        return compilePagesHashStrategyFactory(types, joinChannels, Optional.empty());
-    }
-
-    public PagesHashStrategyFactory compilePagesHashStrategyFactory(List<Type> types, List<Integer> joinChannels, Optional<List<Integer>> outputChannels)
-    {
-        requireNonNull(types, "types is null");
-        requireNonNull(joinChannels, "joinChannels is null");
-        requireNonNull(outputChannels, "outputChannels is null");
-
-        return new PagesHashStrategyFactory(hashStrategies.getUnchecked(new CacheKey(
-                types,
-                outputChannels.orElse(rangeList(types.size())),
-                joinChannels,
-                Optional.empty())));
-    }
-
-    private List<Integer> rangeList(int endExclusive)
-    {
-        return IntStream.range(0, endExclusive)
-                .boxed()
-                .collect(toImmutableList());
-    }
-
-    private LookupSourceSupplierFactory internalCompileLookupSourceFactory(List<Type> types, List<Integer> outputChannels, List<Integer> joinChannels, Optional<Integer> sortChannel)
-    {
-        Class<? extends PagesHashStrategy> pagesHashStrategyClass = internalCompileHashStrategy(types, outputChannels, joinChannels, sortChannel);
-
-        Class<? extends LookupSourceSupplier> joinHashSupplierClass = IsolatedClass.isolateClass(
-                new DynamicClassLoader(getClass().getClassLoader()),
-                LookupSourceSupplier.class,
-                JoinHashSupplier.class,
-                JoinHash.class,
-                PagesHash.class);
-
-        return new LookupSourceSupplierFactory(joinHashSupplierClass, new PagesHashStrategyFactory(pagesHashStrategyClass));
-    }
-
     private static FieldDefinition generateInstanceSize(ClassDefinition definition)
     {
         // Store instance size in static field
@@ -187,54 +125,6 @@ public class JoinCompiler
                 .intToLong()
                 .putStaticField(instanceSize);
         return instanceSize;
-    }
-
-    private Class<? extends PagesHashStrategy> internalCompileHashStrategy(List<Type> types, List<Integer> outputChannels, List<Integer> joinChannels, Optional<Integer> sortChannel)
-    {
-        CallSiteBinder callSiteBinder = new CallSiteBinder();
-
-        ClassDefinition classDefinition = new ClassDefinition(
-                a(PUBLIC, FINAL),
-                makeClassName("PagesHashStrategy"),
-                type(Object.class),
-                type(PagesHashStrategy.class));
-
-        FieldDefinition instanceSizeField = generateInstanceSize(classDefinition);
-        FieldDefinition sizeField = classDefinition.declareField(a(PRIVATE, FINAL), "size", type(long.class));
-        List<FieldDefinition> channelFields = new ArrayList<>();
-        for (int i = 0; i < types.size(); i++) {
-            FieldDefinition channelField = classDefinition.declareField(a(PRIVATE, FINAL), "channel_" + i, type(List.class, Block.class));
-            channelFields.add(channelField);
-        }
-        List<Type> joinChannelTypes = new ArrayList<>();
-        List<FieldDefinition> joinChannelFields = new ArrayList<>();
-        for (int i = 0; i < joinChannels.size(); i++) {
-            joinChannelTypes.add(types.get(joinChannels.get(i)));
-            FieldDefinition channelField = classDefinition.declareField(a(PRIVATE, FINAL), "joinChannel_" + i, type(List.class, Block.class));
-            joinChannelFields.add(channelField);
-        }
-        FieldDefinition hashChannelField = classDefinition.declareField(a(PRIVATE, FINAL), "hashChannel", type(List.class, Block.class));
-
-        generateConstructor(classDefinition, joinChannels, sizeField, instanceSizeField, channelFields, joinChannelFields, hashChannelField);
-        generateGetChannelCountMethod(classDefinition, outputChannels.size());
-        generateGetSizeInBytesMethod(classDefinition, sizeField);
-        generateAppendToMethod(classDefinition, callSiteBinder, types, outputChannels, channelFields);
-        generateHashPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, hashChannelField);
-        generateHashRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
-        generateRowEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
-        generateRowNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
-        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
-        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
-        generatePositionNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
-        generatePositionNotDistinctFromRowWithPageMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
-        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
-        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
-        generatePositionNotDistinctFromPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
-        generateIsPositionNull(classDefinition, joinChannelFields);
-        generateCompareSortChannelPositionsMethod(classDefinition, callSiteBinder, types, channelFields, sortChannel);
-        generateIsSortChannelPositionNull(classDefinition, channelFields, sortChannel);
-
-        return defineClass(classDefinition, PagesHashStrategy.class, callSiteBinder.getBindings(), getClass().getClassLoader());
     }
 
     private static void generateConstructor(
@@ -316,9 +206,9 @@ public class JoinCompiler
     private static void generateGetChannelCountMethod(ClassDefinition classDefinition, int outputChannelCount)
     {
         classDefinition.declareMethod(
-                a(PUBLIC),
-                "getChannelCount",
-                type(int.class))
+                        a(PUBLIC),
+                        "getChannelCount",
+                        type(int.class))
                 .getBody()
                 .push(outputChannelCount)
                 .retInt();
@@ -402,6 +292,153 @@ public class JoinCompiler
                 .append(constantFalse().ret());
     }
 
+    private static void generateIsSortChannelPositionNull(
+            ClassDefinition classDefinition,
+            List<FieldDefinition> channelFields,
+            Optional<Integer> sortChannel)
+    {
+        Parameter blockIndex = arg("blockIndex", int.class);
+        Parameter blockPosition = arg("blockPosition", int.class);
+        MethodDefinition isSortChannelPositionNullMethod = classDefinition.declareMethod(
+                a(PUBLIC),
+                "isSortChannelPositionNull",
+                type(boolean.class),
+                blockIndex,
+                blockPosition);
+
+        if (sortChannel.isEmpty()) {
+            isSortChannelPositionNullMethod.getBody()
+                    .append(newInstance(UnsupportedOperationException.class))
+                    .throwObject();
+            return;
+        }
+
+        Variable thisVariable = isSortChannelPositionNullMethod.getThis();
+
+        int index = sortChannel.get();
+
+        BytecodeExpression block = thisVariable
+                .getField(channelFields.get(index))
+                .invoke("get", Object.class, blockIndex)
+                .cast(Block.class);
+
+        BytecodeNode isNull = block.invoke("isNull", boolean.class, blockPosition).ret();
+
+        isSortChannelPositionNullMethod
+                .getBody()
+                .append(isNull);
+    }
+
+    @Managed
+    @Nested
+    public CacheStatsMBean getLookupSourceStats()
+    {
+        return new CacheStatsMBean(lookupSourceFactories);
+    }
+
+    @Managed
+    @Nested
+    public CacheStatsMBean getHashStrategiesStats()
+    {
+        return new CacheStatsMBean(hashStrategies);
+    }
+
+    public LookupSourceSupplierFactory compileLookupSourceFactory(List<? extends Type> types, List<Integer> joinChannels, Optional<Integer> sortChannel, Optional<List<Integer>> outputChannels)
+    {
+        return lookupSourceFactories.getUnchecked(new CacheKey(
+                types,
+                outputChannels.orElse(rangeList(types.size())),
+                joinChannels,
+                sortChannel));
+    }
+
+    public PagesHashStrategyFactory compilePagesHashStrategyFactory(List<Type> types, List<Integer> joinChannels)
+    {
+        return compilePagesHashStrategyFactory(types, joinChannels, Optional.empty());
+    }
+
+    public PagesHashStrategyFactory compilePagesHashStrategyFactory(List<Type> types, List<Integer> joinChannels, Optional<List<Integer>> outputChannels)
+    {
+        requireNonNull(types, "types is null");
+        requireNonNull(joinChannels, "joinChannels is null");
+        requireNonNull(outputChannels, "outputChannels is null");
+
+        return new PagesHashStrategyFactory(hashStrategies.getUnchecked(new CacheKey(
+                types,
+                outputChannels.orElse(rangeList(types.size())),
+                joinChannels,
+                Optional.empty())));
+    }
+
+    private List<Integer> rangeList(int endExclusive)
+    {
+        return IntStream.range(0, endExclusive)
+                .boxed()
+                .collect(toImmutableList());
+    }
+
+    private LookupSourceSupplierFactory internalCompileLookupSourceFactory(List<Type> types, List<Integer> outputChannels, List<Integer> joinChannels, Optional<Integer> sortChannel)
+    {
+        Class<? extends PagesHashStrategy> pagesHashStrategyClass = internalCompileHashStrategy(types, outputChannels, joinChannels, sortChannel);
+
+        Class<? extends LookupSourceSupplier> joinHashSupplierClass = IsolatedClass.isolateClass(
+                new DynamicClassLoader(getClass().getClassLoader()),
+                LookupSourceSupplier.class,
+                JoinHashSupplier.class,
+                JoinHash.class,
+                PagesHash.class);
+
+        return new LookupSourceSupplierFactory(joinHashSupplierClass, new PagesHashStrategyFactory(pagesHashStrategyClass));
+    }
+
+    private Class<? extends PagesHashStrategy> internalCompileHashStrategy(List<Type> types, List<Integer> outputChannels, List<Integer> joinChannels, Optional<Integer> sortChannel)
+    {
+        CallSiteBinder callSiteBinder = new CallSiteBinder();
+
+        ClassDefinition classDefinition = new ClassDefinition(
+                a(PUBLIC, FINAL),
+                makeClassName("PagesHashStrategy"),
+                type(Object.class),
+                type(PagesHashStrategy.class));
+
+        FieldDefinition instanceSizeField = generateInstanceSize(classDefinition);
+        FieldDefinition sizeField = classDefinition.declareField(a(PRIVATE, FINAL), "size", type(long.class));
+        List<FieldDefinition> channelFields = new ArrayList<>();
+        for (int i = 0; i < types.size(); i++) {
+            FieldDefinition channelField = classDefinition.declareField(a(PRIVATE, FINAL), "channel_" + i, type(List.class, Block.class));
+            channelFields.add(channelField);
+        }
+        List<Type> joinChannelTypes = new ArrayList<>();
+        List<FieldDefinition> joinChannelFields = new ArrayList<>();
+        for (int i = 0; i < joinChannels.size(); i++) {
+            joinChannelTypes.add(types.get(joinChannels.get(i)));
+            FieldDefinition channelField = classDefinition.declareField(a(PRIVATE, FINAL), "joinChannel_" + i, type(List.class, Block.class));
+            joinChannelFields.add(channelField);
+        }
+        FieldDefinition hashChannelField = classDefinition.declareField(a(PRIVATE, FINAL), "hashChannel", type(List.class, Block.class));
+
+        generateConstructor(classDefinition, joinChannels, sizeField, instanceSizeField, channelFields, joinChannelFields, hashChannelField);
+        generateGetChannelCountMethod(classDefinition, outputChannels.size());
+        generateGetSizeInBytesMethod(classDefinition, sizeField);
+        generateAppendToMethod(classDefinition, callSiteBinder, types, outputChannels, channelFields);
+        generateHashPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, hashChannelField);
+        generateHashRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
+        generateRowEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
+        generateRowNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
+        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
+        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
+        generatePositionNotDistinctFromRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
+        generatePositionNotDistinctFromRowWithPageMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
+        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
+        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
+        generatePositionNotDistinctFromPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
+        generateIsPositionNull(classDefinition, joinChannelFields);
+        generateCompareSortChannelPositionsMethod(classDefinition, callSiteBinder, types, channelFields, sortChannel);
+        generateIsSortChannelPositionNull(classDefinition, channelFields, sortChannel);
+
+        return defineClass(classDefinition, PagesHashStrategy.class, callSiteBinder.getBindings(), getClass().getClassLoader());
+    }
+
     private void generateHashPositionMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, List<Type> joinChannelTypes, List<FieldDefinition> joinChannelFields, FieldDefinition hashChannelField)
     {
         Parameter blockIndex = arg("blockIndex", int.class);
@@ -421,10 +458,10 @@ public class JoinCompiler
         ifStatement.condition(notEqual(hashChannel, constantNull(hashChannelField.getType())));
         ifStatement.ifTrue(
                 bigintType.invoke(
-                        "getLong",
-                        long.class,
-                        hashChannel.invoke("get", Object.class, blockIndex).cast(Block.class),
-                        blockPosition)
+                                "getLong",
+                                long.class,
+                                hashChannel.invoke("get", Object.class, blockIndex).cast(Block.class),
+                                blockPosition)
                         .ret());
 
         hashPositionMethod
@@ -929,43 +966,6 @@ public class JoinCompiler
         compareMethod
                 .getBody()
                 .append(comparison);
-    }
-
-    private static void generateIsSortChannelPositionNull(
-            ClassDefinition classDefinition,
-            List<FieldDefinition> channelFields,
-            Optional<Integer> sortChannel)
-    {
-        Parameter blockIndex = arg("blockIndex", int.class);
-        Parameter blockPosition = arg("blockPosition", int.class);
-        MethodDefinition isSortChannelPositionNullMethod = classDefinition.declareMethod(
-                a(PUBLIC),
-                "isSortChannelPositionNull",
-                type(boolean.class),
-                blockIndex,
-                blockPosition);
-
-        if (sortChannel.isEmpty()) {
-            isSortChannelPositionNullMethod.getBody()
-                    .append(newInstance(UnsupportedOperationException.class))
-                    .throwObject();
-            return;
-        }
-
-        Variable thisVariable = isSortChannelPositionNullMethod.getThis();
-
-        int index = sortChannel.get();
-
-        BytecodeExpression block = thisVariable
-                .getField(channelFields.get(index))
-                .invoke("get", Object.class, blockIndex)
-                .cast(Block.class);
-
-        BytecodeNode isNull = block.invoke("isNull", boolean.class, blockPosition).ret();
-
-        isSortChannelPositionNullMethod
-                .getBody()
-                .append(isNull);
     }
 
     private BytecodeNode typeEquals(

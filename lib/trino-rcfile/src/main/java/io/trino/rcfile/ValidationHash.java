@@ -38,29 +38,14 @@ class ValidationHash
     private static final MethodHandle MAP_HASH;
     private static final MethodHandle ARRAY_HASH;
     private static final MethodHandle ROW_HASH;
-
-    static {
-        try {
-            MAP_HASH = lookup().findStatic(
-                    ValidationHash.class,
-                    "mapSkipNullKeysHash",
-                    MethodType.methodType(long.class, Type.class, ValidationHash.class, ValidationHash.class, Block.class, int.class));
-            ARRAY_HASH = lookup().findStatic(
-                    ValidationHash.class,
-                    "arrayHash",
-                    MethodType.methodType(long.class, Type.class, ValidationHash.class, Block.class, int.class));
-            ROW_HASH = lookup().findStatic(
-                    ValidationHash.class,
-                    "rowHash",
-                    MethodType.methodType(long.class, Type.class, ValidationHash[].class, Block.class, int.class));
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     // This should really come from the environment, but there is not good way to get a value here
     private static final TypeOperators VALIDATION_TYPE_OPERATORS_CACHE = new TypeOperators();
+    private final MethodHandle hashCodeOperator;
+
+    private ValidationHash(MethodHandle hashCodeOperator)
+    {
+        this.hashCodeOperator = requireNonNull(hashCodeOperator, "hashCodeOperator is null");
+    }
 
     public static ValidationHash createValidationHash(Type type)
     {
@@ -84,27 +69,6 @@ class ValidationHash
         }
 
         return new ValidationHash(VALIDATION_TYPE_OPERATORS_CACHE.getHashCodeOperator(type, InvocationConvention.simpleConvention(FAIL_ON_NULL, BLOCK_POSITION)));
-    }
-
-    private final MethodHandle hashCodeOperator;
-
-    private ValidationHash(MethodHandle hashCodeOperator)
-    {
-        this.hashCodeOperator = requireNonNull(hashCodeOperator, "hashCodeOperator is null");
-    }
-
-    public long hash(Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return NULL_HASH_CODE;
-        }
-        try {
-            return (long) hashCodeOperator.invokeExact(block, position);
-        }
-        catch (Throwable throwable) {
-            throwIfUnchecked(throwable);
-            throw new RuntimeException(throwable);
-        }
     }
 
     private static long mapSkipNullKeysHash(Type type, ValidationHash keyHash, ValidationHash valueHash, Block block, int position)
@@ -138,5 +102,39 @@ class ValidationHash
             hash = 31 * hash + fieldHashes[i].hash(row, i);
         }
         return hash;
+    }
+
+    public long hash(Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return NULL_HASH_CODE;
+        }
+        try {
+            return (long) hashCodeOperator.invokeExact(block, position);
+        }
+        catch (Throwable throwable) {
+            throwIfUnchecked(throwable);
+            throw new RuntimeException(throwable);
+        }
+    }
+
+    static {
+        try {
+            MAP_HASH = lookup().findStatic(
+                    ValidationHash.class,
+                    "mapSkipNullKeysHash",
+                    MethodType.methodType(long.class, Type.class, ValidationHash.class, ValidationHash.class, Block.class, int.class));
+            ARRAY_HASH = lookup().findStatic(
+                    ValidationHash.class,
+                    "arrayHash",
+                    MethodType.methodType(long.class, Type.class, ValidationHash.class, Block.class, int.class));
+            ROW_HASH = lookup().findStatic(
+                    ValidationHash.class,
+                    "rowHash",
+                    MethodType.methodType(long.class, Type.class, ValidationHash[].class, Block.class, int.class));
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

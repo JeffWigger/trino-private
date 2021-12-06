@@ -30,12 +30,6 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 public class HandleJsonModule
         implements Module
 {
-    @Override
-    public void configure(Binder binder)
-    {
-        binder.bind(HandleResolver.class).in(Scopes.SINGLETON);
-    }
-
     @ProvidesIntoSet
     public static com.fasterxml.jackson.databind.Module tableHandleModule(HandleResolver resolver)
     {
@@ -88,5 +82,11 @@ public class HandleJsonModule
     public static com.fasterxml.jackson.databind.Module partitioningHandleModule(HandleResolver resolver)
     {
         return new AbstractTypedJacksonModule<>(ConnectorPartitioningHandle.class, resolver::getId, resolver::getPartitioningHandleClass) {};
+    }
+
+    @Override
+    public void configure(Binder binder)
+    {
+        binder.bind(HandleResolver.class).in(Scopes.SINGLETON);
     }
 }

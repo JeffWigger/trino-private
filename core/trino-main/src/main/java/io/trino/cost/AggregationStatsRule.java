@@ -40,29 +40,6 @@ public class AggregationStatsRule
         super(normalizer);
     }
 
-    @Override
-    public Pattern<AggregationNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    protected Optional<PlanNodeStatsEstimate> doCalculate(AggregationNode node, StatsProvider statsProvider, Lookup lookup, Session session, TypeProvider types)
-    {
-        if (node.getGroupingSetCount() != 1) {
-            return Optional.empty();
-        }
-
-        if (node.getStep() != SINGLE) {
-            return Optional.empty();
-        }
-
-        return Optional.of(groupBy(
-                statsProvider.getStats(node.getSource()),
-                node.getGroupingKeys(),
-                node.getAggregations()));
-    }
-
     public static PlanNodeStatsEstimate groupBy(PlanNodeStatsEstimate sourceStats, Collection<Symbol> groupBySymbols, Map<Symbol, Aggregation> aggregations)
     {
         PlanNodeStatsEstimate.Builder result = PlanNodeStatsEstimate.builder();
@@ -104,5 +81,28 @@ public class AggregationStatsRule
 
         // TODO implement simple aggregations like: min, max, count, sum
         return SymbolStatsEstimate.unknown();
+    }
+
+    @Override
+    public Pattern<AggregationNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    protected Optional<PlanNodeStatsEstimate> doCalculate(AggregationNode node, StatsProvider statsProvider, Lookup lookup, Session session, TypeProvider types)
+    {
+        if (node.getGroupingSetCount() != 1) {
+            return Optional.empty();
+        }
+
+        if (node.getStep() != SINGLE) {
+            return Optional.empty();
+        }
+
+        return Optional.of(groupBy(
+                statsProvider.getStats(node.getSource()),
+                node.getGroupingKeys(),
+                node.getAggregations()));
     }
 }

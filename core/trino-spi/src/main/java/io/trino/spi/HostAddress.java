@@ -65,12 +65,11 @@ public class HostAddress
      * Magic value indicating the absence of a port number.
      */
     private static final int NO_PORT = -1;
-
+    private static final Pattern BRACKET_PATTERN = Pattern.compile("^\\[(.*:.*)\\](?::(\\d*))?$");
     /**
      * Hostname, IPv4/IPv6 literal, or unvalidated nonsense.
      */
     private final String host;
-
     /**
      * Validated port number in the range [0..65535], or NO_PORT
      */
@@ -80,49 +79,6 @@ public class HostAddress
     {
         this.host = host;
         this.port = port;
-    }
-
-    /**
-     * Returns the portion of this {@code HostAddress} instance that should
-     * represent the hostname or IPv4/IPv6 literal.
-     * <p>
-     * <p>A successful parse does not imply any degree of sanity in this field.
-     * For additional validation, see the {@link com.google.common.net.HostSpecifier} class.
-     */
-    public String getHostText()
-    {
-        return host;
-    }
-
-    /**
-     * Return true if this instance has a defined port.
-     */
-    public boolean hasPort()
-    {
-        return port >= 0;
-    }
-
-    /**
-     * Get the current port number, failing if no port is defined.
-     *
-     * @return a validated port number, in the range [0..65535]
-     * @throws IllegalStateException if no port is defined.  You can use
-     * {@link #withDefaultPort(int)} to prevent this from occurring.
-     */
-    public int getPort()
-    {
-        if (!hasPort()) {
-            throw new IllegalStateException("no port");
-        }
-        return port;
-    }
-
-    /**
-     * Returns the current port number, with a default if no port is defined.
-     */
-    public int getPortOrDefault(int defaultPort)
-    {
-        return hasPort() ? port : defaultPort;
     }
 
     /**
@@ -147,8 +103,6 @@ public class HostAddress
         }
         return new HostAddress(parsedHost.host, port);
     }
-
-    private static final Pattern BRACKET_PATTERN = Pattern.compile("^\\[(.*:.*)\\](?::(\\d*))?$");
 
     /**
      * Split a freeform string into a host and port, without strict validation.
@@ -223,6 +177,57 @@ public class HostAddress
     }
 
     /**
+     * Return true for valid port numbers.
+     */
+    private static boolean isValidPort(int port)
+    {
+        return port >= 0 && port <= 65535;
+    }
+
+    /**
+     * Returns the portion of this {@code HostAddress} instance that should
+     * represent the hostname or IPv4/IPv6 literal.
+     * <p>
+     * <p>A successful parse does not imply any degree of sanity in this field.
+     * For additional validation, see the {@link com.google.common.net.HostSpecifier} class.
+     */
+    public String getHostText()
+    {
+        return host;
+    }
+
+    /**
+     * Return true if this instance has a defined port.
+     */
+    public boolean hasPort()
+    {
+        return port >= 0;
+    }
+
+    /**
+     * Get the current port number, failing if no port is defined.
+     *
+     * @return a validated port number, in the range [0..65535]
+     * @throws IllegalStateException if no port is defined.  You can use
+     * {@link #withDefaultPort(int)} to prevent this from occurring.
+     */
+    public int getPort()
+    {
+        if (!hasPort()) {
+            throw new IllegalStateException("no port");
+        }
+        return port;
+    }
+
+    /**
+     * Returns the current port number, with a default if no port is defined.
+     */
+    public int getPortOrDefault(int defaultPort)
+    {
+        return hasPort() ? port : defaultPort;
+    }
+
+    /**
      * Provide a default port if the parsed string contained only a host.
      * <p>
      * You can chain this after {@link #fromString(String)} to include a port in
@@ -294,13 +299,5 @@ public class HostAddress
             builder.append(':').append(port);
         }
         return builder.toString();
-    }
-
-    /**
-     * Return true for valid port numbers.
-     */
-    private static boolean isValidPort(int port)
-    {
-        return port >= 0 && port <= 65535;
     }
 }

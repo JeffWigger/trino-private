@@ -61,12 +61,10 @@ public class PagesSpatialIndexFactory
 
     @GuardedBy("this")
     private final List<SettableFuture<PagesSpatialIndex>> pagesSpatialIndexFutures = new ArrayList<>();
-
+    private final SettableFuture<Void> destroyed = SettableFuture.create();
     @GuardedBy("this")
     @Nullable
     private Supplier<PagesSpatialIndex> pagesSpatialIndex;
-
-    private final SettableFuture<Void> destroyed = SettableFuture.create();
 
     public PagesSpatialIndexFactory(List<Type> types, List<Type> outputTypes)
     {

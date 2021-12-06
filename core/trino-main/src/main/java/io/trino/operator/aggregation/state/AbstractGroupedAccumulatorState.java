@@ -20,14 +20,14 @@ public abstract class AbstractGroupedAccumulatorState
 {
     private long groupId;
 
+    protected final long getGroupId()
+    {
+        return groupId;
+    }
+
     @Override
     public final void setGroupId(long groupId)
     {
         this.groupId = groupId;
-    }
-
-    protected final long getGroupId()
-    {
-        return groupId;
     }
 }

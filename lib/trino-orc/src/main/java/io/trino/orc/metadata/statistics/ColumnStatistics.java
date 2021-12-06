@@ -74,6 +74,33 @@ public class ColumnStatistics
         this.bloomFilter = bloomFilter;
     }
 
+    public static ColumnStatistics mergeColumnStatistics(List<ColumnStatistics> stats)
+    {
+        long numberOfRows = stats.stream()
+                .mapToLong(ColumnStatistics::getNumberOfValues)
+                .sum();
+
+        long minAverageValueBytes = 0;
+        if (numberOfRows > 0) {
+            minAverageValueBytes = stats.stream()
+                    .mapToLong(s -> s.getMinAverageValueSizeInBytes() * s.getNumberOfValues())
+                    .sum() / numberOfRows;
+        }
+
+        return new ColumnStatistics(
+                numberOfRows,
+                minAverageValueBytes,
+                mergeBooleanStatistics(stats).orElse(null),
+                mergeIntegerStatistics(stats).orElse(null),
+                mergeDoubleStatistics(stats).orElse(null),
+                mergeStringStatistics(stats).orElse(null),
+                mergeDateStatistics(stats).orElse(null),
+                mergeTimestampStatistics(stats).orElse(null),
+                mergeDecimalStatistics(stats).orElse(null),
+                mergeBinaryStatistics(stats).orElse(null),
+                null);
+    }
+
     public boolean hasNumberOfValues()
     {
         return hasNumberOfValues;
@@ -265,32 +292,5 @@ public class ColumnStatistics
                 .putOptionalHashable(decimalStatistics)
                 .putOptionalHashable(binaryStatistics)
                 .putOptionalHashable(bloomFilter);
-    }
-
-    public static ColumnStatistics mergeColumnStatistics(List<ColumnStatistics> stats)
-    {
-        long numberOfRows = stats.stream()
-                .mapToLong(ColumnStatistics::getNumberOfValues)
-                .sum();
-
-        long minAverageValueBytes = 0;
-        if (numberOfRows > 0) {
-            minAverageValueBytes = stats.stream()
-                    .mapToLong(s -> s.getMinAverageValueSizeInBytes() * s.getNumberOfValues())
-                    .sum() / numberOfRows;
-        }
-
-        return new ColumnStatistics(
-                numberOfRows,
-                minAverageValueBytes,
-                mergeBooleanStatistics(stats).orElse(null),
-                mergeIntegerStatistics(stats).orElse(null),
-                mergeDoubleStatistics(stats).orElse(null),
-                mergeStringStatistics(stats).orElse(null),
-                mergeDateStatistics(stats).orElse(null),
-                mergeTimestampStatistics(stats).orElse(null),
-                mergeDecimalStatistics(stats).orElse(null),
-                mergeBinaryStatistics(stats).orElse(null),
-                null);
     }
 }

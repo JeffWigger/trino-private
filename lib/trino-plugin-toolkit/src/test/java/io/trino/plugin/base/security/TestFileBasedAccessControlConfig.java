@@ -34,6 +34,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class TestFileBasedAccessControlConfig
 {
+    private static FileBasedAccessControlConfig newInstance(Map<String, String> properties)
+    {
+        ConfigurationFactory configurationFactory = new ConfigurationFactory(properties);
+        return configurationFactory.build(FileBasedAccessControlConfig.class);
+    }
+
     @Test
     public void testDefaults()
     {
@@ -77,11 +83,5 @@ public class TestFileBasedAccessControlConfig
                 .hasMessageContaining("Invalid configuration property security.refresh-period");
 
         newInstance(ImmutableMap.of(SECURITY_CONFIG_FILE, securityConfigFile.toString()));
-    }
-
-    private static FileBasedAccessControlConfig newInstance(Map<String, String> properties)
-    {
-        ConfigurationFactory configurationFactory = new ConfigurationFactory(properties);
-        return configurationFactory.build(FileBasedAccessControlConfig.class);
     }
 }

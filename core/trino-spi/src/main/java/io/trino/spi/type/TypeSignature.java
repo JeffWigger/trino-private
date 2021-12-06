@@ -58,6 +58,66 @@ public final class TypeSignature
         this.calculated = parameters.stream().anyMatch(TypeSignatureParameter::isCalculated);
     }
 
+    private static void checkArgument(boolean argument, String format, Object... args)
+    {
+        if (!argument) {
+            throw new IllegalArgumentException(format(format, args));
+        }
+    }
+
+    private static boolean validateName(String name)
+    {
+        return name.chars().noneMatch(c -> c == '<' || c == '>' || c == ',');
+    }
+
+    public static TypeSignature arrayType(TypeSignature elementType)
+    {
+        return new TypeSignature(StandardTypes.ARRAY, typeParameter(elementType));
+    }
+
+    public static TypeSignature arrayType(TypeSignatureParameter elementType)
+    {
+        return new TypeSignature(StandardTypes.ARRAY, elementType);
+    }
+
+    public static TypeSignature mapType(TypeSignature keyType, TypeSignature valueType)
+    {
+        return new TypeSignature(StandardTypes.MAP, typeParameter(keyType), typeParameter(valueType));
+    }
+
+    public static TypeSignature parametricType(String name, TypeSignature... parameters)
+    {
+        return new TypeSignature(
+                name,
+                Arrays.stream(parameters)
+                        .map(TypeSignatureParameter::typeParameter)
+                        .collect(toUnmodifiableList()));
+    }
+
+    public static TypeSignature functionType(TypeSignature first, TypeSignature... rest)
+    {
+        List<TypeSignatureParameter> parameters = new ArrayList<>();
+        parameters.add(typeParameter(first));
+
+        Arrays.stream(rest)
+                .map(TypeSignatureParameter::typeParameter)
+                .forEach(parameters::add);
+
+        return new TypeSignature("function", parameters);
+    }
+
+    public static TypeSignature rowType(TypeSignatureParameter... fields)
+    {
+        return rowType(Arrays.asList(fields));
+    }
+
+    public static TypeSignature rowType(List<TypeSignatureParameter> fields)
+    {
+        checkArgument(fields.stream().allMatch(parameter -> parameter.getKind() == ParameterKind.NAMED_TYPE), "Parameters for ROW type must be NAMED_TYPE parameters");
+
+        return new TypeSignature(StandardTypes.ROW, fields);
+    }
+
     public String getBase()
     {
         return base;
@@ -67,6 +127,8 @@ public final class TypeSignature
     {
         return parameters;
     }
+
+    // Type signature constructors for common types
 
     public List<TypeSignature> getTypeParametersAsTypeSignatures()
     {
@@ -134,18 +196,6 @@ public final class TypeSignature
         return typeName.toString();
     }
 
-    private static void checkArgument(boolean argument, String format, Object... args)
-    {
-        if (!argument) {
-            throw new IllegalArgumentException(format(format, args));
-        }
-    }
-
-    private static boolean validateName(String name)
-    {
-        return name.chars().noneMatch(c -> c == '<' || c == '>' || c == ',');
-    }
-
     @Override
     public boolean equals(Object o)
     {
@@ -175,55 +225,5 @@ public final class TypeSignature
         }
 
         return hash;
-    }
-
-    // Type signature constructors for common types
-
-    public static TypeSignature arrayType(TypeSignature elementType)
-    {
-        return new TypeSignature(StandardTypes.ARRAY, typeParameter(elementType));
-    }
-
-    public static TypeSignature arrayType(TypeSignatureParameter elementType)
-    {
-        return new TypeSignature(StandardTypes.ARRAY, elementType);
-    }
-
-    public static TypeSignature mapType(TypeSignature keyType, TypeSignature valueType)
-    {
-        return new TypeSignature(StandardTypes.MAP, typeParameter(keyType), typeParameter(valueType));
-    }
-
-    public static TypeSignature parametricType(String name, TypeSignature... parameters)
-    {
-        return new TypeSignature(
-                name,
-                Arrays.stream(parameters)
-                        .map(TypeSignatureParameter::typeParameter)
-                        .collect(toUnmodifiableList()));
-    }
-
-    public static TypeSignature functionType(TypeSignature first, TypeSignature... rest)
-    {
-        List<TypeSignatureParameter> parameters = new ArrayList<>();
-        parameters.add(typeParameter(first));
-
-        Arrays.stream(rest)
-                .map(TypeSignatureParameter::typeParameter)
-                .forEach(parameters::add);
-
-        return new TypeSignature("function", parameters);
-    }
-
-    public static TypeSignature rowType(TypeSignatureParameter... fields)
-    {
-        return rowType(Arrays.asList(fields));
-    }
-
-    public static TypeSignature rowType(List<TypeSignatureParameter> fields)
-    {
-        checkArgument(fields.stream().allMatch(parameter -> parameter.getKind() == ParameterKind.NAMED_TYPE), "Parameters for ROW type must be NAMED_TYPE parameters");
-
-        return new TypeSignature(StandardTypes.ROW, fields);
     }
 }

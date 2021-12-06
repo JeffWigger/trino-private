@@ -18,24 +18,10 @@ import static java.util.Objects.requireNonNull;
 
 public class Stream
 {
-    public enum StreamKind
-    {
-        PRESENT,
-        DATA,
-        LENGTH,
-        DICTIONARY_DATA,
-        DICTIONARY_COUNT,
-        SECONDARY,
-        ROW_INDEX,
-        BLOOM_FILTER,
-        BLOOM_FILTER_UTF8,
-    }
-
     private final OrcColumnId columnId;
     private final StreamKind streamKind;
     private final int length;
     private final boolean useVInts;
-
     public Stream(OrcColumnId columnId, StreamKind streamKind, int length, boolean useVInts)
     {
         this.columnId = columnId;
@@ -73,5 +59,18 @@ public class Stream
                 .add("length", length)
                 .add("useVInts", useVInts)
                 .toString();
+    }
+
+    public enum StreamKind
+    {
+        PRESENT,
+        DATA,
+        LENGTH,
+        DICTIONARY_DATA,
+        DICTIONARY_COUNT,
+        SECONDARY,
+        ROW_INDEX,
+        BLOOM_FILTER,
+        BLOOM_FILTER_UTF8,
     }
 }

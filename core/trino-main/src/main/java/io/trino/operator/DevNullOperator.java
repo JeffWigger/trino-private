@@ -21,39 +21,8 @@ import static java.util.Objects.requireNonNull;
 public class DevNullOperator
         implements Operator
 {
-    public static class DevNullOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-
-        public DevNullOperatorFactory(int operatorId, PlanNodeId planNodeId)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            return new DevNullOperator(driverContext.addOperatorContext(operatorId, planNodeId, DevNullOperator.class.getSimpleName()));
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new DevNullOperatorFactory(operatorId, planNodeId);
-        }
-    }
-
     private final OperatorContext context;
     private boolean finished;
-
     public DevNullOperator(OperatorContext context)
     {
         this.context = requireNonNull(context, "context is null");
@@ -92,5 +61,35 @@ public class DevNullOperator
     public boolean isFinished()
     {
         return finished;
+    }
+
+    public static class DevNullOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+
+        public DevNullOperatorFactory(int operatorId, PlanNodeId planNodeId)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            return new DevNullOperator(driverContext.addOperatorContext(operatorId, planNodeId, DevNullOperator.class.getSimpleName()));
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new DevNullOperatorFactory(operatorId, planNodeId);
+        }
     }
 }

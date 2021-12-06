@@ -52,6 +52,43 @@ public class OrderingScheme
         this.orderings = ImmutableMap.copyOf(orderings);
     }
 
+    public static OrderingScheme fromOrderBy(OrderBy orderBy)
+    {
+        List<Symbol> orderBySymbols = orderBy.getSortItems().stream()
+                .map(SortItem::getSortKey)
+                .map(Symbol::from)
+                .collect(toImmutableList());
+
+        ImmutableList.Builder<Symbol> symbols = ImmutableList.builder();
+        Map<Symbol, SortOrder> orders = new HashMap<>();
+        for (int i = 0; i < orderBySymbols.size(); i++) {
+            Symbol symbol = orderBySymbols.get(i);
+            // for multiple sort items based on the same expression, retain the first one:
+            // ORDER BY x DESC, x ASC, y --> ORDER BY x DESC, y
+            if (!orders.containsKey(symbol)) {
+                symbols.add(symbol);
+                orders.put(symbol, sortItemToSortOrder(orderBy.getSortItems().get(i)));
+            }
+        }
+
+        return new OrderingScheme(symbols.build(), orders);
+    }
+
+    public static SortOrder sortItemToSortOrder(SortItem sortItem)
+    {
+        if (sortItem.getOrdering() == Ordering.ASCENDING) {
+            if (sortItem.getNullOrdering() == NullOrdering.FIRST) {
+                return SortOrder.ASC_NULLS_FIRST;
+            }
+            return SortOrder.ASC_NULLS_LAST;
+        }
+
+        if (sortItem.getNullOrdering() == NullOrdering.FIRST) {
+            return SortOrder.DESC_NULLS_FIRST;
+        }
+        return SortOrder.DESC_NULLS_LAST;
+    }
+
     @JsonProperty
     public List<Symbol> getOrderBy()
     {
@@ -104,43 +141,6 @@ public class OrderingScheme
                 .add("orderBy", orderBy)
                 .add("orderings", orderings)
                 .toString();
-    }
-
-    public static OrderingScheme fromOrderBy(OrderBy orderBy)
-    {
-        List<Symbol> orderBySymbols = orderBy.getSortItems().stream()
-                .map(SortItem::getSortKey)
-                .map(Symbol::from)
-                .collect(toImmutableList());
-
-        ImmutableList.Builder<Symbol> symbols = ImmutableList.builder();
-        Map<Symbol, SortOrder> orders = new HashMap<>();
-        for (int i = 0; i < orderBySymbols.size(); i++) {
-            Symbol symbol = orderBySymbols.get(i);
-            // for multiple sort items based on the same expression, retain the first one:
-            // ORDER BY x DESC, x ASC, y --> ORDER BY x DESC, y
-            if (!orders.containsKey(symbol)) {
-                symbols.add(symbol);
-                orders.put(symbol, sortItemToSortOrder(orderBy.getSortItems().get(i)));
-            }
-        }
-
-        return new OrderingScheme(symbols.build(), orders);
-    }
-
-    public static SortOrder sortItemToSortOrder(SortItem sortItem)
-    {
-        if (sortItem.getOrdering() == Ordering.ASCENDING) {
-            if (sortItem.getNullOrdering() == NullOrdering.FIRST) {
-                return SortOrder.ASC_NULLS_FIRST;
-            }
-            return SortOrder.ASC_NULLS_LAST;
-        }
-
-        if (sortItem.getNullOrdering() == NullOrdering.FIRST) {
-            return SortOrder.DESC_NULLS_FIRST;
-        }
-        return SortOrder.DESC_NULLS_LAST;
     }
 
     public List<io.trino.spi.connector.SortItem> toSortItems()

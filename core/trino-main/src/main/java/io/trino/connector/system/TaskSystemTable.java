@@ -91,6 +91,31 @@ public class TaskSystemTable
         this.nodeId = nodeInfo.getNodeId();
     }
 
+    private static Long toMillis(Duration duration)
+    {
+        if (duration == null) {
+            return null;
+        }
+        return duration.toMillis();
+    }
+
+    private static Long toBytes(DataSize dataSize)
+    {
+        if (dataSize == null) {
+            return null;
+        }
+        return dataSize.toBytes();
+    }
+
+    private static Long toTimestampWithTimeZoneMillis(DateTime dateTime)
+    {
+        if (dateTime == null) {
+            return null;
+        }
+        // dateTime.getZone() is the server zone, should be of no interest to the user
+        return packDateTimeWithZone(dateTime.getMillis(), UTC_KEY);
+    }
+
     @Override
     public Distribution getDistribution()
     {
@@ -145,30 +170,5 @@ public class TaskSystemTable
                     toTimestampWithTimeZoneMillis(stats.getEndTime()));
         }
         return table.build().cursor();
-    }
-
-    private static Long toMillis(Duration duration)
-    {
-        if (duration == null) {
-            return null;
-        }
-        return duration.toMillis();
-    }
-
-    private static Long toBytes(DataSize dataSize)
-    {
-        if (dataSize == null) {
-            return null;
-        }
-        return dataSize.toBytes();
-    }
-
-    private static Long toTimestampWithTimeZoneMillis(DateTime dateTime)
-    {
-        if (dateTime == null) {
-            return null;
-        }
-        // dateTime.getZone() is the server zone, should be of no interest to the user
-        return packDateTimeWithZone(dateTime.getMillis(), UTC_KEY);
     }
 }

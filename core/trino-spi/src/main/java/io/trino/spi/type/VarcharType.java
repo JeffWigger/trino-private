@@ -42,11 +42,25 @@ import static java.util.Collections.singletonList;
 public final class VarcharType
         extends AbstractVariableWidthType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(VarcharType.class, lookup(), Slice.class);
-
     public static final int UNBOUNDED_LENGTH = Integer.MAX_VALUE;
     public static final int MAX_LENGTH = Integer.MAX_VALUE - 1;
     public static final VarcharType VARCHAR = new VarcharType(UNBOUNDED_LENGTH);
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(VarcharType.class, lookup(), Slice.class);
+    private final int length;
+
+    private VarcharType(int length)
+    {
+        super(
+                new TypeSignature(
+                        StandardTypes.VARCHAR,
+                        singletonList(TypeSignatureParameter.numericParameter((long) length))),
+                Slice.class);
+
+        if (length < 0) {
+            throw new IllegalArgumentException("Invalid VARCHAR length " + length);
+        }
+        this.length = length;
+    }
 
     public static VarcharType createUnboundedVarcharType()
     {
@@ -67,20 +81,47 @@ public final class VarcharType
         return new TypeSignature(StandardTypes.VARCHAR, TypeSignatureParameter.typeVariable(param));
     }
 
-    private final int length;
-
-    private VarcharType(int length)
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(Slice left, Slice right)
     {
-        super(
-                new TypeSignature(
-                        StandardTypes.VARCHAR,
-                        singletonList(TypeSignatureParameter.numericParameter((long) length))),
-                Slice.class);
+        return left.equals(right);
+    }
 
-        if (length < 0) {
-            throw new IllegalArgumentException("Invalid VARCHAR length " + length);
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
+    {
+        int leftLength = leftBlock.getSliceLength(leftPosition);
+        int rightLength = rightBlock.getSliceLength(rightPosition);
+        if (leftLength != rightLength) {
+            return false;
         }
-        this.length = length;
+        return leftBlock.equals(leftPosition, 0, rightBlock, rightPosition, 0, leftLength);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(Slice value)
+    {
+        return XxHash64.hash(value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(@BlockPosition Block block, @BlockIndex int position)
+    {
+        return block.hash(position, 0, block.getSliceLength(position));
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(Slice left, Slice right)
+    {
+        return left.compareTo(right);
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
+    {
+        int leftLength = leftBlock.getSliceLength(leftPosition);
+        int rightLength = rightBlock.getSliceLength(rightPosition);
+        return leftBlock.compareTo(leftPosition, 0, leftLength, rightBlock, rightPosition, 0, rightLength);
     }
 
     public Optional<Integer> getLength()
@@ -224,48 +265,5 @@ public final class VarcharType
     public int hashCode()
     {
         return Objects.hash(length);
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(Slice left, Slice right)
-    {
-        return left.equals(right);
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
-    {
-        int leftLength = leftBlock.getSliceLength(leftPosition);
-        int rightLength = rightBlock.getSliceLength(rightPosition);
-        if (leftLength != rightLength) {
-            return false;
-        }
-        return leftBlock.equals(leftPosition, 0, rightBlock, rightPosition, 0, leftLength);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(Slice value)
-    {
-        return XxHash64.hash(value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(@BlockPosition Block block, @BlockIndex int position)
-    {
-        return block.hash(position, 0, block.getSliceLength(position));
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(Slice left, Slice right)
-    {
-        return left.compareTo(right);
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(@BlockPosition Block leftBlock, @BlockIndex int leftPosition, @BlockPosition Block rightBlock, @BlockIndex int rightPosition)
-    {
-        int leftLength = leftBlock.getSliceLength(leftPosition);
-        int rightLength = rightBlock.getSliceLength(rightPosition);
-        return leftBlock.compareTo(leftPosition, 0, leftLength, rightBlock, rightPosition, 0, rightLength);
     }
 }

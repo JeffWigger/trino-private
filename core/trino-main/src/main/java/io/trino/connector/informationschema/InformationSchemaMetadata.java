@@ -93,6 +93,16 @@ public class InformationSchemaMetadata
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
+    public static Set<QualifiedTablePrefix> defaultPrefixes(String catalogName)
+    {
+        return ImmutableSet.of(new QualifiedTablePrefix(catalogName));
+    }
+
+    public static boolean isTablesEnumeratingTable(InformationSchemaTable table)
+    {
+        return ImmutableSet.of(COLUMNS, VIEWS, TABLES, TABLE_PRIVILEGES).contains(table);
+    }
+
     @Override
     public List<String> listSchemaNames(ConnectorSession session)
     {
@@ -217,11 +227,6 @@ public class InformationSchemaMetadata
         return Optional.of(new ConstraintApplicationResult<>(table, constraint.getSummary(), false));
     }
 
-    public static Set<QualifiedTablePrefix> defaultPrefixes(String catalogName)
-    {
-        return ImmutableSet.of(new QualifiedTablePrefix(catalogName));
-    }
-
     private Set<QualifiedTablePrefix> getPrefixes(ConnectorSession session, InformationSchemaTableHandle table, Constraint constraint)
     {
         if (constraint.getSummary().isNone()) {
@@ -246,11 +251,6 @@ public class InformationSchemaMetadata
         }
 
         return prefixes;
-    }
-
-    public static boolean isTablesEnumeratingTable(InformationSchemaTable table)
-    {
-        return ImmutableSet.of(COLUMNS, VIEWS, TABLES, TABLE_PRIVILEGES).contains(table);
     }
 
     private Optional<Set<String>> calculateRoles(

@@ -161,6 +161,35 @@ public class DecorrelateUnnest
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
+    /**
+     * This rule supports decorrelation of UnnestNode meeting certain conditions:
+     * - the UnnestNode should be based on correlation symbols, that is: either unnest correlation symbols directly,
+     * or unnest symbols produced by a projection that uses only correlation symbols.
+     * - the UnnestNode should not have any replicate symbols,
+     * - the UnnestNode should be of type INNER or LEFT,
+     * - the UnnestNode should not have a filter.
+     */
+    private static boolean isSupportedUnnest(PlanNode node, List<Symbol> correlation, Lookup lookup)
+    {
+        if (!(node instanceof UnnestNode)) {
+            return false;
+        }
+
+        UnnestNode unnestNode = (UnnestNode) node;
+        List<Symbol> unnestSymbols = unnestNode.getMappings().stream()
+                .map(UnnestNode.Mapping::getInput)
+                .collect(toImmutableList());
+        PlanNode unnestSource = lookup.resolve(unnestNode.getSource());
+        boolean basedOnCorrelation = ImmutableSet.copyOf(correlation).containsAll(unnestSymbols) ||
+                unnestSource instanceof ProjectNode && ImmutableSet.copyOf(correlation).containsAll(SymbolsExtractor.extractUnique(((ProjectNode) unnestSource).getAssignments().getExpressions()));
+
+        return isScalar(unnestNode.getSource(), lookup) &&
+                unnestNode.getReplicateSymbols().isEmpty() &&
+                basedOnCorrelation &&
+                (unnestNode.getJoinType() == INNER || unnestNode.getJoinType() == LEFT) &&
+                (unnestNode.getFilter().isEmpty() || unnestNode.getFilter().get().equals(TRUE_LITERAL));
+    }
+
     @Override
     public Pattern<CorrelatedJoinNode> getPattern()
     {
@@ -278,35 +307,6 @@ public class DecorrelateUnnest
 
         // restrict outputs
         return Result.ofPlanNode(restrictOutputs(context.getIdAllocator(), rewrittenPlan, ImmutableSet.copyOf(correlatedJoinNode.getOutputSymbols())).orElse(rewrittenPlan));
-    }
-
-    /**
-     * This rule supports decorrelation of UnnestNode meeting certain conditions:
-     * - the UnnestNode should be based on correlation symbols, that is: either unnest correlation symbols directly,
-     * or unnest symbols produced by a projection that uses only correlation symbols.
-     * - the UnnestNode should not have any replicate symbols,
-     * - the UnnestNode should be of type INNER or LEFT,
-     * - the UnnestNode should not have a filter.
-     */
-    private static boolean isSupportedUnnest(PlanNode node, List<Symbol> correlation, Lookup lookup)
-    {
-        if (!(node instanceof UnnestNode)) {
-            return false;
-        }
-
-        UnnestNode unnestNode = (UnnestNode) node;
-        List<Symbol> unnestSymbols = unnestNode.getMappings().stream()
-                .map(UnnestNode.Mapping::getInput)
-                .collect(toImmutableList());
-        PlanNode unnestSource = lookup.resolve(unnestNode.getSource());
-        boolean basedOnCorrelation = ImmutableSet.copyOf(correlation).containsAll(unnestSymbols) ||
-                unnestSource instanceof ProjectNode && ImmutableSet.copyOf(correlation).containsAll(SymbolsExtractor.extractUnique(((ProjectNode) unnestSource).getAssignments().getExpressions()));
-
-        return isScalar(unnestNode.getSource(), lookup) &&
-                unnestNode.getReplicateSymbols().isEmpty() &&
-                basedOnCorrelation &&
-                (unnestNode.getJoinType() == INNER || unnestNode.getJoinType() == LEFT) &&
-                (unnestNode.getFilter().isEmpty() || unnestNode.getFilter().get().equals(TRUE_LITERAL));
     }
 
     private static class Rewriter

@@ -87,33 +87,6 @@ public final class MapConcatFunction
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        if (functionBinding.getArity() < 2) {
-            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more concatenation arguments to " + FUNCTION_NAME);
-        }
-
-        MapType mapType = (MapType) functionBinding.getBoundSignature().getReturnType();
-        Type keyType = mapType.getKeyType();
-        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
-        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
-
-        MethodHandleAndConstructor methodHandleAndConstructor = generateVarArgsToArrayAdapter(
-                Block.class,
-                Block.class,
-                functionBinding.getArity(),
-                MethodHandles.insertArguments(METHOD_HANDLE, 0, mapType, keyEqual, keyHashCode),
-                USER_STATE_FACTORY.bindTo(mapType));
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                nCopies(functionBinding.getArity(), NEVER_NULL),
-                methodHandleAndConstructor.getMethodHandle(),
-                Optional.of(methodHandleAndConstructor.getConstructor()));
-    }
-
     @UsedByGeneratedCode
     public static Object createMapState(MapType mapType)
     {
@@ -179,5 +152,32 @@ public final class MapConcatFunction
         mapBlockBuilder.closeEntry();
         pageBuilder.declarePosition();
         return mapType.getObject(mapBlockBuilder, mapBlockBuilder.getPositionCount() - 1);
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        if (functionBinding.getArity() < 2) {
+            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more concatenation arguments to " + FUNCTION_NAME);
+        }
+
+        MapType mapType = (MapType) functionBinding.getBoundSignature().getReturnType();
+        Type keyType = mapType.getKeyType();
+        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
+        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
+
+        MethodHandleAndConstructor methodHandleAndConstructor = generateVarArgsToArrayAdapter(
+                Block.class,
+                Block.class,
+                functionBinding.getArity(),
+                MethodHandles.insertArguments(METHOD_HANDLE, 0, mapType, keyEqual, keyHashCode),
+                USER_STATE_FACTORY.bindTo(mapType));
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                nCopies(functionBinding.getArity(), NEVER_NULL),
+                methodHandleAndConstructor.getMethodHandle(),
+                Optional.of(methodHandleAndConstructor.getConstructor()));
     }
 }

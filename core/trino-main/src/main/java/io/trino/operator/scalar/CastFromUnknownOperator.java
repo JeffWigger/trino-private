@@ -45,6 +45,12 @@ public final class CastFromUnknownOperator
                 false);
     }
 
+    @UsedByGeneratedCode
+    public static Object handleNonNull(boolean arg)
+    {
+        throw new IllegalArgumentException("value of unknown type should always be null");
+    }
+
     @Override
     protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -55,11 +61,5 @@ public final class CastFromUnknownOperator
                 FAIL_ON_NULL,
                 ImmutableList.of(NEVER_NULL),
                 methodHandle);
-    }
-
-    @UsedByGeneratedCode
-    public static Object handleNonNull(boolean arg)
-    {
-        throw new IllegalArgumentException("value of unknown type should always be null");
     }
 }

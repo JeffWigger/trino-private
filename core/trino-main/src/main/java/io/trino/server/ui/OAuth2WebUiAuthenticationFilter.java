@@ -60,6 +60,11 @@ public class OAuth2WebUiAuthenticationFilter
         this.principalField = oauth2Config.getPrincipalField();
     }
 
+    private static boolean isValidPrincipal(Object principal)
+    {
+        return principal instanceof String && !((String) principal).isEmpty();
+    }
+
     @Override
     public void filter(ContainerRequestContext request)
     {
@@ -133,10 +138,5 @@ public class OAuth2WebUiAuthenticationFilter
             return;
         }
         request.abortWith(service.startOAuth2Challenge(request.getUriInfo()));
-    }
-
-    private static boolean isValidPrincipal(Object principal)
-    {
-        return principal instanceof String && !((String) principal).isEmpty();
     }
 }

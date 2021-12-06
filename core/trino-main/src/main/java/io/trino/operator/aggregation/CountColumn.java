@@ -76,19 +76,6 @@ public class CountColumn
                 false);
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        return ImmutableList.of(StateCompiler.getSerializedType(LongState.class).getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type type = functionBinding.getTypeVariable("T");
-        return generateAggregation(type);
-    }
-
     private static InternalAggregationFunction generateAggregation(Type type)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(CountColumn.class.getClassLoader());
@@ -139,5 +126,18 @@ public class CountColumn
     public static void output(LongState state, BlockBuilder out)
     {
         BIGINT.writeLong(out, state.getLong());
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        return ImmutableList.of(StateCompiler.getSerializedType(LongState.class).getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type type = functionBinding.getTypeVariable("T");
+        return generateAggregation(type);
     }
 }

@@ -82,6 +82,17 @@ public class KeyValuePairs
         deserialize(requireNonNull(serialized, "serialized is null"));
     }
 
+    private static int calculateMaxFill(int hashSize)
+    {
+        checkArgument(hashSize > 0, "hashSize must be greater than 0");
+        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
+        if (maxFill == hashSize) {
+            maxFill--;
+        }
+        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
+        return maxFill;
+    }
+
     public Block getKeys()
     {
         return keyBlockBuilder.build();
@@ -183,17 +194,6 @@ public class KeyValuePairs
         for (int position = 0; position < keyBlockBuilder.getPositionCount(); position++) {
             keyPositionByHash[getHashPositionOfKey(keyBlockBuilder, position)] = position;
         }
-    }
-
-    private static int calculateMaxFill(int hashSize)
-    {
-        checkArgument(hashSize > 0, "hashSize must be greater than 0");
-        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
-        if (maxFill == hashSize) {
-            maxFill--;
-        }
-        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
-        return maxFill;
     }
 
     private int getMaskedHash(long rawHash)

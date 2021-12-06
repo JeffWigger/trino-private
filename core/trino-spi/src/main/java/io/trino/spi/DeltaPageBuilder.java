@@ -33,17 +33,11 @@ public class DeltaPageBuilder
     //
     // This could be any other small number.
     private static final int DEFAULT_INITIAL_EXPECTED_ENTRIES = 8;
-
-    public enum Mode {
-        INS, UPD, DEL
-    }
-
     private final BlockBuilder[] blockBuilders;
-    public BlockBuilder updateBuilder;
     private final List<Type> types;
+    public BlockBuilder updateBuilder;
     private PageBuilderStatus pageBuilderStatus;
     private int declaredPositions;
-
     /**
      * Create a PageBuilder with given types.
      * <p>
@@ -62,11 +56,6 @@ public class DeltaPageBuilder
     public DeltaPageBuilder(int initialExpectedEntries, List<? extends Type> types)
     {
         this(initialExpectedEntries, DEFAULT_MAX_PAGE_SIZE_IN_BYTES, types, Optional.empty());
-    }
-
-    public static DeltaPageBuilder withMaxPageSize(int maxPageBytes, List<? extends Type> types)
-    {
-        return new DeltaPageBuilder(DEFAULT_INITIAL_EXPECTED_ENTRIES, maxPageBytes, types, Optional.empty());
     }
 
     private DeltaPageBuilder(int initialExpectedEntries, int maxPageBytes, List<? extends Type> types, Optional<BlockBuilder[]> templateBlockBuilders)
@@ -90,6 +79,18 @@ public class DeltaPageBuilder
                 blockBuilders[i] = types.get(i).createBlockBuilder(pageBuilderStatus.createBlockBuilderStatus(), initialExpectedEntries);
             }
             updateBuilder = new ByteArrayBlockBuilder(pageBuilderStatus.createBlockBuilderStatus(), initialExpectedEntries);
+        }
+    }
+
+    public static DeltaPageBuilder withMaxPageSize(int maxPageBytes, List<? extends Type> types)
+    {
+        return new DeltaPageBuilder(DEFAULT_INITIAL_EXPECTED_ENTRIES, maxPageBytes, types, Optional.empty());
+    }
+
+    private static void checkArgument(boolean expression, String errorMessage)
+    {
+        if (!expression) {
+            throw new IllegalArgumentException(errorMessage);
         }
     }
 
@@ -184,10 +185,8 @@ public class DeltaPageBuilder
         return DeltaPage.wrapBlocksWithoutCopy(declaredPositions, blocks, updateBuilder.build());
     }
 
-    private static void checkArgument(boolean expression, String errorMessage)
+    public enum Mode
     {
-        if (!expression) {
-            throw new IllegalArgumentException(errorMessage);
-        }
+        INS, UPD, DEL
     }
 }

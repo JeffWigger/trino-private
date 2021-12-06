@@ -74,6 +74,22 @@ public class StageInfo
         this.tables = ImmutableMap.copyOf(tables);
     }
 
+    public static List<StageInfo> getAllStages(Optional<StageInfo> stageInfo)
+    {
+        ImmutableList.Builder<StageInfo> collector = ImmutableList.builder();
+        addAllStages(stageInfo, collector);
+        return collector.build();
+    }
+
+    private static void addAllStages(Optional<StageInfo> stageInfo, ImmutableList.Builder<StageInfo> collector)
+    {
+        stageInfo.ifPresent(stage -> {
+            collector.add(stage);
+            stage.getSubStages().stream()
+                    .forEach(subStage -> addAllStages(Optional.ofNullable(subStage), collector));
+        });
+    }
+
     @JsonProperty
     public StageId getStageId()
     {
@@ -141,22 +157,6 @@ public class StageInfo
                 .add("stageId", stageId)
                 .add("state", state)
                 .toString();
-    }
-
-    public static List<StageInfo> getAllStages(Optional<StageInfo> stageInfo)
-    {
-        ImmutableList.Builder<StageInfo> collector = ImmutableList.builder();
-        addAllStages(stageInfo, collector);
-        return collector.build();
-    }
-
-    private static void addAllStages(Optional<StageInfo> stageInfo, ImmutableList.Builder<StageInfo> collector)
-    {
-        stageInfo.ifPresent(stage -> {
-            collector.add(stage);
-            stage.getSubStages().stream()
-                    .forEach(subStage -> addAllStages(Optional.ofNullable(subStage), collector));
-        });
     }
 
     public boolean isCompleteInfo()

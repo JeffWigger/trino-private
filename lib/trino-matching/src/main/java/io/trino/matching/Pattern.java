@@ -31,16 +31,6 @@ public abstract class Pattern<T>
 {
     private final Optional<Pattern<?>> previous;
 
-    public static Pattern<Object> any()
-    {
-        return typeOf(Object.class);
-    }
-
-    public static <T> Pattern<T> typeOf(Class<T> expectedClass)
-    {
-        return new TypeOfPattern<>(expectedClass);
-    }
-
     protected Pattern(Pattern<?> previous)
     {
         this(Optional.of(requireNonNull(previous, "previous is null")));
@@ -49,6 +39,16 @@ public abstract class Pattern<T>
     protected Pattern(Optional<Pattern<?>> previous)
     {
         this.previous = requireNonNull(previous, "previous is null");
+    }
+
+    public static Pattern<Object> any()
+    {
+        return typeOf(Object.class);
+    }
+
+    public static <T> Pattern<T> typeOf(Class<T> expectedClass)
+    {
+        return new TypeOfPattern<>(expectedClass);
     }
 
     //FIXME make sure there's a proper toString,

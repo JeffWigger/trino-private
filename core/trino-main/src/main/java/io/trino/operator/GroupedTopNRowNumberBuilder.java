@@ -114,8 +114,8 @@ public class GroupedTopNRowNumberBuilder
     {
         private final PageBuilder pageBuilder;
         private final long groupIdCount = groupByHash.getGroupCount();
-        private long currentGroupId = -1;
         private final LongBigArray rowIdOutput = new LongBigArray();
+        private long currentGroupId = -1;
         private long currentGroupSize;
         private int currentIndexInGroup;
 

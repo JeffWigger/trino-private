@@ -53,6 +53,18 @@ public class ExchangeClientStatus
         this.pageBufferClientStatuses = ImmutableList.copyOf(requireNonNull(pageBufferClientStatuses, "pageBufferClientStatuses is null"));
     }
 
+    private static long mergeAvgs(long value1, long count1, long value2, long count2)
+    {
+        if (count1 == 0) {
+            return value2;
+        }
+        if (count2 == 0) {
+            return value1;
+        }
+        // AVG_n+m = AVG_n * n / (n + m) + AVG_m * m / (n + m)
+        return (value1 * count1 / (count1 + count2)) + (value2 * count2 / (count1 + count2));
+    }
+
     @JsonProperty
     public long getBufferedBytes()
     {
@@ -126,17 +138,5 @@ public class ExchangeClientStatus
                 bufferedPages + other.bufferedPages,
                 noMoreLocations && other.noMoreLocations, // if at least one has some locations, mergee has some too
                 ImmutableList.of()); // pageBufferClientStatuses may be long, so we don't want to combine the lists
-    }
-
-    private static long mergeAvgs(long value1, long count1, long value2, long count2)
-    {
-        if (count1 == 0) {
-            return value2;
-        }
-        if (count2 == 0) {
-            return value1;
-        }
-        // AVG_n+m = AVG_n * n / (n + m) + AVG_m * m / (n + m)
-        return (value1 * count1 / (count1 + count2)) + (value2 * count2 / (count1 + count2));
     }
 }

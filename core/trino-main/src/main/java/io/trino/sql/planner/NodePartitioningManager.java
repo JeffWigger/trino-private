@@ -64,6 +64,27 @@ public class NodePartitioningManager
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
+    private static List<InternalNode> getFixedMapping(ConnectorBucketNodeMap connectorBucketNodeMap)
+    {
+        return connectorBucketNodeMap.getFixedMapping().stream()
+                .map(InternalNode.class::cast)
+                .collect(toImmutableList());
+    }
+
+    private static List<InternalNode> createArbitraryBucketToNode(List<InternalNode> nodes, int bucketCount)
+    {
+        return cyclingShuffledStream(nodes)
+                .limit(bucketCount)
+                .collect(toImmutableList());
+    }
+
+    private static <T> Stream<T> cyclingShuffledStream(Collection<T> collection)
+    {
+        List<T> list = new ArrayList<>(collection);
+        Collections.shuffle(list);
+        return Stream.generate(() -> list).flatMap(List::stream);
+    }
+
     public void addPartitioningProvider(CatalogName catalogName, ConnectorNodePartitioningProvider nodePartitioningProvider)
     {
         requireNonNull(catalogName, "catalogName is null");
@@ -190,13 +211,6 @@ public class NodePartitioningManager
                         connectorBucketNodeMap.getBucketCount()));
     }
 
-    private static List<InternalNode> getFixedMapping(ConnectorBucketNodeMap connectorBucketNodeMap)
-    {
-        return connectorBucketNodeMap.getFixedMapping().stream()
-                .map(InternalNode.class::cast)
-                .collect(toImmutableList());
-    }
-
     public ConnectorBucketNodeMap getConnectorBucketNodeMap(Session session, PartitioningHandle partitioning)
     {
         ConnectorNodePartitioningProvider partitioningProvider = getPartitioningProvider(partitioning.getConnectorId().get());
@@ -238,19 +252,5 @@ public class NodePartitioningManager
         ConnectorNodePartitioningProvider partitioningProvider = partitioningProviders.get(requireNonNull(catalogName, "catalogName is null"));
         checkArgument(partitioningProvider != null, "No partitioning provider for connector %s", catalogName);
         return partitioningProvider;
-    }
-
-    private static List<InternalNode> createArbitraryBucketToNode(List<InternalNode> nodes, int bucketCount)
-    {
-        return cyclingShuffledStream(nodes)
-                .limit(bucketCount)
-                .collect(toImmutableList());
-    }
-
-    private static <T> Stream<T> cyclingShuffledStream(Collection<T> collection)
-    {
-        List<T> list = new ArrayList<>(collection);
-        Collections.shuffle(list);
-        return Stream.generate(() -> list).flatMap(List::stream);
     }
 }

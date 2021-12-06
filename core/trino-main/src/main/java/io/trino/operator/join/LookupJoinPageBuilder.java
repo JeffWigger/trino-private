@@ -49,6 +49,13 @@ public class LookupJoinPageBuilder
         this.buildOutputChannelCount = buildTypes.size();
     }
 
+    private static Block unwrapLoadedBlock(Block filteredProbeBlock)
+    {
+        // Lazy blocks (e.g used in filter condition) could be loaded during filter evaluation.
+        // Unwrap them to reduce overhead of further processing.
+        return filteredProbeBlock.isLoaded() ? filteredProbeBlock.getLoadedBlock() : filteredProbeBlock;
+    }
+
     public boolean isFull()
     {
         return estimatedProbeBlockBytes + buildPageBuilder.getSizeInBytes() >= DEFAULT_MAX_PAGE_SIZE_IN_BYTES ||
@@ -146,13 +153,6 @@ public class LookupJoinPageBuilder
                 .add("estimatedSize", estimatedProbeBlockBytes + buildPageBuilder.getSizeInBytes())
                 .add("positionCount", buildPageBuilder.getPositionCount())
                 .toString();
-    }
-
-    private static Block unwrapLoadedBlock(Block filteredProbeBlock)
-    {
-        // Lazy blocks (e.g used in filter condition) could be loaded during filter evaluation.
-        // Unwrap them to reduce overhead of further processing.
-        return filteredProbeBlock.isLoaded() ? filteredProbeBlock.getLoadedBlock() : filteredProbeBlock;
     }
 
     private void appendProbeIndex(JoinProbe probe)

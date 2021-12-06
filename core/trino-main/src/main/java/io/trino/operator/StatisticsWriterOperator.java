@@ -36,59 +36,12 @@ public class StatisticsWriterOperator
         implements Operator
 {
     public static final List<Type> TYPES = ImmutableList.of(BIGINT);
-
-    public static class StatisticsWriterOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final StatisticsWriter statisticsWriter;
-        private final boolean rowCountEnabled;
-        private final StatisticAggregationsDescriptor<Integer> descriptor;
-        private boolean closed;
-
-        public StatisticsWriterOperatorFactory(int operatorId, PlanNodeId planNodeId, StatisticsWriter statisticsWriter, boolean rowCountEnabled, StatisticAggregationsDescriptor<Integer> descriptor)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.statisticsWriter = requireNonNull(statisticsWriter, "statisticsWriter is null");
-            this.rowCountEnabled = rowCountEnabled;
-            this.descriptor = requireNonNull(descriptor, "descriptor is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, StatisticsWriterOperator.class.getSimpleName());
-            return new StatisticsWriterOperator(context, statisticsWriter, descriptor, rowCountEnabled);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new StatisticsWriterOperatorFactory(operatorId, planNodeId, statisticsWriter, rowCountEnabled, descriptor);
-        }
-    }
-
-    private enum State
-    {
-        RUNNING, FINISHING, FINISHED
-    }
-
     private final OperatorContext operatorContext;
     private final StatisticsWriter statisticsWriter;
     private final StatisticAggregationsDescriptor<Integer> descriptor;
     private final boolean rowCountEnabled;
-
-    private State state = State.RUNNING;
     private final ImmutableList.Builder<ComputedStatistics> computedStatisticsBuilder = ImmutableList.builder();
+    private State state = State.RUNNING;
 
     public StatisticsWriterOperator(OperatorContext operatorContext, StatisticsWriter statisticsWriter, StatisticAggregationsDescriptor<Integer> descriptor, boolean rowCountEnabled)
     {
@@ -96,6 +49,16 @@ public class StatisticsWriterOperator
         this.statisticsWriter = requireNonNull(statisticsWriter, "statisticsWriter is null");
         this.descriptor = requireNonNull(descriptor, "descriptor is null");
         this.rowCountEnabled = rowCountEnabled;
+    }
+
+    private static long getRowCount(Collection<ComputedStatistics> computedStatistics)
+    {
+        return computedStatistics.stream()
+                .map(statistics -> statistics.getTableStatistics().get(ROW_COUNT))
+                .filter(Objects::nonNull)
+                .mapToLong(block -> BIGINT.getLong(block, 0))
+                .reduce(Long::sum)
+                .orElse(0L);
     }
 
     @Override
@@ -180,18 +143,53 @@ public class StatisticsWriterOperator
         return statistics.build();
     }
 
-    private static long getRowCount(Collection<ComputedStatistics> computedStatistics)
+    private enum State
     {
-        return computedStatistics.stream()
-                .map(statistics -> statistics.getTableStatistics().get(ROW_COUNT))
-                .filter(Objects::nonNull)
-                .mapToLong(block -> BIGINT.getLong(block, 0))
-                .reduce(Long::sum)
-                .orElse(0L);
+        RUNNING, FINISHING, FINISHED
     }
 
     public interface StatisticsWriter
     {
         void writeStatistics(Collection<ComputedStatistics> computedStatistics);
+    }
+
+    public static class StatisticsWriterOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final StatisticsWriter statisticsWriter;
+        private final boolean rowCountEnabled;
+        private final StatisticAggregationsDescriptor<Integer> descriptor;
+        private boolean closed;
+
+        public StatisticsWriterOperatorFactory(int operatorId, PlanNodeId planNodeId, StatisticsWriter statisticsWriter, boolean rowCountEnabled, StatisticAggregationsDescriptor<Integer> descriptor)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.statisticsWriter = requireNonNull(statisticsWriter, "statisticsWriter is null");
+            this.rowCountEnabled = rowCountEnabled;
+            this.descriptor = requireNonNull(descriptor, "descriptor is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, StatisticsWriterOperator.class.getSimpleName());
+            return new StatisticsWriterOperator(context, statisticsWriter, descriptor, rowCountEnabled);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new StatisticsWriterOperatorFactory(operatorId, planNodeId, statisticsWriter, rowCountEnabled, descriptor);
+        }
     }
 }

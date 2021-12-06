@@ -71,6 +71,17 @@ public class TableJdbcTable
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
     }
 
+    private static boolean isNonLowercase(Optional<String> filter)
+    {
+        return filter.filter(value -> !value.equals(value.toLowerCase(ENGLISH))).isPresent();
+    }
+
+    private static Object[] tableRow(String catalog, SchemaTableName name, String type)
+    {
+        return new Object[] {catalog, name.getSchemaName(), name.getTableName(), type,
+                null, null, null, null, null, null};
+    }
+
     @Override
     public ConnectorTableMetadata getTableMetadata()
     {
@@ -111,16 +122,5 @@ public class TableJdbcTable
             }
         }
         return table.build().cursor();
-    }
-
-    private static boolean isNonLowercase(Optional<String> filter)
-    {
-        return filter.filter(value -> !value.equals(value.toLowerCase(ENGLISH))).isPresent();
-    }
-
-    private static Object[] tableRow(String catalog, SchemaTableName name, String type)
-    {
-        return new Object[] {catalog, name.getSchemaName(), name.getTableName(), type,
-                null, null, null, null, null, null};
     }
 }

@@ -40,24 +40,21 @@ public abstract class AbstractRowChangeOperator
         implements Operator
 {
     private static final List<Type> TYPES = ImmutableList.of(BIGINT, VARBINARY);
-
-    protected enum State
-    {
-        RUNNING, FINISHING, FINISHED
-    }
-
     private final OperatorContext operatorContext;
-
     protected State state = State.RUNNING;
     protected long rowCount;
     private boolean closed;
     private ListenableFuture<Collection<Slice>> finishFuture;
     private ListenableFuture<Void> blockedFutureView;
     private Supplier<Optional<UpdatablePageSource>> pageSource = Optional::empty;
-
     public AbstractRowChangeOperator(OperatorContext operatorContext)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -74,11 +71,6 @@ public abstract class AbstractRowChangeOperator
             finishFuture = toListenableFuture(pageSource().finish());
             blockedFutureView = asVoid(finishFuture);
         }
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -160,5 +152,10 @@ public abstract class AbstractRowChangeOperator
         Optional<UpdatablePageSource> source = pageSource.get();
         checkState(source.isPresent(), "UpdatablePageSource not set");
         return source.get();
+    }
+
+    protected enum State
+    {
+        RUNNING, FINISHING, FINISHED
     }
 }

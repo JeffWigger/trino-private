@@ -41,12 +41,12 @@ import static java.util.Objects.requireNonNull;
 
 public final class LambdaCaptureDesugaringRewriter
 {
+    private LambdaCaptureDesugaringRewriter() {}
+
     public static Expression rewrite(Expression expression, TypeProvider symbolTypes, SymbolAllocator symbolAllocator)
     {
         return ExpressionTreeRewriter.rewriteWith(new Visitor(symbolTypes, symbolAllocator), expression, new Context());
     }
-
-    private LambdaCaptureDesugaringRewriter() {}
 
     private static class Visitor
             extends ExpressionRewriter<Context>

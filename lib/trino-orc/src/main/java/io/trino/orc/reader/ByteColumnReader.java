@@ -52,23 +52,17 @@ public class ByteColumnReader
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ByteColumnReader.class).instanceSize();
 
     private final OrcColumn column;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<ByteInputStream> dataStreamSource = missingStreamSource(ByteInputStream.class);
     @Nullable
     private ByteInputStream dataStream;
-
     private boolean rowGroupOpen;
-
     private byte[] nonNullValueTemp = new byte[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public ByteColumnReader(Type type, OrcColumn column, LocalMemoryContext systemMemoryContext)
             throws OrcCorruptionException

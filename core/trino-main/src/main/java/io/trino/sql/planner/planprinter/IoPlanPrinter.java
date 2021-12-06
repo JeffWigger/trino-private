@@ -542,16 +542,8 @@ public class IoPlanPrinter
 
     public static class FormattedMarker
     {
-        public enum Bound
-        {
-            BELOW,   // lower than the value, but infinitesimally close to the value
-            EXACTLY, // exactly the value
-            ABOVE    // higher than the value, but infinitesimally close to the value
-        }
-
         private final Optional<String> value;
         private final Bound bound;
-
         @JsonCreator
         public FormattedMarker(
                 @JsonProperty("value") Optional<String> value,
@@ -600,6 +592,13 @@ public class IoPlanPrinter
                     .add("value", value)
                     .add("bound", bound)
                     .toString();
+        }
+
+        public enum Bound
+        {
+            BELOW,   // lower than the value, but infinitesimally close to the value
+            EXACTLY, // exactly the value
+            ABOVE    // higher than the value, but infinitesimally close to the value
         }
     }
 

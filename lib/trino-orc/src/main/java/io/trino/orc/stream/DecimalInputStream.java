@@ -42,6 +42,38 @@ public class DecimalInputStream
         this.chunkLoader = chunkLoader;
     }
 
+    private static void emitLongDecimal(long[] result, int offset, long low, long middle, long high, boolean negative)
+    {
+        long lower = (low >>> 1) | (middle << 55); // drop the sign bit from low
+        long upper = (middle >>> 9) | (high << 47);
+
+        if (negative) {
+            if (lower == 0xFFFFFFFFFFFFFFFFL) {
+                lower = 0;
+                upper += 1;
+            }
+            else {
+                lower += 1;
+            }
+        }
+
+        result[2 * offset] = lower;
+        result[2 * offset + 1] = upper | (negative ? SIGN_LONG_MASK : 0);
+    }
+
+    private static void emitShortDecimal(long[] result, int offset, long low, long high)
+    {
+        boolean negative = (low & 1) == 1;
+        long value = (low >>> 1) | (high << 55); // drop the sign bit from low
+
+        if (negative) {
+            value += 1;
+            value = -value;
+        }
+
+        result[offset] = value;
+    }
+
     @Override
     public void seekToCheckpoint(DecimalStreamCheckpoint checkpoint)
             throws IOException
@@ -224,25 +256,6 @@ public class DecimalInputStream
         return count;
     }
 
-    private static void emitLongDecimal(long[] result, int offset, long low, long middle, long high, boolean negative)
-    {
-        long lower = (low >>> 1) | (middle << 55); // drop the sign bit from low
-        long upper = (middle >>> 9) | (high << 47);
-
-        if (negative) {
-            if (lower == 0xFFFFFFFFFFFFFFFFL) {
-                lower = 0;
-                upper += 1;
-            }
-            else {
-                lower += 1;
-            }
-        }
-
-        result[2 * offset] = lower;
-        result[2 * offset + 1] = upper | (negative ? SIGN_LONG_MASK : 0);
-    }
-
     @SuppressWarnings("PointlessBitwiseExpression")
     public void nextShortDecimal(long[] result, int batchSize)
             throws IOException
@@ -369,19 +382,6 @@ public class DecimalInputStream
             }
         }
         return count;
-    }
-
-    private static void emitShortDecimal(long[] result, int offset, long low, long high)
-    {
-        boolean negative = (low & 1) == 1;
-        long value = (low >>> 1) | (high << 55); // drop the sign bit from low
-
-        if (negative) {
-            value += 1;
-            value = -value;
-        }
-
-        result[offset] = value;
     }
 
     @Override

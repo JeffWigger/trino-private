@@ -45,11 +45,9 @@ public final class ChunkedSliceOutput
     private static final int MAX_UNUSED_BUFFER_SIZE = 128;
 
     private final ChunkSupplier chunkSupplier;
-
+    private final List<Slice> closedSlices = new ArrayList<>();
     private Slice slice;
     private byte[] buffer;
-
-    private final List<Slice> closedSlices = new ArrayList<>();
     private long closedSlicesRetainedSize;
 
     /**

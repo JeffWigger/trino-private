@@ -238,16 +238,10 @@ public final class MetadataUtil
 
     public static class TableMetadataBuilder
     {
-        public static TableMetadataBuilder tableMetadataBuilder(SchemaTableName tableName)
-        {
-            return new TableMetadataBuilder(tableName);
-        }
-
         private final SchemaTableName tableName;
         private final ImmutableList.Builder<ColumnMetadata> columns = ImmutableList.builder();
         private final ImmutableMap.Builder<String, Object> properties = ImmutableMap.builder();
         private final Optional<String> comment;
-
         private TableMetadataBuilder(SchemaTableName tableName)
         {
             this(tableName, Optional.empty());
@@ -257,6 +251,11 @@ public final class MetadataUtil
         {
             this.tableName = tableName;
             this.comment = comment;
+        }
+
+        public static TableMetadataBuilder tableMetadataBuilder(SchemaTableName tableName)
+        {
+            return new TableMetadataBuilder(tableName);
         }
 
         public TableMetadataBuilder column(String columnName, Type type)

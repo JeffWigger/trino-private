@@ -36,31 +36,20 @@ import static java.lang.invoke.MethodHandles.lookup;
 public final class TimeType
         extends AbstractLongType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(TimeType.class, lookup(), long.class);
-
     public static final int MAX_PRECISION = 12;
     public static final int DEFAULT_PRECISION = 3; // TODO: should be 6 per SQL spec
-
-    private static final TimeType[] TYPES = new TimeType[MAX_PRECISION + 1];
-
-    static {
-        for (int precision = 0; precision <= MAX_PRECISION; precision++) {
-            TYPES[precision] = new TimeType(precision);
-        }
-    }
-
-    public static final TimeType TIME_SECONDS = createTimeType(0);
-    public static final TimeType TIME_MILLIS = createTimeType(3);
-    public static final TimeType TIME_MICROS = createTimeType(6);
-    public static final TimeType TIME_NANOS = createTimeType(9);
-    public static final TimeType TIME_PICOS = createTimeType(12);
-
     /**
      * @deprecated Use {@link #TIME_MILLIS} instead
      */
     @Deprecated
     public static final TimeType TIME = new TimeType(DEFAULT_PRECISION);
-
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(TimeType.class, lookup(), long.class);
+    private static final TimeType[] TYPES = new TimeType[MAX_PRECISION + 1];
+    public static final TimeType TIME_SECONDS = createTimeType(0);
+    public static final TimeType TIME_MILLIS = createTimeType(3);
+    public static final TimeType TIME_MICROS = createTimeType(6);
+    public static final TimeType TIME_NANOS = createTimeType(9);
+    public static final TimeType TIME_PICOS = createTimeType(12);
     private final int precision;
 
     private TimeType(int precision)
@@ -75,27 +64,6 @@ public final class TimeType
             throw new TrinoException(NUMERIC_VALUE_OUT_OF_RANGE, format("TIME precision must be in range [0, %s]: %s", MAX_PRECISION, precision));
         }
         return TYPES[precision];
-    }
-
-    public int getPrecision()
-    {
-        return precision;
-    }
-
-    @Override
-    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
-    {
-        return TYPE_OPERATOR_DECLARATION;
-    }
-
-    @Override
-    public Object getObjectValue(ConnectorSession session, Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return null;
-        }
-
-        return SqlTime.newInstance(precision, block.getLong(position, 0));
     }
 
     @ScalarOperator(EQUAL)
@@ -132,5 +100,32 @@ public final class TimeType
     public static boolean lessThanOrEqual(long left, long right)
     {
         return left <= right;
+    }
+
+    public int getPrecision()
+    {
+        return precision;
+    }
+
+    @Override
+    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
+    {
+        return TYPE_OPERATOR_DECLARATION;
+    }
+
+    @Override
+    public Object getObjectValue(ConnectorSession session, Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return null;
+        }
+
+        return SqlTime.newInstance(precision, block.getLong(position, 0));
+    }
+
+    static {
+        for (int precision = 0; precision <= MAX_PRECISION; precision++) {
+            TYPES[precision] = new TimeType(precision);
+        }
     }
 }

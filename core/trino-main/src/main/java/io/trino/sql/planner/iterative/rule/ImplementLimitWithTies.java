@@ -76,27 +76,6 @@ public class ImplementLimitWithTies
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
-    @Override
-    public Pattern<LimitNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public Result apply(LimitNode parent, Captures captures, Context context)
-    {
-        PlanNode child = captures.get(CHILD);
-
-        PlanNode rewritten = rewriteLimitWithTies(parent, child, metadata, context.getIdAllocator(), context.getSymbolAllocator());
-
-        ProjectNode projectNode = new ProjectNode(
-                context.getIdAllocator().getNextId(),
-                rewritten,
-                Assignments.identity(parent.getOutputSymbols()));
-
-        return Result.ofPlanNode(projectNode);
-    }
-
     private static PlanNode rewriteLimitWithTies(LimitNode limitNode, PlanNode source, Metadata metadata, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator)
     {
         return rewriteLimitWithTiesWithPartitioning(limitNode, source, metadata, idAllocator, symbolAllocator, ImmutableList.of());
@@ -140,5 +119,26 @@ public class ImplementLimitWithTies
                         ComparisonExpression.Operator.LESS_THAN_OR_EQUAL,
                         rankSymbol.toSymbolReference(),
                         new GenericLiteral("BIGINT", Long.toString(limitNode.getCount()))));
+    }
+
+    @Override
+    public Pattern<LimitNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public Result apply(LimitNode parent, Captures captures, Context context)
+    {
+        PlanNode child = captures.get(CHILD);
+
+        PlanNode rewritten = rewriteLimitWithTies(parent, child, metadata, context.getIdAllocator(), context.getSymbolAllocator());
+
+        ProjectNode projectNode = new ProjectNode(
+                context.getIdAllocator().getNextId(),
+                rewritten,
+                Assignments.identity(parent.getOutputSymbols()));
+
+        return Result.ofPlanNode(projectNode);
     }
 }

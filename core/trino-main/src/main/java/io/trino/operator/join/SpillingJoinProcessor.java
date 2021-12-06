@@ -82,6 +82,11 @@ public class SpillingJoinProcessor
         joinedSourcePages = sourcePages.transform(sourcePagesJoiner);
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
     public void close()
     {
         if (closed) {
@@ -146,11 +151,6 @@ public class SpillingJoinProcessor
         previousPartitionLookupSource = partition.load();
 
         return WorkProcessor.ProcessState.ofResult(joinUnspilledPages(partition));
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 
     private WorkProcessor<Page> joinUnspilledPages(PartitionedConsumption.Partition<Supplier<LookupSource>> partition)

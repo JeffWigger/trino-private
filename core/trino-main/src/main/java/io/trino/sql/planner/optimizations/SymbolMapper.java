@@ -97,6 +97,11 @@ public class SymbolMapper
         });
     }
 
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
     // Return the canonical mapping for the symbol.
     public Symbol map(Symbol symbol)
     {
@@ -448,11 +453,6 @@ public class SymbolMapper
                 node.getCount(),
                 map(node.getOrderingScheme()),
                 node.getStep());
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
     }
 
     public static class Builder

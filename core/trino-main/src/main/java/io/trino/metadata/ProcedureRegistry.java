@@ -52,6 +52,32 @@ public class ProcedureRegistry
     {
     }
 
+    private static Class<?> getObjectType(Type type)
+    {
+        if (type.equals(BOOLEAN)) {
+            return boolean.class;
+        }
+        if (type.equals(BIGINT)) {
+            return long.class;
+        }
+        if (type.equals(DOUBLE)) {
+            return double.class;
+        }
+        if (type.equals(VARCHAR)) {
+            return String.class;
+        }
+        if (type instanceof ArrayType) {
+            getObjectType(type.getTypeParameters().get(0));
+            return List.class;
+        }
+        if (type instanceof MapType) {
+            getObjectType(type.getTypeParameters().get(0));
+            getObjectType(type.getTypeParameters().get(1));
+            return Map.class;
+        }
+        throw new IllegalArgumentException("Unsupported argument type: " + type.getDisplayName());
+    }
+
     public void addProcedures(CatalogName catalogName, Collection<Procedure> procedures)
     {
         requireNonNull(catalogName, "catalogName is null");
@@ -102,31 +128,5 @@ public class ProcedureRegistry
                     argumentType.getName(),
                     expectedType.getName());
         }
-    }
-
-    private static Class<?> getObjectType(Type type)
-    {
-        if (type.equals(BOOLEAN)) {
-            return boolean.class;
-        }
-        if (type.equals(BIGINT)) {
-            return long.class;
-        }
-        if (type.equals(DOUBLE)) {
-            return double.class;
-        }
-        if (type.equals(VARCHAR)) {
-            return String.class;
-        }
-        if (type instanceof ArrayType) {
-            getObjectType(type.getTypeParameters().get(0));
-            return List.class;
-        }
-        if (type instanceof MapType) {
-            getObjectType(type.getTypeParameters().get(0));
-            getObjectType(type.getTypeParameters().get(1));
-            return Map.class;
-        }
-        throw new IllegalArgumentException("Unsupported argument type: " + type.getDisplayName());
     }
 }

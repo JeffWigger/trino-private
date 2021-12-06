@@ -108,18 +108,6 @@ public final class FastutilSetHelper
             this.longEquals = MethodGenerator.getGeneratedMethod(type, LongEquals.class, equalsHandle);
         }
 
-        // Needs to be public for compileSingleAccessMethod
-        public interface LongHashCode
-        {
-            long hashCode(long value);
-        }
-
-        // Needs to be public for compileSingleAccessMethod
-        public interface LongEquals
-        {
-            Boolean equals(long a, long b);
-        }
-
         @Override
         public int hashCode(long value)
         {
@@ -133,6 +121,18 @@ public final class FastutilSetHelper
             // FastutilHashSet is not intended be used for indeterminate values lookup
             verifyNotNull(result, "result is null");
             return TRUE.equals(result);
+        }
+
+        // Needs to be public for compileSingleAccessMethod
+        public interface LongHashCode
+        {
+            long hashCode(long value);
+        }
+
+        // Needs to be public for compileSingleAccessMethod
+        public interface LongEquals
+        {
+            Boolean equals(long a, long b);
         }
     }
 
@@ -152,18 +152,6 @@ public final class FastutilSetHelper
             this.doubleEquals = MethodGenerator.getGeneratedMethod(type, DoubleEquals.class, equalsHandle);
         }
 
-        // Needs to be public for compileSingleAccessMethod
-        public interface DoubleHashCode
-        {
-            long hashCode(double value);
-        }
-
-        // Needs to be public for compileSingleAccessMethod
-        public interface DoubleEquals
-        {
-            Boolean equals(double a, double b);
-        }
-
         @Override
         public int hashCode(double value)
         {
@@ -177,6 +165,18 @@ public final class FastutilSetHelper
             // FastutilHashSet is not intended be used for indeterminate values lookup
             verifyNotNull(result, "result is null");
             return TRUE.equals(result);
+        }
+
+        // Needs to be public for compileSingleAccessMethod
+        public interface DoubleHashCode
+        {
+            long hashCode(double value);
+        }
+
+        // Needs to be public for compileSingleAccessMethod
+        public interface DoubleEquals
+        {
+            Boolean equals(double a, double b);
         }
     }
 
@@ -202,18 +202,6 @@ public final class FastutilSetHelper
                     equalsHandle.asType(methodType(Boolean.class, Object.class, Object.class)));
         }
 
-        // Needs to be public for compileSingleAccessMethod
-        public interface ObjectHashCode
-        {
-            long hashCode(Object value);
-        }
-
-        // Needs to be public for compileSingleAccessMethod
-        public interface ObjectEquals
-        {
-            Boolean equals(Object a, Object b);
-        }
-
         @Override
         public int hashCode(Object value)
         {
@@ -233,6 +221,18 @@ public final class FastutilSetHelper
             // FastutilHashSet is not intended be used for indeterminate values lookup
             verifyNotNull(result, "result is null");
             return TRUE.equals(result);
+        }
+
+        // Needs to be public for compileSingleAccessMethod
+        public interface ObjectHashCode
+        {
+            long hashCode(Object value);
+        }
+
+        // Needs to be public for compileSingleAccessMethod
+        public interface ObjectEquals
+        {
+            Boolean equals(Object a, Object b);
         }
     }
 

@@ -48,10 +48,9 @@ import static java.util.Objects.requireNonNull;
 public class DetermineSemiJoinDistributionType
         implements Rule<SemiJoinNode>
 {
+    private static final Pattern<SemiJoinNode> PATTERN = semiJoin().matching(semiJoin -> semiJoin.getDistributionType().isEmpty());
     private final TaskCountEstimator taskCountEstimator;
     private final CostComparator costComparator;
-
-    private static final Pattern<SemiJoinNode> PATTERN = semiJoin().matching(semiJoin -> semiJoin.getDistributionType().isEmpty());
 
     public DetermineSemiJoinDistributionType(CostComparator costComparator, TaskCountEstimator taskCountEstimator)
     {

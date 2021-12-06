@@ -80,6 +80,18 @@ public final class TypeOperatorDeclaration
         this.lessThanOrEqualOperators = List.copyOf(requireNonNull(lessThanOrEqualOperators, "lessThanOrEqualOperators is null"));
     }
 
+    public static Builder builder(Class<?> typeJavaType)
+    {
+        return new Builder(typeJavaType);
+    }
+
+    public static TypeOperatorDeclaration extractOperatorDeclaration(Class<?> operatorsClass, Lookup lookup, Class<?> typeJavaType)
+    {
+        return new Builder(typeJavaType)
+                .addOperators(operatorsClass, lookup)
+                .build();
+    }
+
     public boolean isComparable()
     {
         return !equalOperators.isEmpty();
@@ -130,18 +142,6 @@ public final class TypeOperatorDeclaration
         return lessThanOrEqualOperators;
     }
 
-    public static Builder builder(Class<?> typeJavaType)
-    {
-        return new Builder(typeJavaType);
-    }
-
-    public static TypeOperatorDeclaration extractOperatorDeclaration(Class<?> operatorsClass, Lookup lookup, Class<?> typeJavaType)
-    {
-        return new Builder(typeJavaType)
-                .addOperators(operatorsClass, lookup)
-                .build();
-    }
-
     public static class Builder
     {
         private final Class<?> typeJavaType;
@@ -159,6 +159,100 @@ public final class TypeOperatorDeclaration
         {
             this.typeJavaType = requireNonNull(typeJavaType, "typeJavaType is null");
             checkArgument(!typeJavaType.equals(void.class), "void type is not supported");
+        }
+
+        private static InvocationConvention parseInvocationConvention(OperatorType operatorType, Class<?> typeJavaType, Method method, Class<?> expectedReturnType)
+        {
+            checkArgument(expectedReturnType.isPrimitive(), "Expected return type must be a primitive: %s", expectedReturnType);
+
+            InvocationReturnConvention returnConvention = getReturnConvention(expectedReturnType, operatorType, method);
+
+            List<Class<?>> parameterTypes = List.of(method.getParameterTypes());
+            List<Annotation[]> parameterAnnotations = List.of(method.getParameterAnnotations());
+
+            InvocationArgumentConvention leftArgumentConvention = extractNextArgumentConvention(typeJavaType, parameterTypes, parameterAnnotations, operatorType, method);
+            if (leftArgumentConvention.getParameterCount() == parameterTypes.size()) {
+                return simpleConvention(returnConvention, leftArgumentConvention);
+            }
+
+            InvocationArgumentConvention rightArgumentConvention = extractNextArgumentConvention(
+                    typeJavaType,
+                    parameterTypes.subList(leftArgumentConvention.getParameterCount(), parameterTypes.size()),
+                    parameterAnnotations.subList(leftArgumentConvention.getParameterCount(), parameterTypes.size()),
+                    operatorType,
+                    method);
+
+            checkArgument(leftArgumentConvention.getParameterCount() + rightArgumentConvention.getParameterCount() == parameterTypes.size(),
+                    "Unexpected parameters for %s operator: %s", operatorType, method);
+
+            return simpleConvention(returnConvention, leftArgumentConvention, rightArgumentConvention);
+        }
+
+        private static boolean isAnnotationPresent(Annotation[] annotations, Class<? extends Annotation> annotationType)
+        {
+            return Arrays.stream(annotations).anyMatch(annotationType::isInstance);
+        }
+
+        private static InvocationReturnConvention getReturnConvention(Class<?> expectedReturnType, OperatorType operatorType, Method method)
+        {
+            InvocationReturnConvention returnConvention;
+            if (!method.isAnnotationPresent(SqlNullable.class) && method.getReturnType().equals(expectedReturnType)) {
+                returnConvention = FAIL_ON_NULL;
+            }
+            else if (method.isAnnotationPresent(SqlNullable.class) && method.getReturnType().equals(wrap(expectedReturnType))) {
+                returnConvention = NULLABLE_RETURN;
+            }
+            else {
+                throw new IllegalArgumentException(format("Expected %s operator to return %s: %s", operatorType, expectedReturnType, method));
+            }
+            return returnConvention;
+        }
+
+        private static InvocationArgumentConvention extractNextArgumentConvention(
+                Class<?> typeJavaType,
+                List<Class<?>> parameterTypes,
+                List<Annotation[]> parameterAnnotations,
+                OperatorType operatorType,
+                Method method)
+        {
+            if (isAnnotationPresent(parameterAnnotations.get(0), SqlNullable.class)) {
+                if (parameterTypes.get(0).equals(wrap(typeJavaType))) {
+                    return BOXED_NULLABLE;
+                }
+            }
+            else if (isAnnotationPresent(parameterAnnotations.get(0), BlockPosition.class)) {
+                if (parameterTypes.size() > 1 &&
+                        isAnnotationPresent(parameterAnnotations.get(1), BlockIndex.class) &&
+                        parameterTypes.get(0).equals(Block.class) &&
+                        parameterTypes.get(1).equals(int.class)) {
+                    return BLOCK_POSITION;
+                }
+            }
+            else if (parameterTypes.size() > 1 && isAnnotationPresent(parameterAnnotations.get(1), IsNull.class)) {
+                if (parameterTypes.size() > 1 &&
+                        parameterTypes.get(0).equals(typeJavaType) &&
+                        parameterTypes.get(1).equals(boolean.class)) {
+                    return NULL_FLAG;
+                }
+            }
+            else {
+                if (parameterTypes.get(0).equals(typeJavaType)) {
+                    return NEVER_NULL;
+                }
+            }
+            throw new IllegalArgumentException(format("Unexpected parameters for %s operator: %s", operatorType, method));
+        }
+
+        private static void checkArgument(boolean test, String message, Object... arguments)
+        {
+            if (!test) {
+                throw new IllegalArgumentException(format(message, arguments));
+            }
+        }
+
+        private static Class<?> wrap(Class<?> type)
+        {
+            return methodType(type).wrap().returnType();
         }
 
         public Builder addEqualOperator(OperatorMethodHandle equalOperator)
@@ -404,100 +498,6 @@ public final class TypeOperatorDeclaration
                 default:
                     throw new UnsupportedOperationException("Unknown return convention: " + returnConvention);
             }
-        }
-
-        private static InvocationConvention parseInvocationConvention(OperatorType operatorType, Class<?> typeJavaType, Method method, Class<?> expectedReturnType)
-        {
-            checkArgument(expectedReturnType.isPrimitive(), "Expected return type must be a primitive: %s", expectedReturnType);
-
-            InvocationReturnConvention returnConvention = getReturnConvention(expectedReturnType, operatorType, method);
-
-            List<Class<?>> parameterTypes = List.of(method.getParameterTypes());
-            List<Annotation[]> parameterAnnotations = List.of(method.getParameterAnnotations());
-
-            InvocationArgumentConvention leftArgumentConvention = extractNextArgumentConvention(typeJavaType, parameterTypes, parameterAnnotations, operatorType, method);
-            if (leftArgumentConvention.getParameterCount() == parameterTypes.size()) {
-                return simpleConvention(returnConvention, leftArgumentConvention);
-            }
-
-            InvocationArgumentConvention rightArgumentConvention = extractNextArgumentConvention(
-                    typeJavaType,
-                    parameterTypes.subList(leftArgumentConvention.getParameterCount(), parameterTypes.size()),
-                    parameterAnnotations.subList(leftArgumentConvention.getParameterCount(), parameterTypes.size()),
-                    operatorType,
-                    method);
-
-            checkArgument(leftArgumentConvention.getParameterCount() + rightArgumentConvention.getParameterCount() == parameterTypes.size(),
-                    "Unexpected parameters for %s operator: %s", operatorType, method);
-
-            return simpleConvention(returnConvention, leftArgumentConvention, rightArgumentConvention);
-        }
-
-        private static boolean isAnnotationPresent(Annotation[] annotations, Class<? extends Annotation> annotationType)
-        {
-            return Arrays.stream(annotations).anyMatch(annotationType::isInstance);
-        }
-
-        private static InvocationReturnConvention getReturnConvention(Class<?> expectedReturnType, OperatorType operatorType, Method method)
-        {
-            InvocationReturnConvention returnConvention;
-            if (!method.isAnnotationPresent(SqlNullable.class) && method.getReturnType().equals(expectedReturnType)) {
-                returnConvention = FAIL_ON_NULL;
-            }
-            else if (method.isAnnotationPresent(SqlNullable.class) && method.getReturnType().equals(wrap(expectedReturnType))) {
-                returnConvention = NULLABLE_RETURN;
-            }
-            else {
-                throw new IllegalArgumentException(format("Expected %s operator to return %s: %s", operatorType, expectedReturnType, method));
-            }
-            return returnConvention;
-        }
-
-        private static InvocationArgumentConvention extractNextArgumentConvention(
-                Class<?> typeJavaType,
-                List<Class<?>> parameterTypes,
-                List<Annotation[]> parameterAnnotations,
-                OperatorType operatorType,
-                Method method)
-        {
-            if (isAnnotationPresent(parameterAnnotations.get(0), SqlNullable.class)) {
-                if (parameterTypes.get(0).equals(wrap(typeJavaType))) {
-                    return BOXED_NULLABLE;
-                }
-            }
-            else if (isAnnotationPresent(parameterAnnotations.get(0), BlockPosition.class)) {
-                if (parameterTypes.size() > 1 &&
-                        isAnnotationPresent(parameterAnnotations.get(1), BlockIndex.class) &&
-                        parameterTypes.get(0).equals(Block.class) &&
-                        parameterTypes.get(1).equals(int.class)) {
-                    return BLOCK_POSITION;
-                }
-            }
-            else if (parameterTypes.size() > 1 && isAnnotationPresent(parameterAnnotations.get(1), IsNull.class)) {
-                if (parameterTypes.size() > 1 &&
-                        parameterTypes.get(0).equals(typeJavaType) &&
-                        parameterTypes.get(1).equals(boolean.class)) {
-                    return NULL_FLAG;
-                }
-            }
-            else {
-                if (parameterTypes.get(0).equals(typeJavaType)) {
-                    return NEVER_NULL;
-                }
-            }
-            throw new IllegalArgumentException(format("Unexpected parameters for %s operator: %s", operatorType, method));
-        }
-
-        private static void checkArgument(boolean test, String message, Object... arguments)
-        {
-            if (!test) {
-                throw new IllegalArgumentException(format(message, arguments));
-            }
-        }
-
-        private static Class<?> wrap(Class<?> type)
-        {
-            return methodType(type).wrap().returnType();
         }
 
         public TypeOperatorDeclaration build()

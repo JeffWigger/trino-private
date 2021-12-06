@@ -78,36 +78,13 @@ public class RowType
     private static final MethodHandle COMPARISON;
     private static final MethodHandle CHAIN_COMPARISON;
     private static final int MEGAMORPHIC_FIELD_COUNT = 64;
-
-    // this field is used in double checked locking
-    @SuppressWarnings("FieldAccessedSynchronizedAndUnsynchronized")
-    private volatile TypeOperatorDeclaration typeOperatorDeclaration;
-
-    static {
-        try {
-            Lookup lookup = lookup();
-            EQUAL = lookup.findStatic(RowType.class, "megamorphicEqualOperator", methodType(Boolean.class, List.class, Block.class, Block.class));
-            CHAIN_EQUAL = lookup.findStatic(RowType.class, "chainEqual", methodType(Boolean.class, Boolean.class, int.class, MethodHandle.class, Block.class, Block.class));
-            HASH_CODE = lookup.findStatic(RowType.class, "megamorphicHashCodeOperator", methodType(long.class, List.class, Block.class));
-            CHAIN_HASH_CODE = lookup.findStatic(RowType.class, "chainHashCode", methodType(long.class, long.class, int.class, MethodHandle.class, Block.class));
-            DISTINCT_FROM = lookup.findStatic(RowType.class, "megamorphicDistinctFromOperator", methodType(boolean.class, List.class, Block.class, Block.class));
-            CHAIN_DISTINCT_FROM_START = lookup.findStatic(RowType.class, "chainDistinctFromStart", methodType(boolean.class, MethodHandle.class, Block.class, Block.class));
-            CHAIN_DISTINCT_FROM = lookup.findStatic(RowType.class, "chainDistinctFrom", methodType(boolean.class, boolean.class, int.class, MethodHandle.class, Block.class, Block.class));
-            INDETERMINATE = lookup.findStatic(RowType.class, "megamorphicIndeterminateOperator", methodType(boolean.class, List.class, Block.class));
-            CHAIN_INDETERMINATE = lookup.findStatic(RowType.class, "chainIndeterminate", methodType(boolean.class, boolean.class, int.class, MethodHandle.class, Block.class));
-            COMPARISON = lookup.findStatic(RowType.class, "megamorphicComparisonOperator", methodType(long.class, List.class, Block.class, Block.class));
-            CHAIN_COMPARISON = lookup.findStatic(RowType.class, "chainComparison", methodType(long.class, long.class, int.class, MethodHandle.class, Block.class, Block.class));
-        }
-        catch (NoSuchMethodException | IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private final List<Field> fields;
     private final List<Type> fieldTypes;
     private final boolean comparable;
     private final boolean orderable;
-
+    // this field is used in double checked locking
+    @SuppressWarnings("FieldAccessedSynchronizedAndUnsynchronized")
+    private volatile TypeOperatorDeclaration typeOperatorDeclaration;
     private RowType(TypeSignature typeSignature, List<Field> fields)
     {
         super(typeSignature, Block.class);
@@ -174,149 +151,6 @@ public class RowType
                 .collect(toUnmodifiableList());
 
         return new TypeSignature(ROW, parameters);
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
-    {
-        return new RowBlockBuilder(getTypeParameters(), blockBuilderStatus, expectedEntries);
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
-    {
-        return new RowBlockBuilder(getTypeParameters(), blockBuilderStatus, expectedEntries);
-    }
-
-    @Override
-    public String getDisplayName()
-    {
-        // Convert to standard sql name
-        StringBuilder result = new StringBuilder();
-        result.append(ROW).append('(');
-        for (Field field : fields) {
-            String typeDisplayName = field.getType().getDisplayName();
-            if (field.getName().isPresent()) {
-                // TODO: names are already canonicalized, so they should be printed as delimited identifiers
-                result.append(field.getName().get()).append(' ').append(typeDisplayName);
-            }
-            else {
-                result.append(typeDisplayName);
-            }
-            result.append(", ");
-        }
-        result.setLength(result.length() - 2);
-        result.append(')');
-        return result.toString();
-    }
-
-    @Override
-    public Object getObjectValue(ConnectorSession session, Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return null;
-        }
-
-        Block arrayBlock = getObject(block, position);
-        List<Object> values = new ArrayList<>(arrayBlock.getPositionCount());
-
-        for (int i = 0; i < arrayBlock.getPositionCount(); i++) {
-            values.add(fields.get(i).getType().getObjectValue(session, arrayBlock, i));
-        }
-
-        return Collections.unmodifiableList(values);
-    }
-
-    @Override
-    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
-    {
-        if (block.isNull(position)) {
-            blockBuilder.appendNull();
-        }
-        else {
-            block.writePositionTo(position, blockBuilder);
-        }
-    }
-
-    @Override
-    public Block getObject(Block block, int position)
-    {
-        return block.getObject(position, Block.class);
-    }
-
-    @Override
-    public void writeObject(BlockBuilder blockBuilder, Object value)
-    {
-        blockBuilder.appendStructure((Block) value);
-    }
-
-    @Override
-    public List<Type> getTypeParameters()
-    {
-        return fieldTypes;
-    }
-
-    public List<Field> getFields()
-    {
-        return fields;
-    }
-
-    public static class Field
-    {
-        private final Type type;
-        private final Optional<String> name;
-
-        public Field(Optional<String> name, Type type)
-        {
-            this.type = requireNonNull(type, "type is null");
-            this.name = requireNonNull(name, "name is null");
-        }
-
-        public Type getType()
-        {
-            return type;
-        }
-
-        public Optional<String> getName()
-        {
-            return name;
-        }
-    }
-
-    @Override
-    public boolean isComparable()
-    {
-        return comparable;
-    }
-
-    @Override
-    public boolean isOrderable()
-    {
-        return orderable;
-    }
-
-    @Override
-    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
-    {
-        if (typeOperatorDeclaration == null) {
-            generateTypeOperators(typeOperators);
-        }
-        return typeOperatorDeclaration;
-    }
-
-    private synchronized void generateTypeOperators(TypeOperators typeOperators)
-    {
-        if (typeOperatorDeclaration != null) {
-            return;
-        }
-        typeOperatorDeclaration = TypeOperatorDeclaration.builder(getJavaType())
-                .addEqualOperators(getEqualOperatorMethodHandles(typeOperators, fields))
-                .addHashCodeOperators(getHashCodeOperatorMethodHandles(typeOperators, fields))
-                .addXxHash64Operators(getXxHash64OperatorMethodHandles(typeOperators, fields))
-                .addDistinctFromOperators(getDistinctFromOperatorInvokers(typeOperators, fields))
-                .addIndeterminateOperators(getIndeterminateOperatorInvokers(typeOperators, fields))
-                .addComparisonOperators(getComparisonOperatorInvokers(typeOperators, fields))
-                .build();
     }
 
     private static List<OperatorMethodHandle> getEqualOperatorMethodHandles(TypeOperators typeOperators, List<Field> fields)
@@ -685,6 +519,169 @@ public class RowType
     {
         if (isNull) {
             throw new TrinoException(StandardErrorCode.NOT_SUPPORTED, "ROW comparison not supported for fields with null elements");
+        }
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
+    {
+        return new RowBlockBuilder(getTypeParameters(), blockBuilderStatus, expectedEntries);
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
+    {
+        return new RowBlockBuilder(getTypeParameters(), blockBuilderStatus, expectedEntries);
+    }
+
+    @Override
+    public String getDisplayName()
+    {
+        // Convert to standard sql name
+        StringBuilder result = new StringBuilder();
+        result.append(ROW).append('(');
+        for (Field field : fields) {
+            String typeDisplayName = field.getType().getDisplayName();
+            if (field.getName().isPresent()) {
+                // TODO: names are already canonicalized, so they should be printed as delimited identifiers
+                result.append(field.getName().get()).append(' ').append(typeDisplayName);
+            }
+            else {
+                result.append(typeDisplayName);
+            }
+            result.append(", ");
+        }
+        result.setLength(result.length() - 2);
+        result.append(')');
+        return result.toString();
+    }
+
+    @Override
+    public Object getObjectValue(ConnectorSession session, Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return null;
+        }
+
+        Block arrayBlock = getObject(block, position);
+        List<Object> values = new ArrayList<>(arrayBlock.getPositionCount());
+
+        for (int i = 0; i < arrayBlock.getPositionCount(); i++) {
+            values.add(fields.get(i).getType().getObjectValue(session, arrayBlock, i));
+        }
+
+        return Collections.unmodifiableList(values);
+    }
+
+    @Override
+    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
+    {
+        if (block.isNull(position)) {
+            blockBuilder.appendNull();
+        }
+        else {
+            block.writePositionTo(position, blockBuilder);
+        }
+    }
+
+    @Override
+    public Block getObject(Block block, int position)
+    {
+        return block.getObject(position, Block.class);
+    }
+
+    @Override
+    public void writeObject(BlockBuilder blockBuilder, Object value)
+    {
+        blockBuilder.appendStructure((Block) value);
+    }
+
+    @Override
+    public List<Type> getTypeParameters()
+    {
+        return fieldTypes;
+    }
+
+    public List<Field> getFields()
+    {
+        return fields;
+    }
+
+    @Override
+    public boolean isComparable()
+    {
+        return comparable;
+    }
+
+    @Override
+    public boolean isOrderable()
+    {
+        return orderable;
+    }
+
+    @Override
+    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
+    {
+        if (typeOperatorDeclaration == null) {
+            generateTypeOperators(typeOperators);
+        }
+        return typeOperatorDeclaration;
+    }
+
+    private synchronized void generateTypeOperators(TypeOperators typeOperators)
+    {
+        if (typeOperatorDeclaration != null) {
+            return;
+        }
+        typeOperatorDeclaration = TypeOperatorDeclaration.builder(getJavaType())
+                .addEqualOperators(getEqualOperatorMethodHandles(typeOperators, fields))
+                .addHashCodeOperators(getHashCodeOperatorMethodHandles(typeOperators, fields))
+                .addXxHash64Operators(getXxHash64OperatorMethodHandles(typeOperators, fields))
+                .addDistinctFromOperators(getDistinctFromOperatorInvokers(typeOperators, fields))
+                .addIndeterminateOperators(getIndeterminateOperatorInvokers(typeOperators, fields))
+                .addComparisonOperators(getComparisonOperatorInvokers(typeOperators, fields))
+                .build();
+    }
+
+    public static class Field
+    {
+        private final Type type;
+        private final Optional<String> name;
+
+        public Field(Optional<String> name, Type type)
+        {
+            this.type = requireNonNull(type, "type is null");
+            this.name = requireNonNull(name, "name is null");
+        }
+
+        public Type getType()
+        {
+            return type;
+        }
+
+        public Optional<String> getName()
+        {
+            return name;
+        }
+    }
+
+    static {
+        try {
+            Lookup lookup = lookup();
+            EQUAL = lookup.findStatic(RowType.class, "megamorphicEqualOperator", methodType(Boolean.class, List.class, Block.class, Block.class));
+            CHAIN_EQUAL = lookup.findStatic(RowType.class, "chainEqual", methodType(Boolean.class, Boolean.class, int.class, MethodHandle.class, Block.class, Block.class));
+            HASH_CODE = lookup.findStatic(RowType.class, "megamorphicHashCodeOperator", methodType(long.class, List.class, Block.class));
+            CHAIN_HASH_CODE = lookup.findStatic(RowType.class, "chainHashCode", methodType(long.class, long.class, int.class, MethodHandle.class, Block.class));
+            DISTINCT_FROM = lookup.findStatic(RowType.class, "megamorphicDistinctFromOperator", methodType(boolean.class, List.class, Block.class, Block.class));
+            CHAIN_DISTINCT_FROM_START = lookup.findStatic(RowType.class, "chainDistinctFromStart", methodType(boolean.class, MethodHandle.class, Block.class, Block.class));
+            CHAIN_DISTINCT_FROM = lookup.findStatic(RowType.class, "chainDistinctFrom", methodType(boolean.class, boolean.class, int.class, MethodHandle.class, Block.class, Block.class));
+            INDETERMINATE = lookup.findStatic(RowType.class, "megamorphicIndeterminateOperator", methodType(boolean.class, List.class, Block.class));
+            CHAIN_INDETERMINATE = lookup.findStatic(RowType.class, "chainIndeterminate", methodType(boolean.class, boolean.class, int.class, MethodHandle.class, Block.class));
+            COMPARISON = lookup.findStatic(RowType.class, "megamorphicComparisonOperator", methodType(long.class, List.class, Block.class, Block.class));
+            CHAIN_COMPARISON = lookup.findStatic(RowType.class, "chainComparison", methodType(long.class, long.class, int.class, MethodHandle.class, Block.class, Block.class));
+        }
+        catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 }

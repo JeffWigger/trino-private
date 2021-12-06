@@ -156,6 +156,19 @@ public final class MergePages
             pageBuilder = PageBuilder.withMaxPageSize(maxPageSizeInBytes, this.types);
         }
 
+        private static boolean isLoaded(Page page)
+        {
+            // TODO: provide better heuristics there, e.g check if last produced page was materialized
+            for (int channel = 0; channel < page.getChannelCount(); ++channel) {
+                Block block = page.getBlock(channel);
+                if (!block.isLoaded()) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         @Override
         public TransformationState<Page> process(Page inputPage)
         {
@@ -217,19 +230,6 @@ public final class MergePages
             pageBuilder.reset();
             memoryContext.setBytes(pageBuilder.getRetainedSizeInBytes());
             return output;
-        }
-
-        private static boolean isLoaded(Page page)
-        {
-            // TODO: provide better heuristics there, e.g check if last produced page was materialized
-            for (int channel = 0; channel < page.getChannelCount(); ++channel) {
-                Block block = page.getBlock(channel);
-                if (!block.isLoaded()) {
-                    return false;
-                }
-            }
-
-            return true;
         }
     }
 }

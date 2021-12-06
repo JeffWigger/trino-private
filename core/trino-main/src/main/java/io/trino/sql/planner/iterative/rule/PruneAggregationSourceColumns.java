@@ -42,10 +42,10 @@ public class PruneAggregationSourceColumns
     public Result apply(AggregationNode aggregationNode, Captures captures, Context context)
     {
         Set<Symbol> requiredInputs = Streams.concat(
-                aggregationNode.getGroupingKeys().stream(),
-                aggregationNode.getHashSymbol().stream(),
-                aggregationNode.getAggregations().values().stream()
-                        .flatMap(aggregation -> SymbolsExtractor.extractUnique(aggregation).stream()))
+                        aggregationNode.getGroupingKeys().stream(),
+                        aggregationNode.getHashSymbol().stream(),
+                        aggregationNode.getAggregations().values().stream()
+                                .flatMap(aggregation -> SymbolsExtractor.extractUnique(aggregation).stream()))
                 .collect(toImmutableSet());
 
         return restrictChildOutputs(context.getIdAllocator(), aggregationNode, requiredInputs)

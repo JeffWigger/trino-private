@@ -81,13 +81,6 @@ public class SystemInformationRule
             this.stringValue = requireNonNull(stringValue, "stringValue is null");
         }
 
-        @JsonValue
-        @Override
-        public String toString()
-        {
-            return stringValue;
-        }
-
         @JsonCreator
         public static AccessMode fromJson(Object value)
         {
@@ -99,6 +92,13 @@ public class SystemInformationRule
             }
 
             throw new IllegalArgumentException("Unknown " + AccessMode.class.getSimpleName() + ": " + value);
+        }
+
+        @JsonValue
+        @Override
+        public String toString()
+        {
+            return stringValue;
         }
     }
 }

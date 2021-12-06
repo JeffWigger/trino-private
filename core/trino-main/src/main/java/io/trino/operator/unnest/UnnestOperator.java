@@ -39,63 +39,13 @@ import static java.util.Objects.requireNonNull;
 public class UnnestOperator
         implements Operator
 {
-    public static class UnnestOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final List<Integer> replicateChannels;
-        private final List<Type> replicateTypes;
-        private final List<Integer> unnestChannels;
-        private final List<Type> unnestTypes;
-        private final boolean withOrdinality;
-        private final boolean outer;
-        private boolean closed;
-
-        public UnnestOperatorFactory(int operatorId, PlanNodeId planNodeId, List<Integer> replicateChannels, List<Type> replicateTypes, List<Integer> unnestChannels, List<Type> unnestTypes, boolean withOrdinality, boolean outer)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.replicateChannels = ImmutableList.copyOf(requireNonNull(replicateChannels, "replicateChannels is null"));
-            this.replicateTypes = ImmutableList.copyOf(requireNonNull(replicateTypes, "replicateTypes is null"));
-            checkArgument(replicateChannels.size() == replicateTypes.size(), "replicateChannels and replicateTypes do not match");
-            this.unnestChannels = ImmutableList.copyOf(requireNonNull(unnestChannels, "unnestChannels is null"));
-            this.unnestTypes = ImmutableList.copyOf(requireNonNull(unnestTypes, "unnestTypes is null"));
-            checkArgument(unnestChannels.size() == unnestTypes.size(), "unnestChannels and unnestTypes do not match");
-            this.withOrdinality = withOrdinality;
-            this.outer = outer;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, UnnestOperator.class.getSimpleName());
-            return new UnnestOperator(operatorContext, replicateChannels, replicateTypes, unnestChannels, unnestTypes, withOrdinality, outer);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new UnnestOperator.UnnestOperatorFactory(operatorId, planNodeId, replicateChannels, replicateTypes, unnestChannels, unnestTypes, withOrdinality, outer);
-        }
-    }
-
     private static final int MAX_ROWS_PER_BLOCK = 1000;
     private static final int MAX_BYTES_PER_PAGE = 1024 * 1024;
-
     // Output row count is checked *after* processing every input row. For this reason, estimated rows per
     // block are always going to be slightly greater than {@code maxRowsPerBlock}. Accounting for this skew
     // helps avoid array copies in blocks.
     private static final double OVERFLOW_SKEW = 1.25;
     private static final int estimatedMaxRowsPerBlock = (int) Math.ceil(MAX_ROWS_PER_BLOCK * OVERFLOW_SKEW);
-
     private final OperatorContext operatorContext;
     private final List<Integer> replicateChannels;
     private final List<Type> replicateTypes;
@@ -103,18 +53,13 @@ public class UnnestOperator
     private final List<Type> unnestTypes;
     private final boolean withOrdinality;
     private final boolean outer;
-
+    private final List<Unnester> unnesters;
+    private final List<ReplicatedBlockBuilder> replicatedBlockBuilders;
+    private final int outputChannelCount;
     private boolean finishing;
     private Page currentPage;
     private int currentPosition;
-
-    private final List<Unnester> unnesters;
-
-    private final List<ReplicatedBlockBuilder> replicatedBlockBuilders;
-
     private BlockBuilder ordinalityBlockBuilder;
-
-    private final int outputChannelCount;
 
     public UnnestOperator(OperatorContext operatorContext, List<Integer> replicateChannels, List<Type> replicateTypes, List<Integer> unnestChannels, List<Type> unnestTypes, boolean withOrdinality, boolean outer)
     {
@@ -139,6 +84,28 @@ public class UnnestOperator
         this.outer = outer;
 
         this.outputChannelCount = unnestOutputChannelCount + replicateTypes.size() + (withOrdinality ? 1 : 0);
+    }
+
+    private static Unnester createUnnester(Type nestedType)
+    {
+        if (nestedType instanceof ArrayType) {
+            Type elementType = ((ArrayType) nestedType).getElementType();
+
+            if (elementType instanceof RowType) {
+                return new ArrayOfRowsUnnester(((RowType) elementType));
+            }
+            else {
+                return new ArrayUnnester(elementType);
+            }
+        }
+        else if (nestedType instanceof MapType) {
+            Type keyType = ((MapType) nestedType).getKeyType();
+            Type valueType = ((MapType) nestedType).getValueType();
+            return new MapUnnester(keyType, valueType);
+        }
+        else {
+            throw new IllegalArgumentException("Cannot unnest type: " + nestedType);
+        }
     }
 
     @Override
@@ -299,25 +266,51 @@ public class UnnestOperator
         return outputBlocks;
     }
 
-    private static Unnester createUnnester(Type nestedType)
+    public static class UnnestOperatorFactory
+            implements OperatorFactory
     {
-        if (nestedType instanceof ArrayType) {
-            Type elementType = ((ArrayType) nestedType).getElementType();
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final List<Integer> replicateChannels;
+        private final List<Type> replicateTypes;
+        private final List<Integer> unnestChannels;
+        private final List<Type> unnestTypes;
+        private final boolean withOrdinality;
+        private final boolean outer;
+        private boolean closed;
 
-            if (elementType instanceof RowType) {
-                return new ArrayOfRowsUnnester(((RowType) elementType));
-            }
-            else {
-                return new ArrayUnnester(elementType);
-            }
+        public UnnestOperatorFactory(int operatorId, PlanNodeId planNodeId, List<Integer> replicateChannels, List<Type> replicateTypes, List<Integer> unnestChannels, List<Type> unnestTypes, boolean withOrdinality, boolean outer)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.replicateChannels = ImmutableList.copyOf(requireNonNull(replicateChannels, "replicateChannels is null"));
+            this.replicateTypes = ImmutableList.copyOf(requireNonNull(replicateTypes, "replicateTypes is null"));
+            checkArgument(replicateChannels.size() == replicateTypes.size(), "replicateChannels and replicateTypes do not match");
+            this.unnestChannels = ImmutableList.copyOf(requireNonNull(unnestChannels, "unnestChannels is null"));
+            this.unnestTypes = ImmutableList.copyOf(requireNonNull(unnestTypes, "unnestTypes is null"));
+            checkArgument(unnestChannels.size() == unnestTypes.size(), "unnestChannels and unnestTypes do not match");
+            this.withOrdinality = withOrdinality;
+            this.outer = outer;
         }
-        else if (nestedType instanceof MapType) {
-            Type keyType = ((MapType) nestedType).getKeyType();
-            Type valueType = ((MapType) nestedType).getValueType();
-            return new MapUnnester(keyType, valueType);
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, UnnestOperator.class.getSimpleName());
+            return new UnnestOperator(operatorContext, replicateChannels, replicateTypes, unnestChannels, unnestTypes, withOrdinality, outer);
         }
-        else {
-            throw new IllegalArgumentException("Cannot unnest type: " + nestedType);
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new UnnestOperator.UnnestOperatorFactory(operatorId, planNodeId, replicateChannels, replicateTypes, unnestChannels, unnestTypes, withOrdinality, outer);
         }
     }
 }

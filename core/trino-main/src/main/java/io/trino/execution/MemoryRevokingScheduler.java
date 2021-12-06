@@ -57,13 +57,10 @@ public class MemoryRevokingScheduler
     private final ScheduledExecutorService taskManagementExecutor;
     private final double memoryRevokingThreshold;
     private final double memoryRevokingTarget;
-
+    private final AtomicBoolean checkPending = new AtomicBoolean();
     private final MemoryPoolListener memoryPoolListener = MemoryPoolListener.onMemoryReserved(this::onMemoryReserved);
-
     @Nullable
     private ScheduledFuture<?> scheduledFuture;
-
-    private final AtomicBoolean checkPending = new AtomicBoolean();
 
     @Inject
     public MemoryRevokingScheduler(
@@ -113,6 +110,14 @@ public class MemoryRevokingScheduler
         builder.add(localMemoryManager.getGeneralPool());
         localMemoryManager.getReservedPool().ifPresent(builder::add);
         return builder.build();
+    }
+
+    private static List<SqlTask> findRunningTasksInMemoryPool(Collection<SqlTask> allCurrentTasks, MemoryPool memoryPool)
+    {
+        return allCurrentTasks.stream()
+                .filter(task -> task.getTaskState() == TaskState.RUNNING && task.getQueryContext().getMemoryPool() == memoryPool)
+                .sorted(ORDER_BY_CREATE_TIME)
+                .collect(toImmutableList());
     }
 
     @PostConstruct
@@ -296,13 +301,5 @@ public class MemoryRevokingScheduler
                 }
             }
         }
-    }
-
-    private static List<SqlTask> findRunningTasksInMemoryPool(Collection<SqlTask> allCurrentTasks, MemoryPool memoryPool)
-    {
-        return allCurrentTasks.stream()
-                .filter(task -> task.getTaskState() == TaskState.RUNNING && task.getQueryContext().getMemoryPool() == memoryPool)
-                .sorted(ORDER_BY_CREATE_TIME)
-                .collect(toImmutableList());
     }
 }

@@ -25,8 +25,8 @@ import io.trino.spi.type.Type;
 public abstract class BlockEncoding
         implements TextColumnEncoding
 {
-    private final Type type;
     protected final Slice nullSequence;
+    private final Type type;
     private final byte[] separators;
     private final Byte escapeByte;
 

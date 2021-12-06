@@ -264,6 +264,39 @@ public final class SortedRangeSet
         return copyOf(type, (Iterable<Range>) ranges);
     }
 
+    private static int compareValues(MethodHandle comparisonOperator, Block leftBlock, int leftPosition, Block rightBlock, int rightPosition)
+    {
+        try {
+            return (int) (long) comparisonOperator.invokeExact(leftBlock, leftPosition, rightBlock, rightPosition);
+        }
+        catch (Throwable throwable) {
+            throw handleThrowable(throwable);
+        }
+    }
+
+    private static void writeRange(Type type, BlockBuilder blockBuilder, boolean[] inclusive, int rangeIndex, Range range)
+    {
+        inclusive[2 * rangeIndex] = range.isLowInclusive();
+        inclusive[2 * rangeIndex + 1] = range.isHighInclusive();
+        writeNativeValue(type, blockBuilder, range.getLowValue().orElse(null));
+        writeNativeValue(type, blockBuilder, range.getHighValue().orElse(null));
+    }
+
+    private static void writeRange(Type type, BlockBuilder blockBuilder, boolean[] inclusive, int rangeIndex, RangeView range)
+    {
+        inclusive[2 * rangeIndex] = range.lowInclusive;
+        inclusive[2 * rangeIndex + 1] = range.highInclusive;
+        type.appendTo(range.lowValueBlock, range.lowValuePosition, blockBuilder);
+        type.appendTo(range.highValueBlock, range.highValuePosition, blockBuilder);
+    }
+
+    private static void checkNotNaN(Type type, Object value)
+    {
+        if (isFloatingPointNaN(type, value)) {
+            throw new IllegalArgumentException("cannot use NaN as range bound");
+        }
+    }
+
     @Override
     @JsonProperty
     public Type getType()
@@ -822,16 +855,6 @@ public final class SortedRangeSet
         return TRUE.equals(equal);
     }
 
-    private static int compareValues(MethodHandle comparisonOperator, Block leftBlock, int leftPosition, Block rightBlock, int rightPosition)
-    {
-        try {
-            return (int) (long) comparisonOperator.invokeExact(leftBlock, leftPosition, rightBlock, rightPosition);
-        }
-        catch (Throwable throwable) {
-            throw handleThrowable(throwable);
-        }
-    }
-
     @Override
     public String toString()
     {
@@ -948,29 +971,6 @@ public final class SortedRangeSet
             }
 
             return new SortedRangeSet(type, inclusive, blockBuilder);
-        }
-    }
-
-    private static void writeRange(Type type, BlockBuilder blockBuilder, boolean[] inclusive, int rangeIndex, Range range)
-    {
-        inclusive[2 * rangeIndex] = range.isLowInclusive();
-        inclusive[2 * rangeIndex + 1] = range.isHighInclusive();
-        writeNativeValue(type, blockBuilder, range.getLowValue().orElse(null));
-        writeNativeValue(type, blockBuilder, range.getHighValue().orElse(null));
-    }
-
-    private static void writeRange(Type type, BlockBuilder blockBuilder, boolean[] inclusive, int rangeIndex, RangeView range)
-    {
-        inclusive[2 * rangeIndex] = range.lowInclusive;
-        inclusive[2 * rangeIndex + 1] = range.highInclusive;
-        type.appendTo(range.lowValueBlock, range.lowValuePosition, blockBuilder);
-        type.appendTo(range.highValueBlock, range.highValuePosition, blockBuilder);
-    }
-
-    private static void checkNotNaN(Type type, Object value)
-    {
-        if (isFloatingPointNaN(type, value)) {
-            throw new IllegalArgumentException("cannot use NaN as range bound");
         }
     }
 

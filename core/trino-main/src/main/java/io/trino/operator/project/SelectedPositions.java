@@ -25,16 +25,6 @@ public class SelectedPositions
     private final int offset;
     private final int size;
 
-    public static SelectedPositions positionsList(int[] positions, int offset, int size)
-    {
-        return new SelectedPositions(true, positions, offset, size);
-    }
-
-    public static SelectedPositions positionsRange(int offset, int size)
-    {
-        return new SelectedPositions(false, new int[0], offset, size);
-    }
-
     private SelectedPositions(boolean isList, int[] positions, int offset, int size)
     {
         this.isList = isList;
@@ -47,6 +37,16 @@ public class SelectedPositions
         if (isList) {
             checkPositionIndexes(offset, offset + size, positions.length);
         }
+    }
+
+    public static SelectedPositions positionsList(int[] positions, int offset, int size)
+    {
+        return new SelectedPositions(true, positions, offset, size);
+    }
+
+    public static SelectedPositions positionsRange(int offset, int size)
+    {
+        return new SelectedPositions(false, new int[0], offset, size);
     }
 
     public boolean isList()

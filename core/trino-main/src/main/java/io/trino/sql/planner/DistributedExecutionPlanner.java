@@ -97,6 +97,16 @@ public class DistributedExecutionPlanner
         this.dynamicFilterService = requireNonNull(dynamicFilterService, "dynamicFilterService is null");
     }
 
+    private static void closeSplitSource(SplitSource source)
+    {
+        try {
+            source.close();
+        }
+        catch (Throwable t) {
+            log.warn(t, "Error closing split source");
+        }
+    }
+
     public StageExecutionPlan plan(SubPlan root, Session session)
     {
         ImmutableList.Builder<SplitSource> allSplitSources = ImmutableList.builder();
@@ -107,16 +117,6 @@ public class DistributedExecutionPlanner
         catch (Throwable t) {
             allSplitSources.build().forEach(DistributedExecutionPlanner::closeSplitSource);
             throw t;
-        }
-    }
-
-    private static void closeSplitSource(SplitSource source)
-    {
-        try {
-            source.close();
-        }
-        catch (Throwable t) {
-            log.warn(t, "Error closing split source");
         }
     }
 
@@ -161,11 +161,11 @@ public class DistributedExecutionPlanner
     private final class Visitor
             extends PlanVisitor<CombinedSources, Void>
     {
+        public final ImmutableList.Builder<SplitSource> splitDeltaSources;
         private final Session session;
         private final StageExecutionDescriptor stageExecutionDescriptor;
         private final TypeProvider typeProvider;
         private final ImmutableList.Builder<SplitSource> splitSources;
-        public final ImmutableList.Builder<SplitSource> splitDeltaSources;
 
         private Visitor(
                 Session session,
@@ -221,11 +221,10 @@ public class DistributedExecutionPlanner
                     node.getTable(),
                     stageExecutionDescriptor.isScanGroupedExecution(node.getId()) ? GROUPED_SCHEDULING : UNGROUPED_SCHEDULING,
                     dynamicFilter);
-            if (splitDeltaSource != null){
+            if (splitDeltaSource != null) {
                 splitDeltaSources.add(splitDeltaSource);
                 return new CombinedSources(ImmutableMap.of(node.getId(), splitSource), ImmutableMap.of(node.getId(), splitDeltaSource));
             }
-
 
             return new CombinedSources(ImmutableMap.of(node.getId(), splitSource), ImmutableMap.of());
         }
@@ -504,10 +503,10 @@ public class DistributedExecutionPlanner
         public final Map<PlanNodeId, SplitSource> splitSources;
         public final Map<PlanNodeId, SplitSource> splitDeltaSources;
 
-        CombinedSources(Map<PlanNodeId, SplitSource> splitSources,  Map<PlanNodeId, SplitSource> splitDeltaSources){
+        CombinedSources(Map<PlanNodeId, SplitSource> splitSources, Map<PlanNodeId, SplitSource> splitDeltaSources)
+        {
             this.splitSources = splitSources;
             this.splitDeltaSources = splitDeltaSources;
-
         }
     }
 }

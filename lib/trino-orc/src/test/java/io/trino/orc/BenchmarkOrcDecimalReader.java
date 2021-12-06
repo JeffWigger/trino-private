@@ -64,6 +64,17 @@ public class BenchmarkOrcDecimalReader
 {
     private static final DecimalType DECIMAL_TYPE = createDecimalType(30, 10);
 
+    public static void main(String[] args)
+            throws Exception
+    {
+        // assure the benchmarks are valid before running
+        BenchmarkData data = new BenchmarkData();
+        data.setup();
+        new BenchmarkOrcDecimalReader().readDecimal(data);
+
+        benchmark(BenchmarkOrcDecimalReader.class).run();
+    }
+
     @Benchmark
     public Object readDecimal(BenchmarkData data)
             throws Exception
@@ -133,16 +144,5 @@ public class BenchmarkOrcDecimalReader
             }
             return values;
         }
-    }
-
-    public static void main(String[] args)
-            throws Exception
-    {
-        // assure the benchmarks are valid before running
-        BenchmarkData data = new BenchmarkData();
-        data.setup();
-        new BenchmarkOrcDecimalReader().readDecimal(data);
-
-        benchmark(BenchmarkOrcDecimalReader.class).run();
     }
 }

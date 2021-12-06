@@ -30,9 +30,6 @@ import static java.util.Objects.requireNonNull;
 
 interface ParquetCompressor
 {
-    ParquetDataOutput compress(BytesInput bytesInput)
-            throws IOException;
-
     static ParquetCompressor getCompressor(CompressionCodecName codec)
     {
         switch (codec.getParquetCompressionCodec()) {
@@ -55,6 +52,9 @@ interface ParquetCompressor
         }
         throw new RuntimeException("Unsupported codec: " + codec);
     }
+
+    ParquetDataOutput compress(BytesInput bytesInput)
+            throws IOException;
 
     class GzipCompressor
             implements ParquetCompressor

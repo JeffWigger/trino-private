@@ -29,8 +29,8 @@ import static java.util.Objects.requireNonNull;
 
 public final class SqlPath
 {
-    private List<SqlPathElement> parsedPath;
     private final Optional<String> rawPath;
+    private List<SqlPathElement> parsedPath;
 
     public SqlPath(String path)
     {

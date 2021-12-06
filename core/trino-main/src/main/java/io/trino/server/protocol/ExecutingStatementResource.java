@@ -134,6 +134,69 @@ public class ExecutingStatementResource
                 MILLISECONDS);
     }
 
+    private static Response toResponse(Query query, QueryResults queryResults, boolean compressionEnabled)
+    {
+        ResponseBuilder response = Response.ok(queryResults);
+
+        ProtocolHeaders protocolHeaders = query.getProtocolHeaders();
+        query.getSetCatalog().ifPresent(catalog -> response.header(protocolHeaders.responseSetCatalog(), catalog));
+        query.getSetSchema().ifPresent(schema -> response.header(protocolHeaders.responseSetSchema(), schema));
+        query.getSetPath().ifPresent(path -> response.header(protocolHeaders.responseSetPath(), path));
+
+        // add set session properties
+        query.getSetSessionProperties()
+                .forEach((key, value) -> response.header(protocolHeaders.responseSetSession(), key + '=' + urlEncode(value)));
+
+        // add clear session properties
+        query.getResetSessionProperties()
+                .forEach(name -> response.header(protocolHeaders.responseClearSession(), name));
+
+        // add set roles
+        query.getSetRoles()
+                .forEach((key, value) -> response.header(protocolHeaders.responseSetRole(), key + '=' + urlEncode(value.toString())));
+
+        // add added prepare statements
+        for (Entry<String, String> entry : query.getAddedPreparedStatements().entrySet()) {
+            String encodedKey = urlEncode(entry.getKey());
+            String encodedValue = urlEncode(entry.getValue());
+            response.header(protocolHeaders.responseAddedPrepare(), encodedKey + '=' + encodedValue);
+        }
+
+        // add deallocated prepare statements
+        for (String name : query.getDeallocatedPreparedStatements()) {
+            response.header(protocolHeaders.responseDeallocatedPrepare(), urlEncode(name));
+        }
+
+        // add new transaction ID
+        query.getStartedTransactionId()
+                .ifPresent(transactionId -> response.header(protocolHeaders.responseStartedTransactionId(), transactionId));
+
+        // add clear transaction ID directive
+        if (query.isClearTransactionId()) {
+            response.header(protocolHeaders.responseClearTransactionId(), true);
+        }
+
+        if (!compressionEnabled) {
+            response.encoding("identity");
+        }
+
+        return response.build();
+    }
+
+    private static WebApplicationException queryNotFound()
+    {
+        throw new WebApplicationException(
+                Response.status(NOT_FOUND)
+                        .type(TEXT_PLAIN_TYPE)
+                        .entity("Query not found")
+                        .build());
+    }
+
+    private static String urlEncode(String value)
+    {
+        return URLEncoder.encode(value, UTF_8);
+    }
+
     @PreDestroy
     public void stop()
     {
@@ -154,7 +217,7 @@ public class ExecutingStatementResource
             @Suspended AsyncResponse asyncResponse)
     {
         Query query = getQuery(queryId, slug, token);
-        System.out.println("UriInfo: "+uriInfo.getPath());
+        System.out.println("UriInfo: " + uriInfo.getPath());
         asyncQueryResults(query, token, maxWait, targetResultSize, uriInfo, asyncResponse);
     }
 
@@ -212,61 +275,12 @@ public class ExecutingStatementResource
         else {
             targetResultSize = Ordering.natural().min(targetResultSize, MAX_TARGET_RESULT_SIZE);
         }
-        System.out.println("In state when getting result: "+ query.getQueryInfo().getState());
+        System.out.println("In state when getting result: " + query.getQueryInfo().getState());
         ListenableFuture<QueryResults> queryResultsFuture = query.waitForResults(token, uriInfo, wait, targetResultSize);
 
         ListenableFuture<Response> response = Futures.transform(queryResultsFuture, queryResults -> toResponse(query, queryResults, compressionEnabled), directExecutor());
 
         bindAsyncResponse(asyncResponse, response, responseExecutor);
-    }
-
-    private static Response toResponse(Query query, QueryResults queryResults, boolean compressionEnabled)
-    {
-        ResponseBuilder response = Response.ok(queryResults);
-
-        ProtocolHeaders protocolHeaders = query.getProtocolHeaders();
-        query.getSetCatalog().ifPresent(catalog -> response.header(protocolHeaders.responseSetCatalog(), catalog));
-        query.getSetSchema().ifPresent(schema -> response.header(protocolHeaders.responseSetSchema(), schema));
-        query.getSetPath().ifPresent(path -> response.header(protocolHeaders.responseSetPath(), path));
-
-        // add set session properties
-        query.getSetSessionProperties()
-                .forEach((key, value) -> response.header(protocolHeaders.responseSetSession(), key + '=' + urlEncode(value)));
-
-        // add clear session properties
-        query.getResetSessionProperties()
-                .forEach(name -> response.header(protocolHeaders.responseClearSession(), name));
-
-        // add set roles
-        query.getSetRoles()
-                .forEach((key, value) -> response.header(protocolHeaders.responseSetRole(), key + '=' + urlEncode(value.toString())));
-
-        // add added prepare statements
-        for (Entry<String, String> entry : query.getAddedPreparedStatements().entrySet()) {
-            String encodedKey = urlEncode(entry.getKey());
-            String encodedValue = urlEncode(entry.getValue());
-            response.header(protocolHeaders.responseAddedPrepare(), encodedKey + '=' + encodedValue);
-        }
-
-        // add deallocated prepare statements
-        for (String name : query.getDeallocatedPreparedStatements()) {
-            response.header(protocolHeaders.responseDeallocatedPrepare(), urlEncode(name));
-        }
-
-        // add new transaction ID
-        query.getStartedTransactionId()
-                .ifPresent(transactionId -> response.header(protocolHeaders.responseStartedTransactionId(), transactionId));
-
-        // add clear transaction ID directive
-        if (query.isClearTransactionId()) {
-            response.header(protocolHeaders.responseClearTransactionId(), true);
-        }
-
-        if (!compressionEnabled) {
-            response.encoding("identity");
-        }
-
-        return response.build();
     }
 
     @ResourceSecurity(PUBLIC)
@@ -311,19 +325,5 @@ public class ExecutingStatementResource
     {
         Query query = getQuery(queryId, slug, token);
         query.partialCancel(stage);
-    }
-
-    private static WebApplicationException queryNotFound()
-    {
-        throw new WebApplicationException(
-                Response.status(NOT_FOUND)
-                        .type(TEXT_PLAIN_TYPE)
-                        .entity("Query not found")
-                        .build());
-    }
-
-    private static String urlEncode(String value)
-    {
-        return URLEncoder.encode(value, UTF_8);
     }
 }

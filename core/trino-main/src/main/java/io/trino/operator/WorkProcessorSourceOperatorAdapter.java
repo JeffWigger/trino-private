@@ -55,19 +55,6 @@ public class WorkProcessorSourceOperatorAdapter
     private long previousReadTimeNanos;
     private long previousDynamicFilterSplitsProcessed;
 
-    public interface AdapterWorkProcessorSourceOperatorFactory
-            extends WorkProcessorSourceOperatorFactory
-    {
-        default WorkProcessorSourceOperator createAdapterOperator(
-                Session session,
-                MemoryTrackingContext memoryTrackingContext,
-                DriverYieldSignal yieldSignal,
-                WorkProcessor<Split> splits)
-        {
-            return create(session, memoryTrackingContext, yieldSignal, splits);
-        }
-    }
-
     public WorkProcessorSourceOperatorAdapter(OperatorContext operatorContext, AdapterWorkProcessorSourceOperatorFactory sourceOperatorFactory)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -237,6 +224,19 @@ public class WorkProcessorSourceOperatorAdapter
 
         operatorContext.setLatestMetrics(currentMetrics);
         operatorContext.setLatestConnectorMetrics(currentConnectorMetrics);
+    }
+
+    public interface AdapterWorkProcessorSourceOperatorFactory
+            extends WorkProcessorSourceOperatorFactory
+    {
+        default WorkProcessorSourceOperator createAdapterOperator(
+                Session session,
+                MemoryTrackingContext memoryTrackingContext,
+                DriverYieldSignal yieldSignal,
+                WorkProcessor<Split> splits)
+        {
+            return create(session, memoryTrackingContext, yieldSignal, splits);
+        }
     }
 
     private static class SplitBuffer

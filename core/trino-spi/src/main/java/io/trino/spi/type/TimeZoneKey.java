@@ -90,62 +90,16 @@ public final class TimeZoneKey
             "GMT",
             "UTC",
             "UT");
+    private final String id;
+    private final short key;
 
-    static {
-        try (InputStream in = TimeZoneKey.class.getResourceAsStream("zone-index.properties")) {
-            // load zone file
-            // todo parse file by hand since Properties ignores duplicate entries
-            Properties data = new Properties()
-            {
-                @Override
-                public synchronized Object put(Object key, Object value)
-                {
-                    Object existingEntry = super.put(key, value);
-                    if (existingEntry != null) {
-                        throw new AssertionError("Zone file has duplicate entries for " + key);
-                    }
-                    return null;
-                }
-            };
-            data.load(in);
-
-            if (data.containsKey("0")) {
-                throw new AssertionError("Zone file should not contain a mapping for key 0");
-            }
-
-            Map<String, TimeZoneKey> zoneIdToKey = new TreeMap<>();
-            zoneIdToKey.put(UTC_KEY.getId(), UTC_KEY);
-
-            short maxZoneKey = 0;
-            for (Entry<Object, Object> entry : data.entrySet()) {
-                short zoneKey = Short.valueOf(((String) entry.getKey()).trim());
-                String zoneId = ((String) entry.getValue()).trim();
-
-                maxZoneKey = (short) max(maxZoneKey, zoneKey);
-                zoneIdToKey.put(zoneId, new TimeZoneKey(zoneId, zoneKey));
-            }
-
-            MAX_TIME_ZONE_KEY = maxZoneKey;
-            ZONE_ID_TO_KEY = Collections.unmodifiableMap(new LinkedHashMap<>(zoneIdToKey));
-            ZONE_KEYS = Collections.unmodifiableSet(new LinkedHashSet<>(zoneIdToKey.values()));
-
-            TIME_ZONE_KEYS = new TimeZoneKey[maxZoneKey + 1];
-            for (TimeZoneKey timeZoneKey : zoneIdToKey.values()) {
-                TIME_ZONE_KEYS[timeZoneKey.getKey()] = timeZoneKey;
-            }
-
-            for (short offset = OFFSET_TIME_ZONE_MIN; offset <= OFFSET_TIME_ZONE_MAX; offset++) {
-                if (offset == 0) {
-                    continue;
-                }
-                String zoneId = zoneIdForOffset(offset);
-                TimeZoneKey zoneKey = ZONE_ID_TO_KEY.get(zoneId);
-                OFFSET_TIME_ZONE_KEYS[offset - OFFSET_TIME_ZONE_MIN] = zoneKey;
-            }
+    TimeZoneKey(String id, short key)
+    {
+        this.id = requireNonNull(id, "id is null");
+        if (key < 0) {
+            throw new IllegalArgumentException("key is negative");
         }
-        catch (IOException e) {
-            throw new AssertionError("Error loading time zone index file", e);
-        }
+        this.key = key;
     }
 
     public static Set<TimeZoneKey> getTimeZoneKeys()
@@ -192,60 +146,6 @@ public final class TimeZoneKey
             throw new TimeZoneNotSupportedException(zoneIdForOffset(offsetMinutes));
         }
         return timeZoneKey;
-    }
-
-    private final String id;
-
-    private final short key;
-
-    TimeZoneKey(String id, short key)
-    {
-        this.id = requireNonNull(id, "id is null");
-        if (key < 0) {
-            throw new IllegalArgumentException("key is negative");
-        }
-        this.key = key;
-    }
-
-    public String getId()
-    {
-        return id;
-    }
-
-    public ZoneId getZoneId()
-    {
-        return ZoneId.of(id);
-    }
-
-    @JsonValue
-    public short getKey()
-    {
-        return key;
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(id, key);
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null || getClass() != obj.getClass()) {
-            return false;
-        }
-        TimeZoneKey other = (TimeZoneKey) obj;
-        return Objects.equals(this.id, other.id) && Objects.equals(this.key, other.key);
-    }
-
-    @Override
-    public String toString()
-    {
-        return id;
     }
 
     public static boolean isUtcZoneId(String zoneId)
@@ -352,6 +252,104 @@ public final class TimeZoneKey
     {
         if (!check) {
             throw new IllegalArgumentException(format(message, args));
+        }
+    }
+
+    public String getId()
+    {
+        return id;
+    }
+
+    public ZoneId getZoneId()
+    {
+        return ZoneId.of(id);
+    }
+
+    @JsonValue
+    public short getKey()
+    {
+        return key;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(id, key);
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        TimeZoneKey other = (TimeZoneKey) obj;
+        return Objects.equals(this.id, other.id) && Objects.equals(this.key, other.key);
+    }
+
+    @Override
+    public String toString()
+    {
+        return id;
+    }
+
+    static {
+        try (InputStream in = TimeZoneKey.class.getResourceAsStream("zone-index.properties")) {
+            // load zone file
+            // todo parse file by hand since Properties ignores duplicate entries
+            Properties data = new Properties()
+            {
+                @Override
+                public synchronized Object put(Object key, Object value)
+                {
+                    Object existingEntry = super.put(key, value);
+                    if (existingEntry != null) {
+                        throw new AssertionError("Zone file has duplicate entries for " + key);
+                    }
+                    return null;
+                }
+            };
+            data.load(in);
+
+            if (data.containsKey("0")) {
+                throw new AssertionError("Zone file should not contain a mapping for key 0");
+            }
+
+            Map<String, TimeZoneKey> zoneIdToKey = new TreeMap<>();
+            zoneIdToKey.put(UTC_KEY.getId(), UTC_KEY);
+
+            short maxZoneKey = 0;
+            for (Entry<Object, Object> entry : data.entrySet()) {
+                short zoneKey = Short.valueOf(((String) entry.getKey()).trim());
+                String zoneId = ((String) entry.getValue()).trim();
+
+                maxZoneKey = (short) max(maxZoneKey, zoneKey);
+                zoneIdToKey.put(zoneId, new TimeZoneKey(zoneId, zoneKey));
+            }
+
+            MAX_TIME_ZONE_KEY = maxZoneKey;
+            ZONE_ID_TO_KEY = Collections.unmodifiableMap(new LinkedHashMap<>(zoneIdToKey));
+            ZONE_KEYS = Collections.unmodifiableSet(new LinkedHashSet<>(zoneIdToKey.values()));
+
+            TIME_ZONE_KEYS = new TimeZoneKey[maxZoneKey + 1];
+            for (TimeZoneKey timeZoneKey : zoneIdToKey.values()) {
+                TIME_ZONE_KEYS[timeZoneKey.getKey()] = timeZoneKey;
+            }
+
+            for (short offset = OFFSET_TIME_ZONE_MIN; offset <= OFFSET_TIME_ZONE_MAX; offset++) {
+                if (offset == 0) {
+                    continue;
+                }
+                String zoneId = zoneIdForOffset(offset);
+                TimeZoneKey zoneKey = ZONE_ID_TO_KEY.get(zoneId);
+                OFFSET_TIME_ZONE_KEYS[offset - OFFSET_TIME_ZONE_MIN] = zoneKey;
+            }
+        }
+        catch (IOException e) {
+            throw new AssertionError("Error loading time zone index file", e);
         }
     }
 }

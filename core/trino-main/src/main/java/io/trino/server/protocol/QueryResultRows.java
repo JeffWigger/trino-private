@@ -83,6 +83,25 @@ public class QueryResultRows
         verify(totalRows == 0 || (totalRows > 0 && columns.isPresent()), "data present without columns and types");
     }
 
+    private static long countRows(List<Page> pages)
+    {
+        return pages.stream()
+                .map(Page::getPositionCount)
+                .map(Integer::longValue)
+                .reduce(Long::sum)
+                .orElse(0L);
+    }
+
+    public static QueryResultRows empty(Session session)
+    {
+        return new QueryResultRows(session, Optional.empty(), ImmutableList.of(), null);
+    }
+
+    public static Builder queryResultRowsBuilder(Session session)
+    {
+        return new Builder(session);
+    }
+
     public boolean isEmpty()
     {
         return totalRows == 0;
@@ -129,15 +148,6 @@ public class QueryResultRows
         return new ResultsIterator(this);
     }
 
-    private static long countRows(List<Page> pages)
-    {
-        return pages.stream()
-                .map(Page::getPositionCount)
-                .map(Integer::longValue)
-                .reduce(Long::sum)
-                .orElse(0L);
-    }
-
     @Override
     public String toString()
     {
@@ -146,16 +156,6 @@ public class QueryResultRows
                 .add("totalRowsCount", getTotalRowsCount())
                 .add("pagesCount", this.pages.size())
                 .toString();
-    }
-
-    public static QueryResultRows empty(Session session)
-    {
-        return new QueryResultRows(session, Optional.empty(), ImmutableList.of(), null);
-    }
-
-    public static Builder queryResultRowsBuilder(Session session)
-    {
-        return new Builder(session);
     }
 
     public static class Builder
@@ -168,6 +168,20 @@ public class QueryResultRows
         public Builder(Session session)
         {
             this.session = requireNonNull(session, "session is null");
+        }
+
+        private static List<ColumnAndType> combine(@Nullable List<Column> columns, @Nullable List<Type> types)
+        {
+            checkArgument(columns != null && types != null, "columns and types must be present at the same time");
+            checkArgument(columns.size() == types.size(), "columns and types size mismatch");
+
+            ImmutableList.Builder<ColumnAndType> builder = ImmutableList.builder();
+
+            for (int i = 0; i < columns.size(); i++) {
+                builder.add(new ColumnAndType(i, columns.get(i), types.get(i)));
+            }
+
+            return builder.build();
         }
 
         public Builder addPage(Page page)
@@ -214,20 +228,6 @@ public class QueryResultRows
                     columns,
                     pages.build(),
                     exceptionConsumer);
-        }
-
-        private static List<ColumnAndType> combine(@Nullable List<Column> columns, @Nullable List<Type> types)
-        {
-            checkArgument(columns != null && types != null, "columns and types must be present at the same time");
-            checkArgument(columns.size() == types.size(), "columns and types size mismatch");
-
-            ImmutableList.Builder<ColumnAndType> builder = ImmutableList.builder();
-
-            for (int i = 0; i < columns.size(); i++) {
-                builder.add(new ColumnAndType(i, columns.get(i), types.get(i)));
-            }
-
-            return builder.build();
         }
     }
 

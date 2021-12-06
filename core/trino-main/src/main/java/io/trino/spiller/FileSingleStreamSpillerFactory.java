@@ -62,12 +62,11 @@ import static java.util.concurrent.Executors.newFixedThreadPool;
 public class FileSingleStreamSpillerFactory
         implements SingleStreamSpillerFactory
 {
-    private static final Logger log = Logger.get(FileSingleStreamSpillerFactory.class);
-
     @VisibleForTesting
     static final String SPILL_FILE_PREFIX = "spill";
     @VisibleForTesting
     static final String SPILL_FILE_SUFFIX = ".bin";
+    private static final Logger log = Logger.get(FileSingleStreamSpillerFactory.class);
     private static final String SPILL_FILE_GLOB = "spill*.bin";
     private static final Duration SPILL_PATH_HEALTH_EXPIRY_INTERVAL = Duration.ofMinutes(5);
 
@@ -77,8 +76,8 @@ public class FileSingleStreamSpillerFactory
     private final SpillerStats spillerStats;
     private final double maxUsedSpaceThreshold;
     private final boolean spillEncryptionEnabled;
-    private int roundRobinIndex;
     private final LoadingCache<Path, Boolean> spillPathHealthCache;
+    private int roundRobinIndex;
 
     @Inject
     public FileSingleStreamSpillerFactory(Metadata metadata, SpillerStats spillerStats, FeaturesConfig featuresConfig, NodeSpillConfig nodeSpillConfig)
@@ -130,18 +129,6 @@ public class FileSingleStreamSpillerFactory
                 .build(CacheLoader.from(path -> isAccessible(path) && isSeeminglyHealthy(path)));
     }
 
-    @PostConstruct
-    public void cleanupOldSpillFiles()
-    {
-        spillPaths.forEach(FileSingleStreamSpillerFactory::cleanupOldSpillFiles);
-    }
-
-    @PreDestroy
-    public void destroy()
-    {
-        executor.shutdownNow();
-    }
-
     private static void cleanupOldSpillFiles(Path path)
     {
         try (DirectoryStream<Path> stream = newDirectoryStream(path, SPILL_FILE_GLOB)) {
@@ -158,6 +145,18 @@ public class FileSingleStreamSpillerFactory
         catch (IOException e) {
             log.warn(e, "Error cleaning spill files");
         }
+    }
+
+    @PostConstruct
+    public void cleanupOldSpillFiles()
+    {
+        spillPaths.forEach(FileSingleStreamSpillerFactory::cleanupOldSpillFiles);
+    }
+
+    @PreDestroy
+    public void destroy()
+    {
+        executor.shutdownNow();
     }
 
     @Override

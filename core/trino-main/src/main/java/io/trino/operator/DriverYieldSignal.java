@@ -42,13 +42,11 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 @ThreadSafe
 public class DriverYieldSignal
 {
+    private final AtomicBoolean yield = new AtomicBoolean();
     @GuardedBy("this")
     private long runningSequence;
-
     @GuardedBy("this")
     private ScheduledFuture<?> yieldFuture;
-
-    private final AtomicBoolean yield = new AtomicBoolean();
 
     public synchronized void setWithDelay(long maxRunNanos, ScheduledExecutorService executor)
     {

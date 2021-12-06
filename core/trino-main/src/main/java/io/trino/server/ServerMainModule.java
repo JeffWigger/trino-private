@@ -174,6 +174,52 @@ public class ServerMainModule
         this.nodeVersion = requireNonNull(nodeVersion, "nodeVersion is null");
     }
 
+    @Provides
+    @Singleton
+    public static TypeOperators createTypeOperators(TypeOperatorsCache typeOperatorsCache)
+    {
+        return new TypeOperators(typeOperatorsCache);
+    }
+
+    @Provides
+    @Singleton
+    @ForExchange
+    public static ScheduledExecutorService createExchangeExecutor(ExchangeClientConfig config)
+    {
+        return newScheduledThreadPool(config.getClientThreads(), daemonThreadsNamed("exchange-client-%s"));
+    }
+
+    @Provides
+    @Singleton
+    @ForAsyncHttp
+    public static ExecutorService createAsyncHttpResponseCoreExecutor()
+    {
+        return newCachedThreadPool(daemonThreadsNamed("async-http-response-%s"));
+    }
+
+    @Provides
+    @Singleton
+    @ForAsyncHttp
+    public static BoundedExecutor createAsyncHttpResponseExecutor(@ForAsyncHttp ExecutorService coreExecutor, TaskManagerConfig config)
+    {
+        return new BoundedExecutor(coreExecutor, config.getHttpResponseThreads());
+    }
+
+    @Provides
+    @Singleton
+    @ForAsyncHttp
+    public static ScheduledExecutorService createAsyncHttpTimeoutExecutor(TaskManagerConfig config)
+    {
+        return newScheduledThreadPool(config.getHttpTimeoutThreads(), daemonThreadsNamed("async-http-timeout-%s"));
+    }
+
+    @Provides
+    @Singleton
+    public static BlockEncodingSerde createBlockEncodingSerde(Metadata metadata)
+    {
+        return metadata.getBlockEncodingSerde();
+    }
+
     @Override
     protected void setup(Binder binder)
     {
@@ -452,52 +498,6 @@ public class ServerMainModule
 
         // cleanup
         binder.bind(ExecutorCleanup.class).in(Scopes.SINGLETON);
-    }
-
-    @Provides
-    @Singleton
-    public static TypeOperators createTypeOperators(TypeOperatorsCache typeOperatorsCache)
-    {
-        return new TypeOperators(typeOperatorsCache);
-    }
-
-    @Provides
-    @Singleton
-    @ForExchange
-    public static ScheduledExecutorService createExchangeExecutor(ExchangeClientConfig config)
-    {
-        return newScheduledThreadPool(config.getClientThreads(), daemonThreadsNamed("exchange-client-%s"));
-    }
-
-    @Provides
-    @Singleton
-    @ForAsyncHttp
-    public static ExecutorService createAsyncHttpResponseCoreExecutor()
-    {
-        return newCachedThreadPool(daemonThreadsNamed("async-http-response-%s"));
-    }
-
-    @Provides
-    @Singleton
-    @ForAsyncHttp
-    public static BoundedExecutor createAsyncHttpResponseExecutor(@ForAsyncHttp ExecutorService coreExecutor, TaskManagerConfig config)
-    {
-        return new BoundedExecutor(coreExecutor, config.getHttpResponseThreads());
-    }
-
-    @Provides
-    @Singleton
-    @ForAsyncHttp
-    public static ScheduledExecutorService createAsyncHttpTimeoutExecutor(TaskManagerConfig config)
-    {
-        return newScheduledThreadPool(config.getHttpTimeoutThreads(), daemonThreadsNamed("async-http-timeout-%s"));
-    }
-
-    @Provides
-    @Singleton
-    public static BlockEncodingSerde createBlockEncodingSerde(Metadata metadata)
-    {
-        return metadata.getBlockEncodingSerde();
     }
 
     public static class ExecutorCleanup

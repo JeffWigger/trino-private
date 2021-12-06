@@ -18,6 +18,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.inject.Provider;
 import io.airlift.concurrent.BoundedExecutor;
+import io.airlift.http.client.HttpClient;
 import io.airlift.json.JsonCodec;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -33,10 +34,10 @@ import io.trino.operator.ExchangeClientSupplier;
 import io.trino.operator.ForDeltaUpdate;
 import io.trino.security.AccessControl;
 import io.trino.server.BasicQueryInfo;
-import io.trino.spi.DeltaFlagRequest;
 import io.trino.server.ForStatementResource;
 import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.protocol.Slug;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.QueryId;
 import io.trino.spi.block.BlockEncodingSerde;
 import io.trino.sql.planner.Plan;
@@ -44,11 +45,9 @@ import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.Statement;
 import io.trino.transaction.TransactionManager;
 import org.joda.time.DateTime;
-import io.airlift.http.client.HttpClient;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
-
 
 import java.util.List;
 import java.util.Optional;
@@ -352,7 +351,6 @@ public class DeltaUpdateExecution<T extends Statement>
             this.httpClient = httpClient;
             this.locationFactory = locationFactory;
             this.deltaFlagRequestCodec = deltaFlagRequestCodec;
-
         }
 
         @Override

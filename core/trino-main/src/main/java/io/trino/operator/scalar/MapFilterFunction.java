@@ -100,19 +100,6 @@ public final class MapFilterFunction
                 SCALAR));
     }
 
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        MapType mapType = (MapType) functionBinding.getBoundSignature().getReturnType();
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, FUNCTION),
-                ImmutableList.of(BinaryFunctionInterface.class),
-                generateFilter(mapType),
-                Optional.of(STATE_FACTORY.bindTo(mapType)));
-    }
-
     @UsedByGeneratedCode
     public static Object createState(MapType mapType)
     {
@@ -214,5 +201,18 @@ public final class MapFilterFunction
 
         Class<?> generatedClass = defineClass(definition, Object.class, binder.getBindings(), MapFilterFunction.class.getClassLoader());
         return methodHandle(generatedClass, "filter", Object.class, Block.class, BinaryFunctionInterface.class);
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        MapType mapType = (MapType) functionBinding.getBoundSignature().getReturnType();
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, FUNCTION),
+                ImmutableList.of(BinaryFunctionInterface.class),
+                generateFilter(mapType),
+                Optional.of(STATE_FACTORY.bindTo(mapType)));
     }
 }

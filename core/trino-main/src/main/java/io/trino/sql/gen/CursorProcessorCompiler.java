@@ -70,33 +70,6 @@ public class CursorProcessorCompiler
         this.metadata = metadata;
     }
 
-    @Override
-    public void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, List<RowExpression> projections)
-    {
-        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
-
-        generateProcessMethod(classDefinition, projections.size());
-
-        Map<LambdaDefinitionExpression, CompiledLambda> filterCompiledLambdaMap = generateMethodsForLambda(classDefinition, callSiteBinder, cachedInstanceBinder, filter, "filter");
-        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filterCompiledLambdaMap, filter);
-
-        for (int i = 0; i < projections.size(); i++) {
-            String methodName = "project_" + i;
-            Map<LambdaDefinitionExpression, CompiledLambda> projectCompiledLambdaMap = generateMethodsForLambda(classDefinition, callSiteBinder, cachedInstanceBinder, projections.get(i), methodName);
-            generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, projectCompiledLambdaMap, methodName, projections.get(i));
-        }
-
-        MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC));
-        BytecodeBlock constructorBody = constructorDefinition.getBody();
-        Variable thisVariable = constructorDefinition.getThis();
-        constructorBody.comment("super();")
-                .append(thisVariable)
-                .invokeConstructor(Object.class);
-
-        cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
-        constructorBody.ret();
-    }
-
     private static void generateProcessMethod(ClassDefinition classDefinition, int projections)
     {
         Parameter session = arg("session", ConnectorSession.class);
@@ -188,6 +161,112 @@ public class CursorProcessorCompiler
                             type(BlockBuilder.class));
         }
         return ifStatement;
+    }
+
+    private static RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler(Variable cursorVariable)
+    {
+        return new RowExpressionVisitor<>()
+        {
+            @Override
+            public BytecodeNode visitInputReference(InputReferenceExpression node, Scope scope)
+            {
+                int field = node.getField();
+                Type type = node.getType();
+                Variable wasNullVariable = scope.getVariable("wasNull");
+
+                Class<?> javaType = type.getJavaType();
+
+                IfStatement ifStatement = new IfStatement();
+                ifStatement.condition()
+                        .setDescription(format("cursor.get%s(%d)", type, field))
+                        .getVariable(cursorVariable)
+                        .push(field)
+                        .invokeInterface(RecordCursor.class, "isNull", boolean.class, int.class);
+
+                ifStatement.ifTrue()
+                        .putVariable(wasNullVariable, true)
+                        .pushJavaDefault(javaType);
+
+                ifStatement.ifFalse()
+                        .getVariable(cursorVariable)
+                        .push(field);
+                if (javaType == boolean.class) {
+                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getBoolean", boolean.class, int.class);
+                }
+                else if (javaType == long.class) {
+                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getLong", long.class, int.class);
+                }
+                else if (javaType == double.class) {
+                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getDouble", double.class, int.class);
+                }
+                else if (javaType == Slice.class) {
+                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getSlice", Slice.class, int.class);
+                }
+                else {
+                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getObject", Object.class, int.class)
+                            .checkCast(javaType);
+                }
+
+                return ifStatement;
+            }
+
+            @Override
+            public BytecodeNode visitCall(CallExpression call, Scope scope)
+            {
+                throw new UnsupportedOperationException("not yet implemented");
+            }
+
+            @Override
+            public BytecodeNode visitSpecialForm(SpecialForm specialForm, Scope context)
+            {
+                throw new UnsupportedOperationException("not yet implemented");
+            }
+
+            @Override
+            public BytecodeNode visitConstant(ConstantExpression literal, Scope scope)
+            {
+                throw new UnsupportedOperationException("not yet implemented");
+            }
+
+            @Override
+            public BytecodeNode visitLambda(LambdaDefinitionExpression lambda, Scope context)
+            {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public BytecodeNode visitVariableReference(VariableReferenceExpression reference, Scope context)
+            {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    @Override
+    public void generateMethods(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, RowExpression filter, List<RowExpression> projections)
+    {
+        CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(classDefinition, callSiteBinder);
+
+        generateProcessMethod(classDefinition, projections.size());
+
+        Map<LambdaDefinitionExpression, CompiledLambda> filterCompiledLambdaMap = generateMethodsForLambda(classDefinition, callSiteBinder, cachedInstanceBinder, filter, "filter");
+        generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filterCompiledLambdaMap, filter);
+
+        for (int i = 0; i < projections.size(); i++) {
+            String methodName = "project_" + i;
+            Map<LambdaDefinitionExpression, CompiledLambda> projectCompiledLambdaMap = generateMethodsForLambda(classDefinition, callSiteBinder, cachedInstanceBinder, projections.get(i), methodName);
+            generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, projectCompiledLambdaMap, methodName, projections.get(i));
+        }
+
+        MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC));
+        BytecodeBlock constructorBody = constructorDefinition.getBody();
+        Variable thisVariable = constructorDefinition.getThis();
+        constructorBody.comment("super();")
+                .append(thisVariable)
+                .invokeConstructor(Object.class);
+
+        cachedInstanceBinder.generateInitializations(thisVariable, constructorBody);
+        constructorBody.ret();
     }
 
     private Map<LambdaDefinitionExpression, CompiledLambda> generateMethodsForLambda(
@@ -290,84 +369,5 @@ public class CursorProcessorCompiler
                 .append(compiler.compile(projection, scope))
                 .append(generateWrite(callSiteBinder, scope, wasNullVariable, projection.getType()))
                 .ret();
-    }
-
-    private static RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler(Variable cursorVariable)
-    {
-        return new RowExpressionVisitor<>()
-        {
-            @Override
-            public BytecodeNode visitInputReference(InputReferenceExpression node, Scope scope)
-            {
-                int field = node.getField();
-                Type type = node.getType();
-                Variable wasNullVariable = scope.getVariable("wasNull");
-
-                Class<?> javaType = type.getJavaType();
-
-                IfStatement ifStatement = new IfStatement();
-                ifStatement.condition()
-                        .setDescription(format("cursor.get%s(%d)", type, field))
-                        .getVariable(cursorVariable)
-                        .push(field)
-                        .invokeInterface(RecordCursor.class, "isNull", boolean.class, int.class);
-
-                ifStatement.ifTrue()
-                        .putVariable(wasNullVariable, true)
-                        .pushJavaDefault(javaType);
-
-                ifStatement.ifFalse()
-                        .getVariable(cursorVariable)
-                        .push(field);
-                if (javaType == boolean.class) {
-                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getBoolean", boolean.class, int.class);
-                }
-                else if (javaType == long.class) {
-                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getLong", long.class, int.class);
-                }
-                else if (javaType == double.class) {
-                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getDouble", double.class, int.class);
-                }
-                else if (javaType == Slice.class) {
-                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getSlice", Slice.class, int.class);
-                }
-                else {
-                    ifStatement.ifFalse().invokeInterface(RecordCursor.class, "getObject", Object.class, int.class)
-                            .checkCast(javaType);
-                }
-
-                return ifStatement;
-            }
-
-            @Override
-            public BytecodeNode visitCall(CallExpression call, Scope scope)
-            {
-                throw new UnsupportedOperationException("not yet implemented");
-            }
-
-            @Override
-            public BytecodeNode visitSpecialForm(SpecialForm specialForm, Scope context)
-            {
-                throw new UnsupportedOperationException("not yet implemented");
-            }
-
-            @Override
-            public BytecodeNode visitConstant(ConstantExpression literal, Scope scope)
-            {
-                throw new UnsupportedOperationException("not yet implemented");
-            }
-
-            @Override
-            public BytecodeNode visitLambda(LambdaDefinitionExpression lambda, Scope context)
-            {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public BytecodeNode visitVariableReference(VariableReferenceExpression reference, Scope context)
-            {
-                throw new UnsupportedOperationException();
-            }
-        };
     }
 }

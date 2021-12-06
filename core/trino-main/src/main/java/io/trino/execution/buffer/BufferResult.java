@@ -25,17 +25,11 @@ import static java.util.Objects.requireNonNull;
 
 public class BufferResult
 {
-    public static BufferResult emptyResults(String taskInstanceId, long token, boolean bufferComplete)
-    {
-        return new BufferResult(taskInstanceId, token, token, bufferComplete, ImmutableList.of());
-    }
-
     private final String taskInstanceId;
     private final long token;
     private final long nextToken;
     private final boolean bufferComplete;
     private final List<SerializedPage> serializedPages;
-
     public BufferResult(String taskInstanceId, long token, long nextToken, boolean bufferComplete, List<SerializedPage> serializedPages)
     {
         checkArgument(!isNullOrEmpty(taskInstanceId), "taskInstanceId is null");
@@ -45,6 +39,11 @@ public class BufferResult
         this.nextToken = nextToken;
         this.bufferComplete = bufferComplete;
         this.serializedPages = ImmutableList.copyOf(requireNonNull(serializedPages, "serializedPages is null"));
+    }
+
+    public static BufferResult emptyResults(String taskInstanceId, long token, boolean bufferComplete)
+    {
+        return new BufferResult(taskInstanceId, token, token, bufferComplete, ImmutableList.of());
     }
 
     public long getToken()

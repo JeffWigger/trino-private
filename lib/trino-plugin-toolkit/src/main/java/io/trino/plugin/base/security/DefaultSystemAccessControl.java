@@ -34,6 +34,12 @@ public class DefaultSystemAccessControl
 
     private static final DefaultSystemAccessControl INSTANCE = new DefaultSystemAccessControl();
 
+    @Override
+    public void checkCanImpersonateUser(SystemSecurityContext context, String userName)
+    {
+        denyImpersonateUser(context.getIdentity().getUser(), userName);
+    }
+
     public static class Factory
             implements SystemAccessControlFactory
     {
@@ -50,11 +56,5 @@ public class DefaultSystemAccessControl
             checkArgument(config.isEmpty(), "This access controller does not support any configuration properties");
             return INSTANCE;
         }
-    }
-
-    @Override
-    public void checkCanImpersonateUser(SystemSecurityContext context, String userName)
-    {
-        denyImpersonateUser(context.getIdentity().getUser(), userName);
     }
 }

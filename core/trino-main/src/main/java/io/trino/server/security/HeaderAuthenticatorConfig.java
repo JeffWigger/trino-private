@@ -33,6 +33,11 @@ public class HeaderAuthenticatorConfig
     private Optional<File> userMappingFile = Optional.empty();
     private List<File> headerAuthenticatorFiles = ImmutableList.of(new File("etc/header-authenticator.properties"));
 
+    public Optional<String> getUserMappingPattern()
+    {
+        return this.userMappingPattern;
+    }
+
     @Config("http-server.authentication.header.user-mapping.pattern")
     @ConfigDescription("An optional user mapping pattern to be applied to the authenticated principal")
     public HeaderAuthenticatorConfig setUserMappingPattern(String userMappingPattern)
@@ -42,9 +47,9 @@ public class HeaderAuthenticatorConfig
         return this;
     }
 
-    public Optional<String> getUserMappingPattern()
+    public Optional<@FileExists File> getUserMappingFile()
     {
-        return this.userMappingPattern;
+        return this.userMappingFile;
     }
 
     @Config("http-server.authentication.header.user-mapping.file")
@@ -56,9 +61,11 @@ public class HeaderAuthenticatorConfig
         return this;
     }
 
-    public Optional<@FileExists File> getUserMappingFile()
+    @NotNull
+    @NotEmpty(message = "At least one header authenticator config file is required")
+    public List<@FileExists File> getHeaderAuthenticatorFiles()
     {
-        return this.userMappingFile;
+        return this.headerAuthenticatorFiles;
     }
 
     @Config("header-authenticator.config-files")
@@ -70,12 +77,5 @@ public class HeaderAuthenticatorConfig
                 .collect(toImmutableList());
 
         return this;
-    }
-
-    @NotNull
-    @NotEmpty(message = "At least one header authenticator config file is required")
-    public List<@FileExists File> getHeaderAuthenticatorFiles()
-    {
-        return this.headerAuthenticatorFiles;
     }
 }

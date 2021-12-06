@@ -26,6 +26,14 @@ import java.util.List;
 class FilteredOffsetIndex
         implements OffsetIndex
 {
+    private final OffsetIndex offsetIndex;
+    private final int[] indexMap;
+    private FilteredOffsetIndex(OffsetIndex offsetIndex, int[] indexMap)
+    {
+        this.offsetIndex = offsetIndex;
+        this.indexMap = indexMap;
+    }
+
     /*
      * Returns the filtered offset index containing only the pages which are overlapping with rowRanges.
      */
@@ -39,15 +47,6 @@ class FilteredOffsetIndex
             }
         }
         return new FilteredOffsetIndex(offsetIndex, indexMap.toIntArray());
-    }
-
-    private final OffsetIndex offsetIndex;
-    private final int[] indexMap;
-
-    private FilteredOffsetIndex(OffsetIndex offsetIndex, int[] indexMap)
-    {
-        this.offsetIndex = offsetIndex;
-        this.indexMap = indexMap;
     }
 
     @Override

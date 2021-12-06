@@ -75,15 +75,12 @@ public class IndexLoader
     private final PagesIndex.Factory pagesIndexFactory;
     private final JoinCompiler joinCompiler;
     private final BlockTypeOperators blockTypeOperators;
-
-    @GuardedBy("this")
-    private IndexSnapshotLoader indexSnapshotLoader; // Lazily initialized
-
-    @GuardedBy("this")
-    private PipelineContext pipelineContext; // Lazily initialized
-
     @GuardedBy("this")
     private final AtomicReference<IndexSnapshot> indexSnapshotReference;
+    @GuardedBy("this")
+    private IndexSnapshotLoader indexSnapshotLoader; // Lazily initialized
+    @GuardedBy("this")
+    private PipelineContext pipelineContext; // Lazily initialized
 
     public IndexLoader(
             Set<Integer> lookupSourceInputChannels,

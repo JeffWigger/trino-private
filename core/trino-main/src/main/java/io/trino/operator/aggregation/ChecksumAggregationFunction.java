@@ -82,20 +82,6 @@ public class ChecksumAggregationFunction
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        return ImmutableList.of(StateCompiler.getSerializedType(NullableLongState.class).getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type valueType = functionBinding.getTypeVariable("T");
-        BlockPositionXxHash64 xxHash64Operator = blockTypeOperators.getXxHash64Operator(valueType);
-        return generateAggregation(valueType, xxHash64Operator);
-    }
-
     private static InternalAggregationFunction generateAggregation(Type type, BlockPositionXxHash64 xxHash64Operator)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(ChecksumAggregationFunction.class.getClassLoader());
@@ -148,5 +134,19 @@ public class ChecksumAggregationFunction
         else {
             VARBINARY.writeSlice(out, wrappedLongArray(state.getLong()));
         }
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        return ImmutableList.of(StateCompiler.getSerializedType(NullableLongState.class).getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type valueType = functionBinding.getTypeVariable("T");
+        BlockPositionXxHash64 xxHash64Operator = blockTypeOperators.getXxHash64Operator(valueType);
+        return generateAggregation(valueType, xxHash64Operator);
     }
 }

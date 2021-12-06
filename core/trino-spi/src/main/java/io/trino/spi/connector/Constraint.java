@@ -29,16 +29,6 @@ public class Constraint
     private final Optional<Predicate<Map<ColumnHandle, NullableValue>>> predicate;
     private final Optional<Set<ColumnHandle>> predicateColumns;
 
-    public static Constraint alwaysTrue()
-    {
-        return new Constraint(TupleDomain.all(), Optional.empty(), Optional.empty());
-    }
-
-    public static Constraint alwaysFalse()
-    {
-        return new Constraint(TupleDomain.none(), Optional.of(bindings -> false), Optional.empty());
-    }
-
     public Constraint(TupleDomain<ColumnHandle> summary)
     {
         this(summary, Optional.empty(), Optional.empty());
@@ -77,6 +67,16 @@ public class Constraint
         if (predicateColumns.isPresent() && predicate.isEmpty()) {
             throw new IllegalArgumentException("predicateColumns cannot be present when predicate is not present");
         }
+    }
+
+    public static Constraint alwaysTrue()
+    {
+        return new Constraint(TupleDomain.all(), Optional.empty(), Optional.empty());
+    }
+
+    public static Constraint alwaysFalse()
+    {
+        return new Constraint(TupleDomain.none(), Optional.of(bindings -> false), Optional.empty());
     }
 
     public TupleDomain<ColumnHandle> getSummary()

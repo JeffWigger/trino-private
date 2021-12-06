@@ -119,49 +119,6 @@ public class QueryManagerStats
         }
     }
 
-    private class StatisticsListener
-            implements StateChangeListener<QueryState>
-    {
-        private final Supplier<Optional<BasicQueryInfo>> finalQueryInfoSupplier;
-
-        @GuardedBy("this")
-        private boolean stopped;
-        @GuardedBy("this")
-        private boolean started;
-
-        public StatisticsListener()
-        {
-            finalQueryInfoSupplier = Optional::empty;
-        }
-
-        public StatisticsListener(DispatchQuery managedQueryExecution)
-        {
-            finalQueryInfoSupplier = () -> Optional.of(managedQueryExecution.getBasicQueryInfo());
-        }
-
-        @Override
-        public void stateChanged(QueryState newValue)
-        {
-            synchronized (this) {
-                if (stopped) {
-                    return;
-                }
-
-                if (newValue.isDone()) {
-                    stopped = true;
-                    finalQueryInfoSupplier.get()
-                            .ifPresent(QueryManagerStats.this::queryFinished);
-                }
-                else if (newValue.ordinal() >= RUNNING.ordinal()) {
-                    if (!started) {
-                        started = true;
-                        queryStarted();
-                    }
-                }
-            }
-        }
-    }
-
     @Managed
     @Nested
     public CounterStat getStartedQueries()
@@ -279,5 +236,48 @@ public class QueryManagerStats
     public DistributionStat getCpuInputByteRate()
     {
         return cpuInputByteRate;
+    }
+
+    private class StatisticsListener
+            implements StateChangeListener<QueryState>
+    {
+        private final Supplier<Optional<BasicQueryInfo>> finalQueryInfoSupplier;
+
+        @GuardedBy("this")
+        private boolean stopped;
+        @GuardedBy("this")
+        private boolean started;
+
+        public StatisticsListener()
+        {
+            finalQueryInfoSupplier = Optional::empty;
+        }
+
+        public StatisticsListener(DispatchQuery managedQueryExecution)
+        {
+            finalQueryInfoSupplier = () -> Optional.of(managedQueryExecution.getBasicQueryInfo());
+        }
+
+        @Override
+        public void stateChanged(QueryState newValue)
+        {
+            synchronized (this) {
+                if (stopped) {
+                    return;
+                }
+
+                if (newValue.isDone()) {
+                    stopped = true;
+                    finalQueryInfoSupplier.get()
+                            .ifPresent(QueryManagerStats.this::queryFinished);
+                }
+                else if (newValue.ordinal() >= RUNNING.ordinal()) {
+                    if (!started) {
+                        started = true;
+                        queryStarted();
+                    }
+                }
+            }
+        }
     }
 }

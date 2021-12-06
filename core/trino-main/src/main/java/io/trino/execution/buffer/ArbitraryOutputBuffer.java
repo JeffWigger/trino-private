@@ -63,23 +63,17 @@ public class ArbitraryOutputBuffer
 {
     private final OutputBufferMemoryManager memoryManager;
     private final PagesReleasedListener onPagesReleased;
-
-    @GuardedBy("this")
-    private OutputBuffers outputBuffers = createInitialEmptyOutputBuffers(ARBITRARY);
-
     private final MasterBuffer masterBuffer;
-
     @GuardedBy("this")
     private final ConcurrentMap<OutputBufferId, ClientBuffer> buffers = new ConcurrentHashMap<>();
-
     //  The index of the first client buffer that should be polled
     private final AtomicInteger nextClientBufferIndex = new AtomicInteger(0);
-
     private final StateMachine<BufferState> state;
     private final String taskInstanceId;
-
     private final AtomicLong totalPagesAdded = new AtomicLong();
     private final AtomicLong totalRowsAdded = new AtomicLong();
+    @GuardedBy("this")
+    private OutputBuffers outputBuffers = createInitialEmptyOutputBuffers(ARBITRARY);
 
     public ArbitraryOutputBuffer(
             String taskInstanceId,
@@ -405,6 +399,12 @@ public class ArbitraryOutputBuffer
         }
     }
 
+    @VisibleForTesting
+    OutputBufferMemoryManager getMemoryManager()
+    {
+        return memoryManager;
+    }
+
     @ThreadSafe
     private static class MasterBuffer
             implements PagesSupplier
@@ -413,11 +413,9 @@ public class ArbitraryOutputBuffer
 
         @GuardedBy("this")
         private final LinkedList<SerializedPageReference> masterBuffer = new LinkedList<>();
-
+        private final AtomicInteger bufferedPages = new AtomicInteger();
         @GuardedBy("this")
         private boolean noMorePages;
-
-        private final AtomicInteger bufferedPages = new AtomicInteger();
 
         private MasterBuffer(PagesReleasedListener onPagesReleased)
         {
@@ -499,11 +497,5 @@ public class ArbitraryOutputBuffer
                     .add("bufferedPages", bufferedPages.get())
                     .toString();
         }
-    }
-
-    @VisibleForTesting
-    OutputBufferMemoryManager getMemoryManager()
-    {
-        return memoryManager;
     }
 }

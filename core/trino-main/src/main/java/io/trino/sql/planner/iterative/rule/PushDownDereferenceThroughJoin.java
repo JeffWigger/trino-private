@@ -84,6 +84,20 @@ public class PushDownDereferenceThroughJoin
         this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
     }
 
+    private static PlanNode createProjectNodeIfRequired(PlanNode planNode, Assignments dereferences, PlanNodeIdAllocator idAllocator)
+    {
+        if (dereferences.isEmpty()) {
+            return planNode;
+        }
+        return new ProjectNode(
+                idAllocator.getNextId(),
+                planNode,
+                Assignments.builder()
+                        .putIdentities(planNode.getOutputSymbols())
+                        .putAll(dereferences)
+                        .build());
+    }
+
     @Override
     public Pattern<ProjectNode> getPattern()
     {
@@ -184,19 +198,5 @@ public class PushDownDereferenceThroughJoin
                 joinNode.getReorderJoinStatsAndCost());
 
         return Result.ofPlanNode(new ProjectNode(context.getIdAllocator().getNextId(), newJoinNode, newAssignments));
-    }
-
-    private static PlanNode createProjectNodeIfRequired(PlanNode planNode, Assignments dereferences, PlanNodeIdAllocator idAllocator)
-    {
-        if (dereferences.isEmpty()) {
-            return planNode;
-        }
-        return new ProjectNode(
-                idAllocator.getNextId(),
-                planNode,
-                Assignments.builder()
-                        .putIdentities(planNode.getOutputSymbols())
-                        .putAll(dereferences)
-                        .build());
     }
 }

@@ -115,6 +115,11 @@ public class QueryExplainer
         this.dataDefinitionTask = ImmutableMap.copyOf(requireNonNull(dataDefinitionTask, "dataDefinitionTask is null"));
     }
 
+    private static <T extends Statement> String explainTask(Statement statement, DataDefinitionTask<T> task, List<Expression> parameters)
+    {
+        return task.explain((T) statement, parameters);
+    }
+
     public Analysis analyze(Session session, Statement statement, List<Expression> parameters, WarningCollector warningCollector)
     {
         Analyzer analyzer = new Analyzer(session, metadata, sqlParser, groupProvider, accessControl, Optional.of(this), parameters, parameterExtractor(statement, parameters), warningCollector, statsCalculator);
@@ -142,11 +147,6 @@ public class QueryExplainer
                 break;
         }
         throw new IllegalArgumentException("Unhandled plan type: " + planType);
-    }
-
-    private static <T extends Statement> String explainTask(Statement statement, DataDefinitionTask<T> task, List<Expression> parameters)
-    {
-        return task.explain((T) statement, parameters);
     }
 
     public String getGraphvizPlan(Session session, Statement statement, Type planType, List<Expression> parameters, WarningCollector warningCollector)

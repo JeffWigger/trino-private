@@ -34,58 +34,12 @@ import static java.util.Objects.requireNonNull;
 public class ExplainAnalyzeOperator
         implements Operator
 {
-    public static class ExplainAnalyzeOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final QueryPerformanceFetcher queryPerformanceFetcher;
-        private final Metadata metadata;
-        private final boolean verbose;
-        private boolean closed;
-
-        public ExplainAnalyzeOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                QueryPerformanceFetcher queryPerformanceFetcher,
-                Metadata metadata,
-                boolean verbose)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.queryPerformanceFetcher = requireNonNull(queryPerformanceFetcher, "queryPerformanceFetcher is null");
-            this.metadata = requireNonNull(metadata, "metadata is null");
-            this.verbose = verbose;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ExplainAnalyzeOperator.class.getSimpleName());
-            return new ExplainAnalyzeOperator(operatorContext, queryPerformanceFetcher, metadata, verbose);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new ExplainAnalyzeOperatorFactory(operatorId, planNodeId, queryPerformanceFetcher, metadata, verbose);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final QueryPerformanceFetcher queryPerformanceFetcher;
     private final Metadata metadata;
     private final boolean verbose;
     private boolean finishing;
     private boolean outputConsumed;
-
     public ExplainAnalyzeOperator(
             OperatorContext operatorContext,
             QueryPerformanceFetcher queryPerformanceFetcher,
@@ -96,6 +50,28 @@ public class ExplainAnalyzeOperator
         this.queryPerformanceFetcher = requireNonNull(queryPerformanceFetcher, "queryPerformanceFetcher is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.verbose = verbose;
+    }
+
+    private static List<StageInfo> getSubStagesOf(StageId stageId, StageInfo rootStage)
+    {
+        ImmutableList.Builder<StageInfo> collector = ImmutableList.builder();
+        getSubStages(stageId, rootStage, collector, false);
+        return collector.build();
+    }
+
+    private static void getSubStages(StageId stageId, StageInfo rootStage, ImmutableList.Builder<StageInfo> collector, boolean add)
+    {
+        if (rootStage.getStageId().equals(stageId)) {
+            add = true;
+        }
+        List<StageInfo> subStages = rootStage.getSubStages();
+        for (StageInfo subStage : subStages) {
+            getSubStages(stageId, subStage, collector, add);
+        }
+
+        if (add && !rootStage.getStageId().equals(stageId)) {
+            collector.add(rootStage);
+        }
     }
 
     @Override
@@ -178,25 +154,48 @@ public class ExplainAnalyzeOperator
         return subStages.stream().allMatch(StageInfo::isFinalStageInfo);
     }
 
-    private static List<StageInfo> getSubStagesOf(StageId stageId, StageInfo rootStage)
+    public static class ExplainAnalyzeOperatorFactory
+            implements OperatorFactory
     {
-        ImmutableList.Builder<StageInfo> collector = ImmutableList.builder();
-        getSubStages(stageId, rootStage, collector, false);
-        return collector.build();
-    }
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final QueryPerformanceFetcher queryPerformanceFetcher;
+        private final Metadata metadata;
+        private final boolean verbose;
+        private boolean closed;
 
-    private static void getSubStages(StageId stageId, StageInfo rootStage, ImmutableList.Builder<StageInfo> collector, boolean add)
-    {
-        if (rootStage.getStageId().equals(stageId)) {
-            add = true;
-        }
-        List<StageInfo> subStages = rootStage.getSubStages();
-        for (StageInfo subStage : subStages) {
-            getSubStages(stageId, subStage, collector, add);
+        public ExplainAnalyzeOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                QueryPerformanceFetcher queryPerformanceFetcher,
+                Metadata metadata,
+                boolean verbose)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.queryPerformanceFetcher = requireNonNull(queryPerformanceFetcher, "queryPerformanceFetcher is null");
+            this.metadata = requireNonNull(metadata, "metadata is null");
+            this.verbose = verbose;
         }
 
-        if (add && !rootStage.getStageId().equals(stageId)) {
-            collector.add(rootStage);
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, ExplainAnalyzeOperator.class.getSimpleName());
+            return new ExplainAnalyzeOperator(operatorContext, queryPerformanceFetcher, metadata, verbose);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new ExplainAnalyzeOperatorFactory(operatorId, planNodeId, queryPerformanceFetcher, metadata, verbose);
         }
     }
 }

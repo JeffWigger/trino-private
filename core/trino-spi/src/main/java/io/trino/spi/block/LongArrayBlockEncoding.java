@@ -41,7 +41,7 @@ public class LongArrayBlockEncoding
     public void writeBlock(BlockEncodingSerde blockEncodingSerde, SliceOutput sliceOutput, Block block)
     {
         int positionCount = block.getPositionCount();
-        if (block instanceof UpdatableLongArrayBlock){
+        if (block instanceof UpdatableLongArrayBlock) {
             UpdatableLongArrayBlock uBlock = (UpdatableLongArrayBlock) block;
             sliceOutput.writeByte(UPDATABLE);
             sliceOutput.appendInt(positionCount);
@@ -50,8 +50,8 @@ public class LongArrayBlockEncoding
             // TODO: for further encoding we would need to write code that filters out the nulls and deleted columns
             sliceOutput.writeBytes(uBlock.getValueMarkerSlice());
             sliceOutput.writeBytes(getValuesSlice(block));
-
-        }else {
+        }
+        else {
             sliceOutput.writeByte(STATIC);
             sliceOutput.appendInt(positionCount);
 
@@ -81,7 +81,7 @@ public class LongArrayBlockEncoding
     {
         byte type = sliceInput.readByte();
         int positionCount = sliceInput.readInt();
-        if(type == STATIC) {
+        if (type == STATIC) {
             byte[] valueIsNullPacked = retrieveNullBits(sliceInput, positionCount);
             long[] values = new long[positionCount];
 
@@ -121,14 +121,15 @@ public class LongArrayBlockEncoding
                 // Do nothing if there are only nulls
             }
             return new LongArrayBlock(0, positionCount, valueIsNull, values);
-        }else{
+        }
+        else {
             int nullCounter = sliceInput.readInt();
             int deleteCounter = sliceInput.readInt();
             byte[] valueMarker = new byte[positionCount];
             long[] values = new long[positionCount];
             sliceInput.readBytes(Slices.wrappedBuffer(valueMarker));
             sliceInput.readBytes(Slices.wrappedLongArray(values));
-            return  new UpdatableLongArrayBlock(null, positionCount, valueMarker, values, nullCounter, deleteCounter);
+            return new UpdatableLongArrayBlock(null, positionCount, valueMarker, values, nullCounter, deleteCounter);
         }
     }
 
@@ -140,7 +141,7 @@ public class LongArrayBlockEncoding
         else if (block instanceof LongArrayBlockBuilder) {
             return ((LongArrayBlockBuilder) block).getValuesSlice();
         }
-        else if (block instanceof UpdatableLongArrayBlock){
+        else if (block instanceof UpdatableLongArrayBlock) {
             return ((UpdatableLongArrayBlock) block).getValuesSlice();
         }
 

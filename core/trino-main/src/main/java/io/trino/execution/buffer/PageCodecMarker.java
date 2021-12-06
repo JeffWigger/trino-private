@@ -36,21 +36,6 @@ public enum PageCodecMarker
         this.mask = (1 << (bit - 1));
     }
 
-    public boolean isSet(byte value)
-    {
-        return (Byte.toUnsignedInt(value) & mask) == mask;
-    }
-
-    public byte set(byte value)
-    {
-        return (byte) (Byte.toUnsignedInt(value) | mask);
-    }
-
-    public byte unset(byte value)
-    {
-        return (byte) (Byte.toUnsignedInt(value) & (~mask));
-    }
-
     /**
      * The byte value of no {@link PageCodecMarker} values set to true
      */
@@ -70,6 +55,21 @@ public enum PageCodecMarker
                 .collect(Collectors.joining(", "));
     }
 
+    public boolean isSet(byte value)
+    {
+        return (Byte.toUnsignedInt(value) & mask) == mask;
+    }
+
+    public byte set(byte value)
+    {
+        return (byte) (Byte.toUnsignedInt(value) | mask);
+    }
+
+    public byte unset(byte value)
+    {
+        return (byte) (Byte.toUnsignedInt(value) & (~mask));
+    }
+
     public static final class MarkerSet
     {
         private byte markers;
@@ -77,6 +77,21 @@ public enum PageCodecMarker
         private MarkerSet(byte markers)
         {
             this.markers = markers;
+        }
+
+        public static MarkerSet of(PageCodecMarker marker)
+        {
+            return fromByteValue(marker.set(PageCodecMarker.none()));
+        }
+
+        public static MarkerSet fromByteValue(byte markers)
+        {
+            return new MarkerSet(markers);
+        }
+
+        public static MarkerSet empty()
+        {
+            return fromByteValue(PageCodecMarker.none());
         }
 
         public void add(PageCodecMarker marker)
@@ -123,21 +138,6 @@ public enum PageCodecMarker
                 return markers == ((MarkerSet) o).markers;
             }
             return false;
-        }
-
-        public static MarkerSet of(PageCodecMarker marker)
-        {
-            return fromByteValue(marker.set(PageCodecMarker.none()));
-        }
-
-        public static MarkerSet fromByteValue(byte markers)
-        {
-            return new MarkerSet(markers);
-        }
-
-        public static MarkerSet empty()
-        {
-            return fromByteValue(PageCodecMarker.none());
         }
     }
 }

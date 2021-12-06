@@ -67,22 +67,6 @@ public class DetermineJoinDistributionType
         this.taskCountEstimator = requireNonNull(taskCountEstimator, "taskCountEstimator is null");
     }
 
-    @Override
-    public Pattern<JoinNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public Result apply(JoinNode joinNode, Captures captures, Context context)
-    {
-        JoinDistributionType joinDistributionType = getJoinDistributionType(context.getSession());
-        if (joinDistributionType == AUTOMATIC) {
-            return Result.ofPlanNode(getCostBasedJoin(joinNode, context));
-        }
-        return Result.ofPlanNode(getSyntacticOrderJoin(joinNode, context, joinDistributionType));
-    }
-
     public static boolean canReplicate(JoinNode joinNode, Context context)
     {
         JoinDistributionType joinDistributionType = getJoinDistributionType(context.getSession());
@@ -121,6 +105,39 @@ public class DetermineJoinDistributionType
         return sourceNodes.stream()
                 .mapToDouble(sourceNode -> statsProvider.getStats(sourceNode).getOutputSizeInBytes(sourceNode.getOutputSymbols(), typeProvider))
                 .sum();
+    }
+
+    private static boolean mustPartition(JoinNode joinNode)
+    {
+        JoinNode.Type type = joinNode.getType();
+        // With REPLICATED, the unmatched rows from right-side would be duplicated.
+        return type == RIGHT || type == FULL;
+    }
+
+    private static boolean mustReplicate(JoinNode joinNode, Context context)
+    {
+        JoinNode.Type type = joinNode.getType();
+        if (joinNode.getCriteria().isEmpty() && (type == INNER || type == LEFT)) {
+            // There is nothing to partition on
+            return true;
+        }
+        return isAtMostScalar(joinNode.getRight(), context.getLookup());
+    }
+
+    @Override
+    public Pattern<JoinNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public Result apply(JoinNode joinNode, Captures captures, Context context)
+    {
+        JoinDistributionType joinDistributionType = getJoinDistributionType(context.getSession());
+        if (joinDistributionType == AUTOMATIC) {
+            return Result.ofPlanNode(getCostBasedJoin(joinNode, context));
+        }
+        return Result.ofPlanNode(getSyntacticOrderJoin(joinNode, context, joinDistributionType));
     }
 
     private PlanNode getCostBasedJoin(JoinNode joinNode, Context context)
@@ -191,23 +208,6 @@ public class DetermineJoinDistributionType
             return joinNode.withDistributionType(PARTITIONED);
         }
         return joinNode.withDistributionType(REPLICATED);
-    }
-
-    private static boolean mustPartition(JoinNode joinNode)
-    {
-        JoinNode.Type type = joinNode.getType();
-        // With REPLICATED, the unmatched rows from right-side would be duplicated.
-        return type == RIGHT || type == FULL;
-    }
-
-    private static boolean mustReplicate(JoinNode joinNode, Context context)
-    {
-        JoinNode.Type type = joinNode.getType();
-        if (joinNode.getCriteria().isEmpty() && (type == INNER || type == LEFT)) {
-            // There is nothing to partition on
-            return true;
-        }
-        return isAtMostScalar(joinNode.getRight(), context.getLookup());
     }
 
     private PlanNodeWithCost getJoinNodeWithCost(Context context, JoinNode possibleJoinNode)

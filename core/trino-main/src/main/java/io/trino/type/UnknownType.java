@@ -37,10 +37,9 @@ public final class UnknownType
         extends AbstractType
         implements FixedWidthType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(UnknownType.class, lookup(), boolean.class);
-
     public static final UnknownType UNKNOWN = new UnknownType();
     public static final String NAME = "unknown";
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(UnknownType.class, lookup(), boolean.class);
 
     private UnknownType()
     {
@@ -48,6 +47,24 @@ public final class UnknownType
         // The actual native container type does not matter here.
         // We choose boolean to represent UNKNOWN because it's the smallest primitive type.
         super(new TypeSignature(NAME), boolean.class);
+    }
+
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(boolean unusedLeft, boolean unusedRight)
+    {
+        throw new AssertionError("value of unknown type should all be NULL");
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(boolean unusedValue)
+    {
+        throw new AssertionError("value of unknown type should all be NULL");
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(boolean unusedLeft, boolean unusedRight)
+    {
+        throw new AssertionError("value of unknown type should all be NULL");
     }
 
     @Override
@@ -132,23 +149,5 @@ public final class UnknownType
         // However, some logic (e.g. AbstractMinMaxBy) rely on writing a default value before the null check.
         checkArgument(!value);
         blockBuilder.appendNull();
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(boolean unusedLeft, boolean unusedRight)
-    {
-        throw new AssertionError("value of unknown type should all be NULL");
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(boolean unusedValue)
-    {
-        throw new AssertionError("value of unknown type should all be NULL");
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(boolean unusedLeft, boolean unusedRight)
-    {
-        throw new AssertionError("value of unknown type should all be NULL");
     }
 }

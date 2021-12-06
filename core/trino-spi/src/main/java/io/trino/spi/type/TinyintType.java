@@ -40,13 +40,48 @@ public final class TinyintType
         extends AbstractType
         implements FixedWidthType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(TinyintType.class, lookup(), long.class);
-
     public static final TinyintType TINYINT = new TinyintType();
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(TinyintType.class, lookup(), long.class);
 
     private TinyintType()
     {
         super(new TypeSignature(StandardTypes.TINYINT), long.class);
+    }
+
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long left, long right)
+    {
+        return left == right;
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long value)
+    {
+        return AbstractLongType.hash((byte) value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long value)
+    {
+        return XxHash64.hash((byte) value);
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Byte.compare((byte) left, (byte) right);
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return ((byte) left) < ((byte) right);
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return ((byte) left) <= ((byte) right);
     }
 
     @Override
@@ -156,41 +191,5 @@ public final class TinyintType
     public int hashCode()
     {
         return getClass().hashCode();
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
-    {
-        return left == right;
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long value)
-    {
-        return AbstractLongType.hash((byte) value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long value)
-    {
-        return XxHash64.hash((byte) value);
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Byte.compare((byte) left, (byte) right);
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return ((byte) left) < ((byte) right);
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return ((byte) left) <= ((byte) right);
     }
 }

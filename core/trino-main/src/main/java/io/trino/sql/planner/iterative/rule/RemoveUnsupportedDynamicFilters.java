@@ -91,6 +91,28 @@ public class RemoveUnsupportedDynamicFilters
         return result.getNode();
     }
 
+    private static class PlanWithConsumedDynamicFilters
+    {
+        private final PlanNode node;
+        private final Set<DynamicFilterId> consumedDynamicFilterIds;
+
+        PlanWithConsumedDynamicFilters(PlanNode node, Set<DynamicFilterId> consumedDynamicFilterIds)
+        {
+            this.node = node;
+            this.consumedDynamicFilterIds = ImmutableSet.copyOf(consumedDynamicFilterIds);
+        }
+
+        PlanNode getNode()
+        {
+            return node;
+        }
+
+        Set<DynamicFilterId> getConsumedDynamicFilterIds()
+        {
+            return consumedDynamicFilterIds;
+        }
+    }
+
     private class Rewriter
             extends PlanVisitor<PlanWithConsumedDynamicFilters, Set<DynamicFilterId>>
     {
@@ -378,28 +400,6 @@ public class RemoveUnsupportedDynamicFilters
                     return combinePredicates(metadata, node.getOperator(), expressionBuilder.build());
                 }
             }, expression);
-        }
-    }
-
-    private static class PlanWithConsumedDynamicFilters
-    {
-        private final PlanNode node;
-        private final Set<DynamicFilterId> consumedDynamicFilterIds;
-
-        PlanWithConsumedDynamicFilters(PlanNode node, Set<DynamicFilterId> consumedDynamicFilterIds)
-        {
-            this.node = node;
-            this.consumedDynamicFilterIds = ImmutableSet.copyOf(consumedDynamicFilterIds);
-        }
-
-        PlanNode getNode()
-        {
-            return node;
-        }
-
-        Set<DynamicFilterId> getConsumedDynamicFilterIds()
-        {
-            return consumedDynamicFilterIds;
         }
     }
 }

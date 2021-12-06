@@ -89,21 +89,15 @@ public class RcFileReader
 
     private final Column[] columns;
     private final long end;
-
-    private long rowsRead;
-
-    private int rowGroupRowCount;
-    private int rowGroupPosition;
-
-    private int currentChunkRowCount;
-
-    private Slice compressedHeaderBuffer = Slices.EMPTY_SLICE;
-    private Slice headerBuffer = Slices.EMPTY_SLICE;
-
-    private boolean closed;
-
     private final Optional<RcFileWriteValidation> writeValidation;
     private final Optional<WriteChecksumBuilder> writeChecksumBuilder;
+    private long rowsRead;
+    private int rowGroupRowCount;
+    private int rowGroupPosition;
+    private int currentChunkRowCount;
+    private Slice compressedHeaderBuffer = Slices.EMPTY_SLICE;
+    private Slice headerBuffer = Slices.EMPTY_SLICE;
+    private boolean closed;
 
     public RcFileReader(
             RcFileDataSource dataSource,
@@ -228,6 +222,39 @@ public class RcFileReader
         if (offset != 0) {
             // if the specified file region does not contain the start of a sync sequence, this call will close the reader
             seekToFirstRowGroupInRange(offset, length);
+        }
+    }
+
+    static void validateFile(
+            RcFileWriteValidation writeValidation,
+            RcFileDataSource input,
+            RcFileEncoding encoding,
+            List<Type> types,
+            RcFileCodecFactory codecFactory)
+            throws RcFileCorruptionException
+    {
+        ImmutableMap.Builder<Integer, Type> readTypes = ImmutableMap.builder();
+        for (int columnIndex = 0; columnIndex < types.size(); columnIndex++) {
+            readTypes.put(columnIndex, types.get(columnIndex));
+        }
+        try (RcFileReader rcFileReader = new RcFileReader(
+                input,
+                encoding,
+                readTypes.build(),
+                codecFactory,
+                0,
+                input.getSize(),
+                DataSize.of(8, Unit.MEGABYTE),
+                Optional.of(writeValidation))) {
+            while (rcFileReader.advance() >= 0) {
+                // ignored
+            }
+        }
+        catch (RcFileCorruptionException e) {
+            throw e;
+        }
+        catch (IOException e) {
+            throw new RcFileCorruptionException(e, "Validation failed");
         }
     }
 
@@ -505,39 +532,6 @@ public class RcFileReader
                 blocks[columnIndex] = readBlock(columnIndex);
             }
             writeChecksumBuilder.get().addPage(new Page(currentChunkRowCount, blocks));
-        }
-    }
-
-    static void validateFile(
-            RcFileWriteValidation writeValidation,
-            RcFileDataSource input,
-            RcFileEncoding encoding,
-            List<Type> types,
-            RcFileCodecFactory codecFactory)
-            throws RcFileCorruptionException
-    {
-        ImmutableMap.Builder<Integer, Type> readTypes = ImmutableMap.builder();
-        for (int columnIndex = 0; columnIndex < types.size(); columnIndex++) {
-            readTypes.put(columnIndex, types.get(columnIndex));
-        }
-        try (RcFileReader rcFileReader = new RcFileReader(
-                input,
-                encoding,
-                readTypes.build(),
-                codecFactory,
-                0,
-                input.getSize(),
-                DataSize.of(8, Unit.MEGABYTE),
-                Optional.of(writeValidation))) {
-            while (rcFileReader.advance() >= 0) {
-                // ignored
-            }
-        }
-        catch (RcFileCorruptionException e) {
-            throw e;
-        }
-        catch (IOException e) {
-            throw new RcFileCorruptionException(e, "Validation failed");
         }
     }
 

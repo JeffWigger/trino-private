@@ -98,6 +98,29 @@ public class AggregationNode
         this.outputs = outputs.build();
     }
 
+    public static GroupingSetDescriptor globalAggregation()
+    {
+        return singleGroupingSet(ImmutableList.of());
+    }
+
+    public static GroupingSetDescriptor singleGroupingSet(List<Symbol> groupingKeys)
+    {
+        Set<Integer> globalGroupingSets;
+        if (groupingKeys.isEmpty()) {
+            globalGroupingSets = ImmutableSet.of(0);
+        }
+        else {
+            globalGroupingSets = ImmutableSet.of();
+        }
+
+        return new GroupingSetDescriptor(groupingKeys, 1, globalGroupingSets);
+    }
+
+    public static GroupingSetDescriptor groupingSets(List<Symbol> groupingKeys, int groupingSetCount, Set<Integer> globalGroupingSets)
+    {
+        return new GroupingSetDescriptor(groupingKeys, groupingSetCount, globalGroupingSets);
+    }
+
     public List<Symbol> getGroupingKeys()
     {
         return groupingSets.getGroupingKeys();
@@ -257,27 +280,47 @@ public class AggregationNode
                 && groupingSets.getGlobalGroupingSets().isEmpty();
     }
 
-    public static GroupingSetDescriptor globalAggregation()
+    public enum Step
     {
-        return singleGroupingSet(ImmutableList.of());
-    }
+        PARTIAL(true, true),
+        FINAL(false, false),
+        INTERMEDIATE(false, true),
+        SINGLE(true, false);
 
-    public static GroupingSetDescriptor singleGroupingSet(List<Symbol> groupingKeys)
-    {
-        Set<Integer> globalGroupingSets;
-        if (groupingKeys.isEmpty()) {
-            globalGroupingSets = ImmutableSet.of(0);
+        private final boolean inputRaw;
+        private final boolean outputPartial;
+
+        Step(boolean inputRaw, boolean outputPartial)
+        {
+            this.inputRaw = inputRaw;
+            this.outputPartial = outputPartial;
         }
-        else {
-            globalGroupingSets = ImmutableSet.of();
+
+        public static Step partialOutput(Step step)
+        {
+            if (step.isInputRaw()) {
+                return Step.PARTIAL;
+            }
+            return Step.INTERMEDIATE;
         }
 
-        return new GroupingSetDescriptor(groupingKeys, 1, globalGroupingSets);
-    }
+        public static Step partialInput(Step step)
+        {
+            if (step.isOutputPartial()) {
+                return Step.INTERMEDIATE;
+            }
+            return Step.FINAL;
+        }
 
-    public static GroupingSetDescriptor groupingSets(List<Symbol> groupingKeys, int groupingSetCount, Set<Integer> globalGroupingSets)
-    {
-        return new GroupingSetDescriptor(groupingKeys, groupingSetCount, globalGroupingSets);
+        public boolean isInputRaw()
+        {
+            return inputRaw;
+        }
+
+        public boolean isOutputPartial()
+        {
+            return outputPartial;
+        }
     }
 
     public static class GroupingSetDescriptor
@@ -321,49 +364,6 @@ public class AggregationNode
         public Set<Integer> getGlobalGroupingSets()
         {
             return globalGroupingSets;
-        }
-    }
-
-    public enum Step
-    {
-        PARTIAL(true, true),
-        FINAL(false, false),
-        INTERMEDIATE(false, true),
-        SINGLE(true, false);
-
-        private final boolean inputRaw;
-        private final boolean outputPartial;
-
-        Step(boolean inputRaw, boolean outputPartial)
-        {
-            this.inputRaw = inputRaw;
-            this.outputPartial = outputPartial;
-        }
-
-        public boolean isInputRaw()
-        {
-            return inputRaw;
-        }
-
-        public boolean isOutputPartial()
-        {
-            return outputPartial;
-        }
-
-        public static Step partialOutput(Step step)
-        {
-            if (step.isInputRaw()) {
-                return Step.PARTIAL;
-            }
-            return Step.INTERMEDIATE;
-        }
-
-        public static Step partialInput(Step step)
-        {
-            if (step.isOutputPartial()) {
-                return Step.INTERMEDIATE;
-            }
-            return Step.FINAL;
         }
     }
 

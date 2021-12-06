@@ -63,6 +63,18 @@ public class SimplifyFilterPredicate
         this.metadata = metadata;
     }
 
+    private static boolean isNotTrue(Expression expression)
+    {
+        return expression.equals(FALSE_LITERAL) ||
+                expression instanceof NullLiteral ||
+                expression instanceof Cast && isNotTrue(((Cast) expression).getExpression());
+    }
+
+    private static Expression isFalseOrNullPredicate(Expression expression)
+    {
+        return LogicalExpression.or(new IsNullPredicate(expression), new NotExpression(expression));
+    }
+
     @Override
     public Pattern<FilterNode> getPattern()
     {
@@ -221,17 +233,5 @@ public class SimplifyFilterPredicate
         }
 
         return Optional.empty();
-    }
-
-    private static boolean isNotTrue(Expression expression)
-    {
-        return expression.equals(FALSE_LITERAL) ||
-                expression instanceof NullLiteral ||
-                expression instanceof Cast && isNotTrue(((Cast) expression).getExpression());
-    }
-
-    private static Expression isFalseOrNullPredicate(Expression expression)
-    {
-        return LogicalExpression.or(new IsNullPredicate(expression), new NotExpression(expression));
     }
 }

@@ -43,17 +43,45 @@ import static java.util.Objects.requireNonNull;
 public final class PolymorphicScalarFunctionBuilder
 {
     private final Class<?> clazz;
+    private final List<PolymorphicScalarFunctionChoice> choices = new ArrayList<>();
     private Signature signature;
     private boolean nullableResult;
     private List<FunctionArgumentDefinition> argumentDefinitions;
     private String description = "";
     private Optional<Boolean> hidden = Optional.empty();
     private Boolean deterministic;
-    private final List<PolymorphicScalarFunctionChoice> choices = new ArrayList<>();
 
     public PolymorphicScalarFunctionBuilder(Class<?> clazz)
     {
         this.clazz = requireNonNull(clazz, "clazz is null");
+    }
+
+    @SafeVarargs
+    public static Function<SpecializeContext, List<Object>> concat(Function<SpecializeContext, List<Object>>... extraParametersFunctions)
+    {
+        return context -> {
+            ImmutableList.Builder<Object> extraParametersBuilder = ImmutableList.builder();
+            for (Function<SpecializeContext, List<Object>> extraParametersFunction : extraParametersFunctions) {
+                extraParametersBuilder.addAll(extraParametersFunction.apply(context));
+            }
+            return extraParametersBuilder.build();
+        };
+    }
+
+    public static <T> Function<SpecializeContext, List<Object>> constant(T value)
+    {
+        return context -> ImmutableList.of(value);
+    }
+
+    private static boolean isOperator(Signature signature)
+    {
+        for (OperatorType operator : OperatorType.values()) {
+            if (signature.getName().equals(mangleOperatorName(operator))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public PolymorphicScalarFunctionBuilder signature(Signature signature)
@@ -122,34 +150,6 @@ public final class PolymorphicScalarFunctionBuilder
                         description,
                         SCALAR),
                 choices);
-    }
-
-    @SafeVarargs
-    public static Function<SpecializeContext, List<Object>> concat(Function<SpecializeContext, List<Object>>... extraParametersFunctions)
-    {
-        return context -> {
-            ImmutableList.Builder<Object> extraParametersBuilder = ImmutableList.builder();
-            for (Function<SpecializeContext, List<Object>> extraParametersFunction : extraParametersFunctions) {
-                extraParametersBuilder.addAll(extraParametersFunction.apply(context));
-            }
-            return extraParametersBuilder.build();
-        };
-    }
-
-    public static <T> Function<SpecializeContext, List<Object>> constant(T value)
-    {
-        return context -> ImmutableList.of(value);
-    }
-
-    private static boolean isOperator(Signature signature)
-    {
-        for (OperatorType operator : OperatorType.values()) {
-            if (signature.getName().equals(mangleOperatorName(operator))) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     public static final class SpecializeContext
@@ -261,9 +261,9 @@ public final class PolymorphicScalarFunctionBuilder
     {
         private final Class<?> clazz;
         private final Signature signature;
+        private final ImmutableList.Builder<MethodsGroup> methodsGroups = ImmutableList.builder();
         private InvocationReturnConvention returnConvention = FAIL_ON_NULL;
         private List<InvocationArgumentConvention> argumentConventions;
-        private final ImmutableList.Builder<MethodsGroup> methodsGroups = ImmutableList.builder();
 
         private ChoiceBuilder(Class<?> clazz, Signature signature)
         {

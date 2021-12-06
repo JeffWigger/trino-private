@@ -67,6 +67,28 @@ public class StatisticRange
         return new StatisticRange(estimate.getLowValue(), estimate.getHighValue(), estimate.getDistinctValuesCount());
     }
 
+    private static double minExcludeNaN(double v1, double v2)
+    {
+        if (isNaN(v1)) {
+            return v2;
+        }
+        if (isNaN(v2)) {
+            return v1;
+        }
+        return min(v1, v2);
+    }
+
+    private static double maxExcludeNaN(double v1, double v2)
+    {
+        if (isNaN(v1)) {
+            return v2;
+        }
+        if (isNaN(v2)) {
+            return v1;
+        }
+        return max(v1, v2);
+    }
+
     public double getLow()
     {
         return low;
@@ -171,28 +193,6 @@ public class StatisticRange
         double newDistinctValues = maxOverlappingValues + (1 - overlapPercentOfThis) * distinctValues + (1 - overlapPercentOfOther) * other.distinctValues;
 
         return new StatisticRange(minExcludeNaN(low, other.low), maxExcludeNaN(high, other.high), newDistinctValues);
-    }
-
-    private static double minExcludeNaN(double v1, double v2)
-    {
-        if (isNaN(v1)) {
-            return v2;
-        }
-        if (isNaN(v2)) {
-            return v1;
-        }
-        return min(v1, v2);
-    }
-
-    private static double maxExcludeNaN(double v1, double v2)
-    {
-        if (isNaN(v1)) {
-            return v2;
-        }
-        if (isNaN(v2)) {
-            return v1;
-        }
-        return max(v1, v2);
     }
 
     @Override

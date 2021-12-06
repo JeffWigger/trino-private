@@ -43,6 +43,17 @@ import static io.trino.orc.stream.TestingBitPackingUtils.unpackGeneric;
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkLongBitPacker
 {
+    public static void main(String[] args)
+            throws Exception
+    {
+        // assure the benchmarks are valid before running
+        BenchmarkData data = new BenchmarkData();
+        data.setup();
+        new BenchmarkLongBitPacker().baselineLength256(data);
+
+        benchmark(BenchmarkLongBitPacker.class).run();
+    }
+
     @Benchmark
     public Object baselineLength1(BenchmarkData data)
             throws Exception
@@ -220,16 +231,5 @@ public class BenchmarkLongBitPacker
             ThreadLocalRandom.current().nextBytes(bytes);
             input = Slices.wrappedBuffer(bytes).getInput();
         }
-    }
-
-    public static void main(String[] args)
-            throws Exception
-    {
-        // assure the benchmarks are valid before running
-        BenchmarkData data = new BenchmarkData();
-        data.setup();
-        new BenchmarkLongBitPacker().baselineLength256(data);
-
-        benchmark(BenchmarkLongBitPacker.class).run();
     }
 }

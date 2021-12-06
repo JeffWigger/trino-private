@@ -41,6 +41,13 @@ public class DoubleRange
         this.max = max;
     }
 
+    public static DoubleRange union(DoubleRange first, DoubleRange second)
+    {
+        requireNonNull(first, "first is null");
+        requireNonNull(second, "second is null");
+        return new DoubleRange(min(first.min, second.min), max(first.max, second.max));
+    }
+
     public double getMin()
     {
         return min;
@@ -49,13 +56,6 @@ public class DoubleRange
     public double getMax()
     {
         return max;
-    }
-
-    public static DoubleRange union(DoubleRange first, DoubleRange second)
-    {
-        requireNonNull(first, "first is null");
-        requireNonNull(second, "second is null");
-        return new DoubleRange(min(first.min, second.min), max(first.max, second.max));
     }
 
     @Override

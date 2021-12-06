@@ -39,134 +39,14 @@ import static java.util.Objects.requireNonNull;
 public class TopNRankingOperator
         implements Operator
 {
-    public static class TopNRankingOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-
-        private final RankingType rankingType;
-        private final List<Type> sourceTypes;
-
-        private final List<Integer> outputChannels;
-        private final List<Integer> partitionChannels;
-        private final List<Type> partitionTypes;
-        private final List<Integer> sortChannels;
-        private final List<SortOrder> sortOrder;
-        private final int maxRowCountPerPartition;
-        private final boolean partial;
-        private final Optional<Integer> hashChannel;
-        private final int expectedPositions;
-
-        private final boolean generateRanking;
-        private boolean closed;
-        private final JoinCompiler joinCompiler;
-        private final TypeOperators typeOperators;
-        private final BlockTypeOperators blockTypeOperators;
-
-        public TopNRankingOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                RankingType rankingType,
-                List<? extends Type> sourceTypes,
-                List<Integer> outputChannels,
-                List<Integer> partitionChannels,
-                List<? extends Type> partitionTypes,
-                List<Integer> sortChannels,
-                List<SortOrder> sortOrder,
-                int maxRowCountPerPartition,
-                boolean partial,
-                Optional<Integer> hashChannel,
-                int expectedPositions,
-                JoinCompiler joinCompiler,
-                TypeOperators typeOperators,
-                BlockTypeOperators blockTypeOperators)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.rankingType = requireNonNull(rankingType, "rankingType is null");
-            this.sourceTypes = ImmutableList.copyOf(sourceTypes);
-            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
-            this.partitionChannels = ImmutableList.copyOf(requireNonNull(partitionChannels, "partitionChannels is null"));
-            this.partitionTypes = ImmutableList.copyOf(requireNonNull(partitionTypes, "partitionTypes is null"));
-            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels));
-            this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder));
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-            this.partial = partial;
-            checkArgument(maxRowCountPerPartition > 0, "maxRowCountPerPartition must be > 0");
-            this.maxRowCountPerPartition = maxRowCountPerPartition;
-            checkArgument(expectedPositions > 0, "expectedPositions must be > 0");
-            this.generateRanking = !partial;
-            this.expectedPositions = expectedPositions;
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.typeOperators = requireNonNull(typeOperators, "typeOperators is null");
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TopNRankingOperator.class.getSimpleName());
-            return new TopNRankingOperator(
-                    operatorContext,
-                    rankingType,
-                    sourceTypes,
-                    outputChannels,
-                    partitionChannels,
-                    partitionTypes,
-                    sortChannels,
-                    sortOrder,
-                    maxRowCountPerPartition,
-                    generateRanking,
-                    hashChannel,
-                    expectedPositions,
-                    joinCompiler,
-                    typeOperators,
-                    blockTypeOperators);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new TopNRankingOperatorFactory(
-                    operatorId,
-                    planNodeId,
-                    rankingType,
-                    sourceTypes,
-                    outputChannels,
-                    partitionChannels,
-                    partitionTypes,
-                    sortChannels,
-                    sortOrder,
-                    maxRowCountPerPartition,
-                    partial,
-                    hashChannel,
-                    expectedPositions,
-                    joinCompiler,
-                    typeOperators,
-                    blockTypeOperators);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext localUserMemoryContext;
-
     private final int[] outputChannels;
-
     private final GroupByHash groupByHash;
     private final GroupedTopNBuilder groupedTopNBuilder;
-
     private boolean finishing;
     private Work<?> unfinishedWork;
     private Iterator<Page> outputIterator;
-
     public TopNRankingOperator(
             OperatorContext operatorContext,
             RankingType rankingType,
@@ -321,5 +201,121 @@ public class TopNRankingOperator
         // TODO: may need to use trySetMemoryReservation with a compaction to free memory (but that may cause GC pressure)
         localUserMemoryContext.setBytes(groupedTopNBuilder.getEstimatedSizeInBytes());
         return operatorContext.isWaitingForMemory().isDone();
+    }
+
+    public static class TopNRankingOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+
+        private final RankingType rankingType;
+        private final List<Type> sourceTypes;
+
+        private final List<Integer> outputChannels;
+        private final List<Integer> partitionChannels;
+        private final List<Type> partitionTypes;
+        private final List<Integer> sortChannels;
+        private final List<SortOrder> sortOrder;
+        private final int maxRowCountPerPartition;
+        private final boolean partial;
+        private final Optional<Integer> hashChannel;
+        private final int expectedPositions;
+
+        private final boolean generateRanking;
+        private final JoinCompiler joinCompiler;
+        private final TypeOperators typeOperators;
+        private final BlockTypeOperators blockTypeOperators;
+        private boolean closed;
+
+        public TopNRankingOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                RankingType rankingType,
+                List<? extends Type> sourceTypes,
+                List<Integer> outputChannels,
+                List<Integer> partitionChannels,
+                List<? extends Type> partitionTypes,
+                List<Integer> sortChannels,
+                List<SortOrder> sortOrder,
+                int maxRowCountPerPartition,
+                boolean partial,
+                Optional<Integer> hashChannel,
+                int expectedPositions,
+                JoinCompiler joinCompiler,
+                TypeOperators typeOperators,
+                BlockTypeOperators blockTypeOperators)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.rankingType = requireNonNull(rankingType, "rankingType is null");
+            this.sourceTypes = ImmutableList.copyOf(sourceTypes);
+            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
+            this.partitionChannels = ImmutableList.copyOf(requireNonNull(partitionChannels, "partitionChannels is null"));
+            this.partitionTypes = ImmutableList.copyOf(requireNonNull(partitionTypes, "partitionTypes is null"));
+            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels));
+            this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder));
+            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            this.partial = partial;
+            checkArgument(maxRowCountPerPartition > 0, "maxRowCountPerPartition must be > 0");
+            this.maxRowCountPerPartition = maxRowCountPerPartition;
+            checkArgument(expectedPositions > 0, "expectedPositions must be > 0");
+            this.generateRanking = !partial;
+            this.expectedPositions = expectedPositions;
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.typeOperators = requireNonNull(typeOperators, "typeOperators is null");
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TopNRankingOperator.class.getSimpleName());
+            return new TopNRankingOperator(
+                    operatorContext,
+                    rankingType,
+                    sourceTypes,
+                    outputChannels,
+                    partitionChannels,
+                    partitionTypes,
+                    sortChannels,
+                    sortOrder,
+                    maxRowCountPerPartition,
+                    generateRanking,
+                    hashChannel,
+                    expectedPositions,
+                    joinCompiler,
+                    typeOperators,
+                    blockTypeOperators);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new TopNRankingOperatorFactory(
+                    operatorId,
+                    planNodeId,
+                    rankingType,
+                    sourceTypes,
+                    outputChannels,
+                    partitionChannels,
+                    partitionTypes,
+                    sortChannels,
+                    sortOrder,
+                    maxRowCountPerPartition,
+                    partial,
+                    hashChannel,
+                    expectedPositions,
+                    joinCompiler,
+                    typeOperators,
+                    blockTypeOperators);
+        }
     }
 }

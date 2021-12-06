@@ -279,19 +279,8 @@ public class LocalQueryRunner
     private final FeaturesConfig featuresConfig;
     private final PlanOptimizersProvider planOptimizersProvider;
     private final OperatorFactories operatorFactories;
-    private boolean printPlan;
-
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-
-    public static LocalQueryRunner create(Session defaultSession)
-    {
-        return builder(defaultSession).build();
-    }
-
-    public static Builder builder(Session defaultSession)
-    {
-        return new Builder(defaultSession);
-    }
+    private boolean printPlan;
 
     // TODO clean-up constructor signature and construction of many objects https://github.com/trinodb/trino/issues/8996
     private LocalQueryRunner(
@@ -472,6 +461,16 @@ public class LocalQueryRunner
         this.spillerFactory = new GenericSpillerFactory(singleStreamSpillerFactory);
     }
 
+    public static LocalQueryRunner create(Session defaultSession)
+    {
+        return builder(defaultSession).build();
+    }
+
+    public static Builder builder(Session defaultSession)
+    {
+        return new Builder(defaultSession);
+    }
+
     private static SessionPropertyManager createSessionPropertyManager(
             Set<SystemSessionPropertiesProvider> extraSessionProperties,
             TaskManagerConfig taskManagerConfig,
@@ -498,6 +497,18 @@ public class LocalQueryRunner
         ScalarStatsCalculator scalarStatsCalculator = new ScalarStatsCalculator(metadata, typeAnalyzer);
         FilterStatsCalculator filterStatsCalculator = new FilterStatsCalculator(metadata, scalarStatsCalculator, normalizer);
         return new ComposableStatsCalculator(new StatsRulesProvider(metadata, scalarStatsCalculator, filterStatsCalculator, normalizer).get());
+    }
+
+    private static List<Split> getNextBatch(SplitSource splitSource)
+    {
+        return getFutureValue(splitSource.getNextBatch(NOT_PARTITIONED, Lifespan.taskWide(), 1000)).getSplits();
+    }
+
+    private static List<TableScanNode> findTableScanNodes(PlanNode node)
+    {
+        return searchFrom(node)
+                .where(TableScanNode.class::isInstance)
+                .findAll();
     }
 
     @Override
@@ -973,18 +984,6 @@ public class LocalQueryRunner
         Analysis analysis = analyzer.analyze(preparedQuery.getStatement());
         // make LocalQueryRunner always compute plan statistics for test purposes
         return logicalPlanner.plan(analysis, stage);
-    }
-
-    private static List<Split> getNextBatch(SplitSource splitSource)
-    {
-        return getFutureValue(splitSource.getNextBatch(NOT_PARTITIONED, Lifespan.taskWide(), 1000)).getSplits();
-    }
-
-    private static List<TableScanNode> findTableScanNodes(PlanNode node)
-    {
-        return searchFrom(node)
-                .where(TableScanNode.class::isInstance)
-                .findAll();
     }
 
     public interface PlanOptimizersProvider

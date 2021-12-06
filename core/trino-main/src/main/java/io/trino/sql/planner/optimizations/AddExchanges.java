@@ -135,11 +135,50 @@ public class AddExchanges
         this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
     }
 
+    private static Map<Symbol, Symbol> computeIdentityTranslations(Assignments assignments)
+    {
+        Map<Symbol, Symbol> outputToInput = new HashMap<>();
+        for (Map.Entry<Symbol, Expression> assignment : assignments.getMap().entrySet()) {
+            if (assignment.getValue() instanceof SymbolReference) {
+                outputToInput.put(assignment.getKey(), Symbol.from(assignment.getValue()));
+            }
+        }
+        return outputToInput;
+    }
+
     @Override
     public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
         PlanWithProperties result = plan.accept(new Rewriter(idAllocator, symbolAllocator, session), PreferredProperties.any());
         return result.getNode();
+    }
+
+    @VisibleForTesting
+    static class PlanWithProperties
+    {
+        private final PlanNode node;
+        private final ActualProperties properties;
+
+        public PlanWithProperties(PlanNode node)
+        {
+            this(node, ActualProperties.builder().build());
+        }
+
+        public PlanWithProperties(PlanNode node, ActualProperties properties)
+        {
+            this.node = node;
+            this.properties = properties;
+        }
+
+        public PlanNode getNode()
+        {
+            return node;
+        }
+
+        public ActualProperties getProperties()
+        {
+            return properties;
+        }
     }
 
     private class Rewriter
@@ -1307,45 +1346,6 @@ public class AddExchanges
                 return preferredProperties.mergeWithParent(parentPreferredProperties);
             }
             return preferredProperties;
-        }
-    }
-
-    private static Map<Symbol, Symbol> computeIdentityTranslations(Assignments assignments)
-    {
-        Map<Symbol, Symbol> outputToInput = new HashMap<>();
-        for (Map.Entry<Symbol, Expression> assignment : assignments.getMap().entrySet()) {
-            if (assignment.getValue() instanceof SymbolReference) {
-                outputToInput.put(assignment.getKey(), Symbol.from(assignment.getValue()));
-            }
-        }
-        return outputToInput;
-    }
-
-    @VisibleForTesting
-    static class PlanWithProperties
-    {
-        private final PlanNode node;
-        private final ActualProperties properties;
-
-        public PlanWithProperties(PlanNode node)
-        {
-            this(node, ActualProperties.builder().build());
-        }
-
-        public PlanWithProperties(PlanNode node, ActualProperties properties)
-        {
-            this.node = node;
-            this.properties = properties;
-        }
-
-        public PlanNode getNode()
-        {
-            return node;
-        }
-
-        public ActualProperties getProperties()
-        {
-            return properties;
         }
     }
 }

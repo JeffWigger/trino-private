@@ -30,6 +30,40 @@ import static java.util.Objects.requireNonNull;
 
 public interface WorkProcessor<T>
 {
+    static <T> WorkProcessor<T> flatten(WorkProcessor<WorkProcessor<T>> processor)
+    {
+        return WorkProcessorUtils.flatten(processor);
+    }
+
+    @SafeVarargs
+    static <T> WorkProcessor<T> of(T... elements)
+    {
+        return fromIterator(Iterators.forArray(elements));
+    }
+
+    static <T> WorkProcessor<T> fromIterable(Iterable<T> iterable)
+    {
+        return WorkProcessorUtils.fromIterator(iterable.iterator());
+    }
+
+    static <T> WorkProcessor<T> fromIterator(Iterator<T> iterator)
+    {
+        return WorkProcessorUtils.fromIterator(iterator);
+    }
+
+    /**
+     * Creates {@link WorkProcessor} from {@link Process}. {@link Process} instance will be dereferenced immediately after {@link WorkProcessor} is finished.
+     */
+    static <T> WorkProcessor<T> create(Process<T> process)
+    {
+        return WorkProcessorUtils.create(process);
+    }
+
+    static <T> WorkProcessor<T> mergeSorted(Iterable<WorkProcessor<T>> processorIterable, Comparator<T> comparator)
+    {
+        return WorkProcessorUtils.mergeSorted(processorIterable, comparator);
+    }
+
     /**
      * Call the method to progress the work.
      * When this method returns true then the processor is either finished
@@ -132,40 +166,6 @@ public interface WorkProcessor<T>
         return WorkProcessorUtils.yieldingIteratorFrom(this);
     }
 
-    static <T> WorkProcessor<T> flatten(WorkProcessor<WorkProcessor<T>> processor)
-    {
-        return WorkProcessorUtils.flatten(processor);
-    }
-
-    @SafeVarargs
-    static <T> WorkProcessor<T> of(T... elements)
-    {
-        return fromIterator(Iterators.forArray(elements));
-    }
-
-    static <T> WorkProcessor<T> fromIterable(Iterable<T> iterable)
-    {
-        return WorkProcessorUtils.fromIterator(iterable.iterator());
-    }
-
-    static <T> WorkProcessor<T> fromIterator(Iterator<T> iterator)
-    {
-        return WorkProcessorUtils.fromIterator(iterator);
-    }
-
-    /**
-     * Creates {@link WorkProcessor} from {@link Process}. {@link Process} instance will be dereferenced immediately after {@link WorkProcessor} is finished.
-     */
-    static <T> WorkProcessor<T> create(Process<T> process)
-    {
-        return WorkProcessorUtils.create(process);
-    }
-
-    static <T> WorkProcessor<T> mergeSorted(Iterable<WorkProcessor<T>> processorIterable, Comparator<T> comparator)
-    {
-        return WorkProcessorUtils.mergeSorted(processorIterable, comparator);
-    }
-
     interface Transformation<T, R>
     {
         /**
@@ -205,23 +205,12 @@ public interface WorkProcessor<T>
         private static final TransformationState<?> NEEDS_MORE_DATE_STATE = new TransformationState<>(Type.NEEDS_MORE_DATA, true, null, null);
         private static final TransformationState<?> YIELD_STATE = new TransformationState<>(Type.YIELD, false, null, null);
         private static final TransformationState<?> FINISHED_STATE = new TransformationState<>(Type.FINISHED, false, null, null);
-
-        enum Type
-        {
-            NEEDS_MORE_DATA,
-            BLOCKED,
-            YIELD,
-            RESULT,
-            FINISHED
-        }
-
         private final Type type;
         private final boolean needsMoreData;
         @Nullable
         private final T result;
         @Nullable
         private final ListenableFuture<Void> blocked;
-
         private TransformationState(Type type, boolean needsMoreData, @Nullable T result, @Nullable ListenableFuture<Void> blocked)
         {
             this.type = requireNonNull(type, "type is null");
@@ -308,6 +297,15 @@ public interface WorkProcessor<T>
         {
             return blocked;
         }
+
+        enum Type
+        {
+            NEEDS_MORE_DATA,
+            BLOCKED,
+            YIELD,
+            RESULT,
+            FINISHED
+        }
     }
 
     @Immutable
@@ -315,21 +313,11 @@ public interface WorkProcessor<T>
     {
         private static final ProcessState<?> YIELD_STATE = new ProcessState<>(Type.YIELD, null, null);
         private static final ProcessState<?> FINISHED_STATE = new ProcessState<>(Type.FINISHED, null, null);
-
-        public enum Type
-        {
-            BLOCKED,
-            YIELD,
-            RESULT,
-            FINISHED
-        }
-
         private final Type type;
         @Nullable
         private final T result;
         @Nullable
         private final ListenableFuture<Void> blocked;
-
         private ProcessState(Type type, @Nullable T result, @Nullable ListenableFuture<Void> blocked)
         {
             this.type = requireNonNull(type, "type is null");
@@ -386,6 +374,14 @@ public interface WorkProcessor<T>
         public ListenableFuture<Void> getBlocked()
         {
             return blocked;
+        }
+
+        public enum Type
+        {
+            BLOCKED,
+            YIELD,
+            RESULT,
+            FINISHED
         }
     }
 }

@@ -58,21 +58,6 @@ public class JoinGraph
     private final PlanNodeId rootId;
     private final boolean containsCrossJoin;
 
-    /**
-     * Builds {@link JoinGraph} containing {@code plan} node.
-     */
-    public static JoinGraph buildFrom(
-            Metadata metadata,
-            PlanNode plan,
-            Lookup lookup,
-            PlanNodeIdAllocator planNodeIdAllocator,
-            Session session,
-            TypeAnalyzer typeAnalyzer,
-            TypeProvider types)
-    {
-        return plan.accept(new Builder(metadata, lookup, planNodeIdAllocator, session, typeAnalyzer, types), new Context());
-    }
-
     public JoinGraph(PlanNode node)
     {
         this(ImmutableList.of(node), ImmutableMultimap.of(), node.getId(), ImmutableList.of(), false);
@@ -90,6 +75,21 @@ public class JoinGraph
         this.rootId = rootId;
         this.filters = filters;
         this.containsCrossJoin = containsCrossJoin;
+    }
+
+    /**
+     * Builds {@link JoinGraph} containing {@code plan} node.
+     */
+    public static JoinGraph buildFrom(
+            Metadata metadata,
+            PlanNode plan,
+            Lookup lookup,
+            PlanNodeIdAllocator planNodeIdAllocator,
+            Session session,
+            TypeAnalyzer typeAnalyzer,
+            TypeProvider types)
+    {
+        return plan.accept(new Builder(metadata, lookup, planNodeIdAllocator, session, typeAnalyzer, types), new Context());
     }
 
     public JoinGraph withFilter(Expression expression)

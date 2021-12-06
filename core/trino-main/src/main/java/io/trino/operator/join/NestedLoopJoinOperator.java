@@ -46,94 +46,10 @@ import static java.util.Objects.requireNonNull;
 public class NestedLoopJoinOperator
         implements Operator
 {
-    public static class NestedLoopJoinOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final JoinBridgeManager<NestedLoopJoinBridge> joinBridgeManager;
-        private final List<Integer> probeChannels;
-        private final List<Integer> buildChannels;
-        private boolean closed;
-
-        public NestedLoopJoinOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                JoinBridgeManager<NestedLoopJoinBridge> nestedLoopJoinBridgeManager,
-                List<Integer> probeChannels,
-                List<Integer> buildChannels)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.joinBridgeManager = nestedLoopJoinBridgeManager;
-            this.joinBridgeManager.incrementProbeFactoryCount();
-            this.probeChannels = ImmutableList.copyOf(requireNonNull(probeChannels, "probeChannels is null"));
-            this.buildChannels = ImmutableList.copyOf(requireNonNull(buildChannels, "buildChannels is null"));
-        }
-
-        private NestedLoopJoinOperatorFactory(NestedLoopJoinOperatorFactory other)
-        {
-            requireNonNull(other, "other is null");
-            this.operatorId = other.operatorId;
-            this.planNodeId = other.planNodeId;
-
-            this.joinBridgeManager = other.joinBridgeManager;
-
-            this.probeChannels = ImmutableList.copyOf(other.probeChannels);
-            this.buildChannels = ImmutableList.copyOf(other.buildChannels);
-
-            // closed is intentionally not copied
-            closed = false;
-
-            joinBridgeManager.incrementProbeFactoryCount();
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            NestedLoopJoinBridge nestedLoopJoinBridge = joinBridgeManager.getJoinBridge(driverContext.getLifespan());
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, NestedLoopJoinOperator.class.getSimpleName());
-
-            joinBridgeManager.probeOperatorCreated(driverContext.getLifespan());
-            return new NestedLoopJoinOperator(
-                    operatorContext,
-                    nestedLoopJoinBridge,
-                    probeChannels,
-                    buildChannels,
-                    () -> joinBridgeManager.probeOperatorClosed(driverContext.getLifespan()));
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            joinBridgeManager.probeOperatorFactoryClosedForAllLifespans();
-        }
-
-        @Override
-        public void noMoreOperators(Lifespan lifespan)
-        {
-            joinBridgeManager.probeOperatorFactoryClosed(lifespan);
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new NestedLoopJoinOperatorFactory(this);
-        }
-    }
-
     private final ListenableFuture<NestedLoopJoinPages> nestedLoopJoinPagesFuture;
     private final ListenableFuture<Void> blockedFutureView;
-
     private final OperatorContext operatorContext;
     private final Runnable afterClose;
-
     private final int[] probeChannels;
     private final int[] buildChannels;
     private List<Page> buildPages;
@@ -142,7 +58,6 @@ public class NestedLoopJoinOperator
     private NestedLoopOutputIterator nestedLoopPageBuilder;
     private boolean finishing;
     private boolean closed;
-
     private NestedLoopJoinOperator(OperatorContext operatorContext, NestedLoopJoinBridge joinBridge, List<Integer> probeChannels, List<Integer> buildChannels, Runnable afterClose)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -156,6 +71,36 @@ public class NestedLoopJoinOperator
     private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
     {
         return Futures.transform(future, v -> null, directExecutor());
+    }
+
+    @VisibleForTesting
+    static NestedLoopOutputIterator createNestedLoopOutputIterator(Page probePage, Page buildPage, int[] probeChannels, int[] buildChannels)
+    {
+        if (probeChannels.length == 0 && buildChannels.length == 0) {
+            int probePositions = probePage.getPositionCount();
+            int buildPositions = buildPage.getPositionCount();
+            try {
+                // positionCount is an int. Make sure the product can still fit in an int.
+                int outputPositions = multiplyExact(probePositions, buildPositions);
+                if (outputPositions <= PageProcessor.MAX_BATCH_SIZE) {
+                    return new PageRepeatingIterator(new Page(outputPositions), 1);
+                }
+            }
+            catch (ArithmeticException overflow) {
+            }
+            // Repeat larger position count a smaller position count number of times
+            Page outputPage = new Page(max(probePositions, buildPositions));
+            return new PageRepeatingIterator(outputPage, min(probePositions, buildPositions));
+        }
+        else if (probeChannels.length == 0 && probePage.getPositionCount() <= buildPage.getPositionCount()) {
+            return new PageRepeatingIterator(buildPage.getColumns(buildChannels), probePage.getPositionCount());
+        }
+        else if (buildChannels.length == 0 && buildPage.getPositionCount() <= probePage.getPositionCount()) {
+            return new PageRepeatingIterator(probePage.getColumns(probeChannels), buildPage.getPositionCount());
+        }
+        else {
+            return new NestedLoopPageBuilder(probePage, buildPage, probeChannels, buildChannels);
+        }
     }
 
     @Override
@@ -256,33 +201,85 @@ public class NestedLoopJoinOperator
         afterClose.run();
     }
 
-    @VisibleForTesting
-    static NestedLoopOutputIterator createNestedLoopOutputIterator(Page probePage, Page buildPage, int[] probeChannels, int[] buildChannels)
+    public static class NestedLoopJoinOperatorFactory
+            implements OperatorFactory
     {
-        if (probeChannels.length == 0 && buildChannels.length == 0) {
-            int probePositions = probePage.getPositionCount();
-            int buildPositions = buildPage.getPositionCount();
-            try {
-                // positionCount is an int. Make sure the product can still fit in an int.
-                int outputPositions = multiplyExact(probePositions, buildPositions);
-                if (outputPositions <= PageProcessor.MAX_BATCH_SIZE) {
-                    return new PageRepeatingIterator(new Page(outputPositions), 1);
-                }
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final JoinBridgeManager<NestedLoopJoinBridge> joinBridgeManager;
+        private final List<Integer> probeChannels;
+        private final List<Integer> buildChannels;
+        private boolean closed;
+
+        public NestedLoopJoinOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                JoinBridgeManager<NestedLoopJoinBridge> nestedLoopJoinBridgeManager,
+                List<Integer> probeChannels,
+                List<Integer> buildChannels)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.joinBridgeManager = nestedLoopJoinBridgeManager;
+            this.joinBridgeManager.incrementProbeFactoryCount();
+            this.probeChannels = ImmutableList.copyOf(requireNonNull(probeChannels, "probeChannels is null"));
+            this.buildChannels = ImmutableList.copyOf(requireNonNull(buildChannels, "buildChannels is null"));
+        }
+
+        private NestedLoopJoinOperatorFactory(NestedLoopJoinOperatorFactory other)
+        {
+            requireNonNull(other, "other is null");
+            this.operatorId = other.operatorId;
+            this.planNodeId = other.planNodeId;
+
+            this.joinBridgeManager = other.joinBridgeManager;
+
+            this.probeChannels = ImmutableList.copyOf(other.probeChannels);
+            this.buildChannels = ImmutableList.copyOf(other.buildChannels);
+
+            // closed is intentionally not copied
+            closed = false;
+
+            joinBridgeManager.incrementProbeFactoryCount();
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            NestedLoopJoinBridge nestedLoopJoinBridge = joinBridgeManager.getJoinBridge(driverContext.getLifespan());
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, NestedLoopJoinOperator.class.getSimpleName());
+
+            joinBridgeManager.probeOperatorCreated(driverContext.getLifespan());
+            return new NestedLoopJoinOperator(
+                    operatorContext,
+                    nestedLoopJoinBridge,
+                    probeChannels,
+                    buildChannels,
+                    () -> joinBridgeManager.probeOperatorClosed(driverContext.getLifespan()));
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            if (closed) {
+                return;
             }
-            catch (ArithmeticException overflow) {
-            }
-            // Repeat larger position count a smaller position count number of times
-            Page outputPage = new Page(max(probePositions, buildPositions));
-            return new PageRepeatingIterator(outputPage, min(probePositions, buildPositions));
+            closed = true;
+            joinBridgeManager.probeOperatorFactoryClosedForAllLifespans();
         }
-        else if (probeChannels.length == 0 && probePage.getPositionCount() <= buildPage.getPositionCount()) {
-            return new PageRepeatingIterator(buildPage.getColumns(buildChannels), probePage.getPositionCount());
+
+        @Override
+        public void noMoreOperators(Lifespan lifespan)
+        {
+            joinBridgeManager.probeOperatorFactoryClosed(lifespan);
         }
-        else if (buildChannels.length == 0 && buildPage.getPositionCount() <= probePage.getPositionCount()) {
-            return new PageRepeatingIterator(probePage.getColumns(probeChannels), buildPage.getPositionCount());
-        }
-        else {
-            return new NestedLoopPageBuilder(probePage, buildPage, probeChannels, buildChannels);
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new NestedLoopJoinOperatorFactory(this);
         }
     }
 

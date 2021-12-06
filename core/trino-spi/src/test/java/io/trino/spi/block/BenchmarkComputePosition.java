@@ -41,6 +41,12 @@ public class BenchmarkComputePosition
     private int hashTableSize = ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
     private long hashcode = ThreadLocalRandom.current().nextLong();
 
+    public static void main(String[] args)
+            throws Exception
+    {
+        benchmark(BenchmarkComputePosition.class).run();
+    }
+
     // This is the baseline.
     @Benchmark
     public long computePositionWithFloorMod()
@@ -76,11 +82,5 @@ public class BenchmarkComputePosition
     public long computePositionWithDivision()
     {
         return (int) ((Integer.toUnsignedLong(Long.hashCode(hashcode)) * hashTableSize) / (1L << 32));
-    }
-
-    public static void main(String[] args)
-            throws Exception
-    {
-        benchmark(BenchmarkComputePosition.class).run();
     }
 }

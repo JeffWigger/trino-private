@@ -70,26 +70,6 @@ public class MapToJsonCast
         this.legacyRowToJson = legacyRowToJson;
     }
 
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V");
-        Type mapType = functionBinding.getBoundSignature().getArgumentTypes().get(0);
-        checkCondition(canCastToJson(mapType), INVALID_CAST_ARGUMENT, "Cannot cast %s to JSON", mapType);
-
-        ObjectKeyProvider provider = ObjectKeyProvider.createObjectKeyProvider(keyType);
-        JsonGeneratorWriter writer = JsonGeneratorWriter.createJsonGeneratorWriter(valueType, legacyRowToJson);
-        MethodHandle methodHandle = METHOD_HANDLE.bindTo(provider).bindTo(writer);
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Slice toJson(ObjectKeyProvider provider, JsonGeneratorWriter writer, Block block)
     {
@@ -114,5 +94,25 @@ public class MapToJsonCast
         catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V");
+        Type mapType = functionBinding.getBoundSignature().getArgumentTypes().get(0);
+        checkCondition(canCastToJson(mapType), INVALID_CAST_ARGUMENT, "Cannot cast %s to JSON", mapType);
+
+        ObjectKeyProvider provider = ObjectKeyProvider.createObjectKeyProvider(keyType);
+        JsonGeneratorWriter writer = JsonGeneratorWriter.createJsonGeneratorWriter(valueType, legacyRowToJson);
+        MethodHandle methodHandle = METHOD_HANDLE.bindTo(provider).bindTo(writer);
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

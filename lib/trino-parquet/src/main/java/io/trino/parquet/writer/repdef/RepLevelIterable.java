@@ -32,14 +32,14 @@ public interface RepLevelIterable
 
         abstract boolean end();
 
-        void setBase(int base)
-        {
-            this.baseRepetitionLevel = base;
-        }
-
         int getBase()
         {
             return baseRepetitionLevel;
+        }
+
+        void setBase(int base)
+        {
+            this.baseRepetitionLevel = base;
         }
     }
 

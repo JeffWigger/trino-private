@@ -21,16 +21,16 @@ public class WarningCollectorConfig
 {
     private int maxWarnings = Integer.MAX_VALUE;
 
+    public int getMaxWarnings()
+    {
+        return maxWarnings;
+    }
+
     @Config("warning-collector.max-warnings")
     public WarningCollectorConfig setMaxWarnings(int maxWarnings)
     {
         checkArgument(maxWarnings >= 0, "maxWarnings must be >= 0");
         this.maxWarnings = maxWarnings;
         return this;
-    }
-
-    public int getMaxWarnings()
-    {
-        return maxWarnings;
     }
 }

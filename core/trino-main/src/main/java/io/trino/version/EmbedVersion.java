@@ -121,6 +121,11 @@ public class EmbedVersion
                 .ret(Object.class);
     }
 
+    public static EmbedVersion testingVersionEmbedder()
+    {
+        return new EmbedVersion("testversion");
+    }
+
     @Override
     public Runnable embedVersion(Runnable runnable)
     {
@@ -147,10 +152,5 @@ public class EmbedVersion
             throwIfUnchecked(throwable);
             throw new RuntimeException(throwable);
         }
-    }
-
-    public static EmbedVersion testingVersionEmbedder()
-    {
-        return new EmbedVersion("testversion");
     }
 }

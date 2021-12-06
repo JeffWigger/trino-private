@@ -47,6 +47,38 @@ public final class ArraysOverlapFunction
     @TypeParameter("E")
     public ArraysOverlapFunction(@TypeParameter("E") Type elementType) {}
 
+    // Assumes buffer is long enough, returns count of non-null elements.
+    private static int sortLongArray(Block array, long[] buffer, Type type, LongComparison comparisonOperator)
+    {
+        int arraySize = array.getPositionCount();
+        int nonNullSize = 0;
+        for (int i = 0; i < arraySize; i++) {
+            if (!array.isNull(i)) {
+                buffer[nonNullSize++] = type.getLong(array, i);
+            }
+        }
+
+        LongArrays.unstableSort(buffer, 0, nonNullSize, (left, right) -> (int) comparisonOperator.compare(left, right));
+
+        return nonNullSize;
+    }
+
+    private static IntComparator intBlockCompare(BlockPositionComparison comparisonOperator, Block block)
+    {
+        return (left, right) -> {
+            if (block.isNull(left) && block.isNull(right)) {
+                return 0;
+            }
+            if (block.isNull(left)) {
+                return 1;
+            }
+            if (block.isNull(right)) {
+                return -1;
+            }
+            return (int) comparisonOperator.compare(block, left, block, right);
+        };
+    }
+
     @SqlNullable
     @TypeParameter("E")
     @TypeParameterSpecialization(name = "E", nativeContainerType = long.class)
@@ -92,22 +124,6 @@ public final class ArraysOverlapFunction
             }
         }
         return (leftNonNullSize < leftSize) || (rightNonNullSize < rightSize) ? null : false;
-    }
-
-    // Assumes buffer is long enough, returns count of non-null elements.
-    private static int sortLongArray(Block array, long[] buffer, Type type, LongComparison comparisonOperator)
-    {
-        int arraySize = array.getPositionCount();
-        int nonNullSize = 0;
-        for (int i = 0; i < arraySize; i++) {
-            if (!array.isNull(i)) {
-                buffer[nonNullSize++] = type.getLong(array, i);
-            }
-        }
-
-        LongArrays.unstableSort(buffer, 0, nonNullSize, (left, right) -> (int) comparisonOperator.compare(left, right));
-
-        return nonNullSize;
     }
 
     @SqlNullable
@@ -165,22 +181,6 @@ public final class ArraysOverlapFunction
             }
         }
         return leftArray.isNull(leftPositions[leftPositionCount - 1]) || rightArray.isNull(rightPositions[rightPositionCount - 1]) ? null : false;
-    }
-
-    private static IntComparator intBlockCompare(BlockPositionComparison comparisonOperator, Block block)
-    {
-        return (left, right) -> {
-            if (block.isNull(left) && block.isNull(right)) {
-                return 0;
-            }
-            if (block.isNull(left)) {
-                return 1;
-            }
-            if (block.isNull(right)) {
-                return -1;
-            }
-            return (int) comparisonOperator.compare(block, left, block, right);
-        };
     }
 
     public interface LongComparison

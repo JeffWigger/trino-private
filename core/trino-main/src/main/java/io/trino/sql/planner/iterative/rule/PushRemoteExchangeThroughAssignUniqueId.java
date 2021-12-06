@@ -50,6 +50,13 @@ public final class PushRemoteExchangeThroughAssignUniqueId
             .matching(exchange -> exchange.getType() != REPLICATE)
             .with(source().matching(assignUniqueId().capturedAs(ASSIGN_UNIQUE_ID)));
 
+    private static List<Symbol> removeSymbol(List<Symbol> symbols, Symbol symbolToRemove)
+    {
+        return symbols.stream()
+                .filter(symbol -> !symbolToRemove.equals(symbol))
+                .collect(toImmutableList());
+    }
+
     @Override
     public Pattern<ExchangeNode> getPattern()
     {
@@ -85,12 +92,5 @@ public final class PushRemoteExchangeThroughAssignUniqueId
                         ImmutableList.of(removeSymbol(getOnlyElement(node.getInputs()), assignUniqueId.getIdColumn())),
                         Optional.empty()),
                 assignUniqueId.getIdColumn()));
-    }
-
-    private static List<Symbol> removeSymbol(List<Symbol> symbols, Symbol symbolToRemove)
-    {
-        return symbols.stream()
-                .filter(symbol -> !symbolToRemove.equals(symbol))
-                .collect(toImmutableList());
     }
 }

@@ -83,6 +83,13 @@ public class TestOrcBloomFilters
             .put((long) floatToIntBits(987.654f), REAL)
             .build();
 
+    private static byte[] randomBytes(int length)
+    {
+        byte[] result = new byte[length];
+        ThreadLocalRandom.current().nextBytes(result);
+        return result;
+    }
+
     @Test
     public void testHiveBloomFilterSerde()
     {
@@ -360,12 +367,5 @@ public class TestOrcBloomFilters
                 assertEquals(BloomFilter.OrcMurmur3.hash64(bytes), Murmur3.hash64(bytes));
             }
         }
-    }
-
-    private static byte[] randomBytes(int length)
-    {
-        byte[] result = new byte[length];
-        ThreadLocalRandom.current().nextBytes(result);
-        return result;
     }
 }

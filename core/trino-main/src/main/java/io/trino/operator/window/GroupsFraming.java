@@ -182,6 +182,71 @@ public class GroupsFraming
                 range.getEnd() < 0;
     }
 
+    /**
+     * Return a valid frame. A frame is valid if its start and end are within partition.
+     * If frame start or frame end is out of partition bounds, it is set to the nearest position
+     * for which peer group index can be determined.
+     */
+    private GroupsFrame nearestValidFrame(GroupsFrame frame)
+    {
+        if (frame.getStart() > partitionEnd - partitionStart - 1) {
+            return frame.withStart(partitionEnd - partitionStart - 1, lastPeerGroup);
+        }
+        if (frame.getEnd() < 0) {
+            return frame.withEnd(0, 0);
+        }
+        return frame;
+    }
+
+    private PositionAndGroup seek(
+            int currentGroupIndex,
+            long offset,
+            int recentPosition,
+            int recentGroupIndex,
+            Function<Integer, Integer> seekPositionWithinGroup,
+            EdgeResultProvider edgeResult)
+    {
+        long searchedIndex = currentGroupIndex + offset;
+        if (searchedIndex < 0 || searchedIndex > lastPeerGroup) {
+            return edgeResult.get(lastPeerGroup);
+        }
+        int groupIndex = toIntExact(searchedIndex);
+        while (recentGroupIndex > groupIndex) {
+            recentPosition = seekGroupStart.apply(recentPosition);
+            recentPosition--;
+            recentGroupIndex--;
+        }
+
+        while (recentGroupIndex < groupIndex) {
+            recentPosition = seekGroupEnd.apply(recentPosition);
+            if (recentPosition == partitionEnd - partitionStart - 1) {
+                lastPeerGroup = recentGroupIndex;
+                return edgeResult.get(lastPeerGroup);
+            }
+            recentPosition++;
+            recentGroupIndex++;
+        }
+
+        recentPosition = seekPositionWithinGroup.apply(recentPosition);
+        if (recentPosition == partitionEnd - partitionStart - 1) {
+            lastPeerGroup = recentGroupIndex;
+        }
+        return new PositionAndGroup(recentPosition, recentGroupIndex);
+    }
+
+    private long getValue(int channel, int currentPosition)
+    {
+        checkState(!pagesIndex.isNull(channel, currentPosition), "Window frame offset must not be null");
+        long value = pagesIndex.getLong(channel, currentPosition);
+        checkState(value >= 0, "Window frame offset must not be negative");
+        return value;
+    }
+
+    private interface EdgeResultProvider
+    {
+        PositionAndGroup get(int lastPeerGroup);
+    }
+
     private static class PositionAndGroup
     {
         private final int position;
@@ -202,11 +267,6 @@ public class GroupsFraming
         {
             return group;
         }
-    }
-
-    private interface EdgeResultProvider
-    {
-        PositionAndGroup get(int lastPeerGroup);
     }
 
     /**
@@ -274,65 +334,5 @@ public class GroupsFraming
         {
             return new Range(start, end);
         }
-    }
-
-    /**
-     * Return a valid frame. A frame is valid if its start and end are within partition.
-     * If frame start or frame end is out of partition bounds, it is set to the nearest position
-     * for which peer group index can be determined.
-     */
-    private GroupsFrame nearestValidFrame(GroupsFrame frame)
-    {
-        if (frame.getStart() > partitionEnd - partitionStart - 1) {
-            return frame.withStart(partitionEnd - partitionStart - 1, lastPeerGroup);
-        }
-        if (frame.getEnd() < 0) {
-            return frame.withEnd(0, 0);
-        }
-        return frame;
-    }
-
-    private PositionAndGroup seek(
-            int currentGroupIndex,
-            long offset,
-            int recentPosition,
-            int recentGroupIndex,
-            Function<Integer, Integer> seekPositionWithinGroup,
-            EdgeResultProvider edgeResult)
-    {
-        long searchedIndex = currentGroupIndex + offset;
-        if (searchedIndex < 0 || searchedIndex > lastPeerGroup) {
-            return edgeResult.get(lastPeerGroup);
-        }
-        int groupIndex = toIntExact(searchedIndex);
-        while (recentGroupIndex > groupIndex) {
-            recentPosition = seekGroupStart.apply(recentPosition);
-            recentPosition--;
-            recentGroupIndex--;
-        }
-
-        while (recentGroupIndex < groupIndex) {
-            recentPosition = seekGroupEnd.apply(recentPosition);
-            if (recentPosition == partitionEnd - partitionStart - 1) {
-                lastPeerGroup = recentGroupIndex;
-                return edgeResult.get(lastPeerGroup);
-            }
-            recentPosition++;
-            recentGroupIndex++;
-        }
-
-        recentPosition = seekPositionWithinGroup.apply(recentPosition);
-        if (recentPosition == partitionEnd - partitionStart - 1) {
-            lastPeerGroup = recentGroupIndex;
-        }
-        return new PositionAndGroup(recentPosition, recentGroupIndex);
-    }
-
-    private long getValue(int channel, int currentPosition)
-    {
-        checkState(!pagesIndex.isNull(channel, currentPosition), "Window frame offset must not be null");
-        long value = pagesIndex.getLong(channel, currentPosition);
-        checkState(value >= 0, "Window frame offset must not be negative");
-        return value;
     }
 }

@@ -27,21 +27,20 @@ import static java.util.Objects.requireNonNull;
 
 public class SecurityContext
 {
-    public static SecurityContext of(Session session)
-    {
-        requireNonNull(session, "session is null");
-        return new SecurityContext(session.getRequiredTransactionId(), session.getIdentity(), session.getQueryId());
-    }
-
     private final TransactionId transactionId;
     private final Identity identity;
     private final QueryId queryId;
-
     public SecurityContext(TransactionId transactionId, Identity identity, QueryId queryId)
     {
         this.transactionId = requireNonNull(transactionId, "transactionId is null");
         this.identity = requireNonNull(identity, "identity is null");
         this.queryId = requireNonNull(queryId, "queryId is null");
+    }
+
+    public static SecurityContext of(Session session)
+    {
+        requireNonNull(session, "session is null");
+        return new SecurityContext(session.getRequiredTransactionId(), session.getIdentity(), session.getQueryId());
     }
 
     public TransactionId getTransactionId()

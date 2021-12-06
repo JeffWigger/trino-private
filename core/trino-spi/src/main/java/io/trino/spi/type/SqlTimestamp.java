@@ -36,6 +36,13 @@ public final class SqlTimestamp
     private final long epochMicros;
     private final int picosOfMicros;
 
+    private SqlTimestamp(int precision, long epochMicros, int picosOfMicro)
+    {
+        this.precision = precision;
+        this.epochMicros = epochMicros;
+        this.picosOfMicros = picosOfMicro;
+    }
+
     public static SqlTimestamp fromMillis(int precision, long millis)
     {
         return newInstanceWithRounding(precision, millis * 1000, 0);
@@ -84,13 +91,6 @@ public final class SqlTimestamp
         }
 
         return new SqlTimestamp(precision, epochMicros, picosOfMicro);
-    }
-
-    private SqlTimestamp(int precision, long epochMicros, int picosOfMicro)
-    {
-        this.precision = precision;
-        this.epochMicros = epochMicros;
-        this.picosOfMicros = picosOfMicro;
     }
 
     public int getPrecision()

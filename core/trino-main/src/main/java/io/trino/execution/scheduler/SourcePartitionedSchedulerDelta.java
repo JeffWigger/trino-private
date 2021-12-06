@@ -65,31 +65,6 @@ import static java.util.Objects.requireNonNull;
 public class SourcePartitionedSchedulerDelta
         implements SourceScheduler
 {
-    private enum State
-    {
-        /**
-         * No splits have been added to pendingSplits set.
-         */
-        INITIALIZED,
-
-        /**
-         * At least one split has been added to pendingSplits set.
-         */
-        SPLITS_ADDED,
-
-        /**
-         * All splits from underlying SplitSource have been discovered.
-         * No more splits will be added to the pendingSplits set.
-         */
-        NO_MORE_SPLITS,
-
-        /**
-         * All splits have been provided to caller of this scheduler.
-         * Cleanup operations are done (e.g., drainCompletedLifespans has drained all driver groups).
-         */
-        FINISHED
-    }
-
     private final SqlStageExecution stage;
     private final SplitSource splitSource;
     private final SplitSource splitDeltaSource;
@@ -100,17 +75,14 @@ public class SourcePartitionedSchedulerDelta
     private final boolean groupedExecution;
     private final DynamicFilterService dynamicFilterService;
     private final BooleanSupplier anySourceTaskBlocked;
-
     private final Map<Lifespan, ScheduleGroup> scheduleGroups = new HashMap<>();
     private final Map<Lifespan, ScheduleGroup> scheduleGroupsDelta = new HashMap<>();
     private final List<Pair<Lifespan, ConnectorPartitionHandle>> lifespans = new LinkedList<>();
+    public State stateDelta = State.INITIALIZED;
     private boolean noMoreScheduleGroups;
     private State state = State.INITIALIZED;
-    public State stateDelta = State.INITIALIZED;
-
     private SettableFuture<Void> whenFinishedOrNewLifespanAdded = SettableFuture.create();
     private SettableFuture<Void> whenFinishedOrNewLifespanAddedDelta = SettableFuture.create();
-
     private SourcePartitionedSchedulerDelta(
             SqlStageExecution stage,
             PlanNodeId partitionedNode,
@@ -135,12 +107,6 @@ public class SourcePartitionedSchedulerDelta
         this.splitBatchSize = splitBatchSize;
         this.splitDeltaBatchSize = splitDeltaBatchSize;
         this.groupedExecution = groupedExecution;
-    }
-
-    @Override
-    public PlanNodeId getPlanNodeId()
-    {
-        return partitionedNode;
     }
 
     /**
@@ -199,7 +165,7 @@ public class SourcePartitionedSchedulerDelta
             {
                 sourcePartitionedScheduler.stateDelta = State.INITIALIZED;
                 //startLifespan
-                for (Pair<Lifespan, ConnectorPartitionHandle> p : sourcePartitionedScheduler.lifespans){
+                for (Pair<Lifespan, ConnectorPartitionHandle> p : sourcePartitionedScheduler.lifespans) {
                     checkState(sourcePartitionedScheduler.stateDelta == State.INITIALIZED || sourcePartitionedScheduler.stateDelta == State.SPLITS_ADDED);
                     sourcePartitionedScheduler.scheduleGroupsDelta.put(p.lifespan, new ScheduleGroup(p.connector));
                     sourcePartitionedScheduler.whenFinishedOrNewLifespanAddedDelta.set(null);
@@ -250,6 +216,17 @@ public class SourcePartitionedSchedulerDelta
                 anySourceTaskBlocked);
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
+    @Override
+    public PlanNodeId getPlanNodeId()
+    {
+        return partitionedNode;
+    }
+
     @Override
     public synchronized void startLifespan(Lifespan lifespan, ConnectorPartitionHandle partitionHandle)
     {
@@ -283,7 +260,6 @@ public class SourcePartitionedSchedulerDelta
         boolean anyBlockedOnPlacements = false;
         boolean anyBlockedOnNextSplitBatch = false;
         boolean anyNotBlocked = false;
-
 
         for (Entry<Lifespan, ScheduleGroup> entry : scheduleGroups.entrySet()) {
             Lifespan lifespan = entry.getKey();
@@ -479,7 +455,6 @@ public class SourcePartitionedSchedulerDelta
         boolean anyBlockedOnNextSplitBatch = false;
         boolean anyNotBlocked = false;
 
-
         for (Entry<Lifespan, ScheduleGroup> entry : scheduleGroupsDelta.entrySet()) {
             Lifespan lifespan = entry.getKey();
             ScheduleGroup scheduleGroup = entry.getValue();
@@ -664,11 +639,6 @@ public class SourcePartitionedSchedulerDelta
                 overallSplitAssignmentCount);
     }
 
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
-    }
-
     private synchronized void dropListenersFromWhenFinishedOrNewLifespansAdded()
     {
         // whenFinishedOrNewLifespanAdded may remain in a not-done state for an extended period of time.
@@ -741,7 +711,6 @@ public class SourcePartitionedSchedulerDelta
 
         return result.build();
     }
-
 
     @Override
     public synchronized List<Lifespan> drainCompletedDeltaLifespans()
@@ -827,18 +796,29 @@ public class SourcePartitionedSchedulerDelta
         return newTasks;
     }
 
-    private static class ScheduleGroup
+    private enum State
     {
-        public final ConnectorPartitionHandle partitionHandle;
-        public ListenableFuture<SplitBatch> nextSplitBatchFuture;
-        public ListenableFuture<Void> placementFuture = immediateVoidFuture();
-        public final Set<Split> pendingSplits = new HashSet<>();
-        public ScheduleGroupState state = ScheduleGroupState.INITIALIZED;
+        /**
+         * No splits have been added to pendingSplits set.
+         */
+        INITIALIZED,
 
-        public ScheduleGroup(ConnectorPartitionHandle partitionHandle)
-        {
-            this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
-        }
+        /**
+         * At least one split has been added to pendingSplits set.
+         */
+        SPLITS_ADDED,
+
+        /**
+         * All splits from underlying SplitSource have been discovered.
+         * No more splits will be added to the pendingSplits set.
+         */
+        NO_MORE_SPLITS,
+
+        /**
+         * All splits have been provided to caller of this scheduler.
+         * Cleanup operations are done (e.g., drainCompletedLifespans has drained all driver groups).
+         */
+        FINISHED
     }
 
     private enum ScheduleGroupState
@@ -866,13 +846,29 @@ public class SourcePartitionedSchedulerDelta
         DONE
     }
 
-    public static class Pair<X, Y> {
+    private static class ScheduleGroup
+    {
+        public final ConnectorPartitionHandle partitionHandle;
+        public final Set<Split> pendingSplits = new HashSet<>();
+        public ListenableFuture<SplitBatch> nextSplitBatchFuture;
+        public ListenableFuture<Void> placementFuture = immediateVoidFuture();
+        public ScheduleGroupState state = ScheduleGroupState.INITIALIZED;
+
+        public ScheduleGroup(ConnectorPartitionHandle partitionHandle)
+        {
+            this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
+        }
+    }
+
+    public static class Pair<X, Y>
+    {
         public final X lifespan;
         public final Y connector;
-        public Pair(X lifespan, Y connector) {
+
+        public Pair(X lifespan, Y connector)
+        {
             this.lifespan = lifespan;
             this.connector = connector;
         }
     }
-
 }

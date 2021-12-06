@@ -108,6 +108,18 @@ public class TaskResource
         this.timeoutExecutor = requireNonNull(timeoutExecutor, "timeoutExecutor is null");
     }
 
+    private static boolean shouldSummarize(UriInfo uriInfo)
+    {
+        return uriInfo.getQueryParameters().containsKey("summarize");
+    }
+
+    private static Duration randomizeWaitTime(Duration waitTime)
+    {
+        // Randomize in [T/2, T], so wait is not near zero and the client-supplied max wait time is respected
+        long halfWaitMillis = waitTime.toMillis() / 2;
+        return new Duration(halfWaitMillis + ThreadLocalRandom.current().nextLong(halfWaitMillis), MILLISECONDS);
+    }
+
     @ResourceSecurity(INTERNAL_ONLY)
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -175,7 +187,7 @@ public class TaskResource
         DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
         DeltaFlagRequest.deltaFlagLock.writeLock().unlock();
         //
-        System.out.println("Set globalDeltaUpdateInProcess to: "+deltaFlagRequest.getDeltaUpdateInProcess());
+        System.out.println("Set globalDeltaUpdateInProcess to: " + deltaFlagRequest.getDeltaUpdateInProcess());
         // just sending back the same thing
         return Response.ok().entity(deltaFlagRequest).build();
     }
@@ -391,17 +403,5 @@ public class TaskResource
     public TimeStat getResultsRequestTime()
     {
         return resultsRequestTime;
-    }
-
-    private static boolean shouldSummarize(UriInfo uriInfo)
-    {
-        return uriInfo.getQueryParameters().containsKey("summarize");
-    }
-
-    private static Duration randomizeWaitTime(Duration waitTime)
-    {
-        // Randomize in [T/2, T], so wait is not near zero and the client-supplied max wait time is respected
-        long halfWaitMillis = waitTime.toMillis() / 2;
-        return new Duration(halfWaitMillis + ThreadLocalRandom.current().nextLong(halfWaitMillis), MILLISECONDS);
     }
 }

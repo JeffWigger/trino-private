@@ -46,6 +46,21 @@ public class JsonRowDecoder
         this.fieldDecoders = ImmutableMap.copyOf(fieldDecoders);
     }
 
+    private static JsonNode locateNode(JsonNode tree, DecoderColumnHandle columnHandle)
+    {
+        String mapping = columnHandle.getMapping();
+        checkState(mapping != null, "No mapping for %s", columnHandle.getName());
+
+        JsonNode currentNode = tree;
+        for (String pathElement : Splitter.on('/').omitEmptyStrings().split(mapping)) {
+            if (!currentNode.has(pathElement)) {
+                return MissingNode.getInstance();
+            }
+            currentNode = currentNode.path(pathElement);
+        }
+        return currentNode;
+    }
+
     @Override
     public Optional<Map<DecoderColumnHandle, FieldValueProvider>> decodeRow(byte[] data,
             Map<String, String> dataMap)
@@ -68,20 +83,5 @@ public class JsonRowDecoder
         }
 
         return Optional.of(decodedRow);
-    }
-
-    private static JsonNode locateNode(JsonNode tree, DecoderColumnHandle columnHandle)
-    {
-        String mapping = columnHandle.getMapping();
-        checkState(mapping != null, "No mapping for %s", columnHandle.getName());
-
-        JsonNode currentNode = tree;
-        for (String pathElement : Splitter.on('/').omitEmptyStrings().split(mapping)) {
-            if (!currentNode.has(pathElement)) {
-                return MissingNode.getInstance();
-            }
-            currentNode = currentNode.path(pathElement);
-        }
-        return currentNode;
     }
 }

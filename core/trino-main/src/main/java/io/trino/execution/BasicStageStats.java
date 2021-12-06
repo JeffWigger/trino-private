@@ -136,6 +136,103 @@ public class BasicStageStats
         this.progressPercentage = requireNonNull(progressPercentage, "progressPercentage is null");
     }
 
+    public static BasicStageStats aggregateBasicStageStats(Iterable<BasicStageStats> stages)
+    {
+        int totalDrivers = 0;
+        int queuedDrivers = 0;
+        int runningDrivers = 0;
+        int completedDrivers = 0;
+
+        long cumulativeUserMemory = 0;
+        long cumulativeSystemMemory = 0;
+        long userMemoryReservation = 0;
+        long totalMemoryReservation = 0;
+
+        long totalScheduledTimeMillis = 0;
+        long totalCpuTime = 0;
+
+        long physicalInputDataSize = 0;
+        long physicalInputPositions = 0;
+        long physicalInputReadTime = 0;
+
+        long internalNetworkInputDataSize = 0;
+        long internalNetworkInputPositions = 0;
+
+        long rawInputDataSize = 0;
+        long rawInputPositions = 0;
+
+        boolean isScheduled = true;
+
+        boolean fullyBlocked = true;
+        Set<BlockedReason> blockedReasons = new HashSet<>();
+
+        for (BasicStageStats stageStats : stages) {
+            totalDrivers += stageStats.getTotalDrivers();
+            queuedDrivers += stageStats.getQueuedDrivers();
+            runningDrivers += stageStats.getRunningDrivers();
+            completedDrivers += stageStats.getCompletedDrivers();
+
+            cumulativeUserMemory += stageStats.getCumulativeUserMemory();
+            cumulativeSystemMemory += stageStats.getCumulativeSystemMemory();
+            userMemoryReservation += stageStats.getUserMemoryReservation().toBytes();
+            totalMemoryReservation += stageStats.getTotalMemoryReservation().toBytes();
+
+            totalScheduledTimeMillis += stageStats.getTotalScheduledTime().roundTo(MILLISECONDS);
+            totalCpuTime += stageStats.getTotalCpuTime().roundTo(MILLISECONDS);
+
+            isScheduled &= stageStats.isScheduled();
+
+            fullyBlocked &= stageStats.isFullyBlocked();
+            blockedReasons.addAll(stageStats.getBlockedReasons());
+
+            physicalInputDataSize += stageStats.getPhysicalInputDataSize().toBytes();
+            physicalInputPositions += stageStats.getPhysicalInputPositions();
+            physicalInputReadTime += stageStats.getPhysicalInputReadTime().roundTo(MILLISECONDS);
+
+            internalNetworkInputDataSize += stageStats.getInternalNetworkInputDataSize().toBytes();
+            internalNetworkInputPositions += stageStats.getInternalNetworkInputPositions();
+
+            rawInputDataSize += stageStats.getRawInputDataSize().toBytes();
+            rawInputPositions += stageStats.getRawInputPositions();
+        }
+
+        OptionalDouble progressPercentage = OptionalDouble.empty();
+        if (isScheduled && totalDrivers != 0) {
+            progressPercentage = OptionalDouble.of(min(100, (completedDrivers * 100.0) / totalDrivers));
+        }
+
+        return new BasicStageStats(
+                isScheduled,
+
+                totalDrivers,
+                queuedDrivers,
+                runningDrivers,
+                completedDrivers,
+
+                succinctBytes(physicalInputDataSize),
+                physicalInputPositions,
+                new Duration(physicalInputReadTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
+
+                succinctBytes(internalNetworkInputDataSize),
+                internalNetworkInputPositions,
+
+                succinctBytes(rawInputDataSize),
+                rawInputPositions,
+
+                cumulativeUserMemory,
+                cumulativeSystemMemory,
+                succinctBytes(userMemoryReservation),
+                succinctBytes(totalMemoryReservation),
+
+                new Duration(totalCpuTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
+                new Duration(totalScheduledTimeMillis, MILLISECONDS).convertToMostSuccinctTimeUnit(),
+
+                fullyBlocked,
+                blockedReasons,
+
+                progressPercentage);
+    }
+
     public boolean isScheduled()
     {
         return isScheduled;
@@ -239,102 +336,5 @@ public class BasicStageStats
     public OptionalDouble getProgressPercentage()
     {
         return progressPercentage;
-    }
-
-    public static BasicStageStats aggregateBasicStageStats(Iterable<BasicStageStats> stages)
-    {
-        int totalDrivers = 0;
-        int queuedDrivers = 0;
-        int runningDrivers = 0;
-        int completedDrivers = 0;
-
-        long cumulativeUserMemory = 0;
-        long cumulativeSystemMemory = 0;
-        long userMemoryReservation = 0;
-        long totalMemoryReservation = 0;
-
-        long totalScheduledTimeMillis = 0;
-        long totalCpuTime = 0;
-
-        long physicalInputDataSize = 0;
-        long physicalInputPositions = 0;
-        long physicalInputReadTime = 0;
-
-        long internalNetworkInputDataSize = 0;
-        long internalNetworkInputPositions = 0;
-
-        long rawInputDataSize = 0;
-        long rawInputPositions = 0;
-
-        boolean isScheduled = true;
-
-        boolean fullyBlocked = true;
-        Set<BlockedReason> blockedReasons = new HashSet<>();
-
-        for (BasicStageStats stageStats : stages) {
-            totalDrivers += stageStats.getTotalDrivers();
-            queuedDrivers += stageStats.getQueuedDrivers();
-            runningDrivers += stageStats.getRunningDrivers();
-            completedDrivers += stageStats.getCompletedDrivers();
-
-            cumulativeUserMemory += stageStats.getCumulativeUserMemory();
-            cumulativeSystemMemory += stageStats.getCumulativeSystemMemory();
-            userMemoryReservation += stageStats.getUserMemoryReservation().toBytes();
-            totalMemoryReservation += stageStats.getTotalMemoryReservation().toBytes();
-
-            totalScheduledTimeMillis += stageStats.getTotalScheduledTime().roundTo(MILLISECONDS);
-            totalCpuTime += stageStats.getTotalCpuTime().roundTo(MILLISECONDS);
-
-            isScheduled &= stageStats.isScheduled();
-
-            fullyBlocked &= stageStats.isFullyBlocked();
-            blockedReasons.addAll(stageStats.getBlockedReasons());
-
-            physicalInputDataSize += stageStats.getPhysicalInputDataSize().toBytes();
-            physicalInputPositions += stageStats.getPhysicalInputPositions();
-            physicalInputReadTime += stageStats.getPhysicalInputReadTime().roundTo(MILLISECONDS);
-
-            internalNetworkInputDataSize += stageStats.getInternalNetworkInputDataSize().toBytes();
-            internalNetworkInputPositions += stageStats.getInternalNetworkInputPositions();
-
-            rawInputDataSize += stageStats.getRawInputDataSize().toBytes();
-            rawInputPositions += stageStats.getRawInputPositions();
-        }
-
-        OptionalDouble progressPercentage = OptionalDouble.empty();
-        if (isScheduled && totalDrivers != 0) {
-            progressPercentage = OptionalDouble.of(min(100, (completedDrivers * 100.0) / totalDrivers));
-        }
-
-        return new BasicStageStats(
-                isScheduled,
-
-                totalDrivers,
-                queuedDrivers,
-                runningDrivers,
-                completedDrivers,
-
-                succinctBytes(physicalInputDataSize),
-                physicalInputPositions,
-                new Duration(physicalInputReadTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-
-                succinctBytes(internalNetworkInputDataSize),
-                internalNetworkInputPositions,
-
-                succinctBytes(rawInputDataSize),
-                rawInputPositions,
-
-                cumulativeUserMemory,
-                cumulativeSystemMemory,
-                succinctBytes(userMemoryReservation),
-                succinctBytes(totalMemoryReservation),
-
-                new Duration(totalCpuTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-                new Duration(totalScheduledTimeMillis, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-
-                fullyBlocked,
-                blockedReasons,
-
-                progressPercentage);
     }
 }

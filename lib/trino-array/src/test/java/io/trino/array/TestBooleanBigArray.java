@@ -21,17 +21,6 @@ import static org.testng.Assert.assertEquals;
 
 public class TestBooleanBigArray
 {
-    @Test
-    public void testFill()
-    {
-        BooleanBigArray array = new BooleanBigArray();
-        assertFillCapacity(array, 0, true);
-        assertFillCapacity(array, 1, false);
-        assertFillCapacity(array, 1000, true);
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, false);
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, true);
-    }
-
     private static void assertFillCapacity(BooleanBigArray array, long capacity, boolean value)
     {
         array.ensureCapacity(capacity);
@@ -39,21 +28,6 @@ public class TestBooleanBigArray
 
         for (int i = 0; i < capacity; i++) {
             assertEquals(array.get(i), value);
-        }
-    }
-
-    @Test
-    public void testCopyTo()
-    {
-        BooleanBigArray source = new BooleanBigArray();
-        BooleanBigArray destination = new BooleanBigArray();
-
-        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
-                }
-            }
         }
     }
 
@@ -81,6 +55,32 @@ public class TestBooleanBigArray
         }
         for (long i = destinationIndex + length; i < destinationCapacity; i++) {
             assertEquals(destination.get(i), destinationFillValue);
+        }
+    }
+
+    @Test
+    public void testFill()
+    {
+        BooleanBigArray array = new BooleanBigArray();
+        assertFillCapacity(array, 0, true);
+        assertFillCapacity(array, 1, false);
+        assertFillCapacity(array, 1000, true);
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, false);
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, true);
+    }
+
+    @Test
+    public void testCopyTo()
+    {
+        BooleanBigArray source = new BooleanBigArray();
+        BooleanBigArray destination = new BooleanBigArray();
+
+        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
+                }
+            }
         }
     }
 }

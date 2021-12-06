@@ -73,6 +73,31 @@ public class MaterializedViewSystemTable
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
     }
 
+    private static Object[] createMaterializedViewRow(
+            QualifiedObjectName name,
+            MaterializedViewFreshness freshness,
+            ConnectorMaterializedViewDefinition definition)
+    {
+        return new Object[] {
+                name.getCatalogName(),
+                name.getSchemaName(),
+                name.getObjectName(),
+                definition.getStorageTable()
+                        .map(CatalogSchemaTableName::getCatalogName)
+                        .orElse(""),
+                definition.getStorageTable()
+                        .map(storageTable -> storageTable.getSchemaTableName().getSchemaName())
+                        .orElse(""),
+                definition.getStorageTable()
+                        .map(storageTable -> storageTable.getSchemaTableName().getTableName())
+                        .orElse(""),
+                freshness.isMaterializedViewFresh(),
+                definition.getOwner(),
+                definition.getComment().orElse(""),
+                definition.getOriginalSql()
+        };
+    }
+
     @Override
     public Distribution getDistribution()
     {
@@ -119,30 +144,5 @@ public class MaterializedViewSystemTable
         });
 
         return displayTable.build().cursor();
-    }
-
-    private static Object[] createMaterializedViewRow(
-            QualifiedObjectName name,
-            MaterializedViewFreshness freshness,
-            ConnectorMaterializedViewDefinition definition)
-    {
-        return new Object[] {
-                name.getCatalogName(),
-                name.getSchemaName(),
-                name.getObjectName(),
-                definition.getStorageTable()
-                        .map(CatalogSchemaTableName::getCatalogName)
-                        .orElse(""),
-                definition.getStorageTable()
-                        .map(storageTable -> storageTable.getSchemaTableName().getSchemaName())
-                        .orElse(""),
-                definition.getStorageTable()
-                        .map(storageTable -> storageTable.getSchemaTableName().getTableName())
-                        .orElse(""),
-                freshness.isMaterializedViewFresh(),
-                definition.getOwner(),
-                definition.getComment().orElse(""),
-                definition.getOriginalSql()
-        };
     }
 }

@@ -30,27 +30,15 @@ import static java.util.Objects.requireNonNull;
 @ThreadSafe
 final class SpilledLookupSourceHandle
 {
-    private enum State
-    {
-        SPILLED,
-        UNSPILLING,
-        PRODUCED,
-        DISPOSE_REQUESTED
-    }
-
+    private final SettableFuture<Void> unspillingRequested = SettableFuture.create();
+    private final SettableFuture<Void> disposeRequested = SettableFuture.create();
+    private final SettableFuture<Void> disposeCompleted = SettableFuture.create();
+    private final ListenableFuture<Void> unspillingOrDisposeRequested = whenAnyComplete(ImmutableList.of(unspillingRequested, disposeRequested));
     @GuardedBy("this")
     private State state = State.SPILLED;
-
-    private final SettableFuture<Void> unspillingRequested = SettableFuture.create();
-
     @GuardedBy("this")
     @Nullable
     private SettableFuture<Supplier<LookupSource>> unspilledLookupSource;
-
-    private final SettableFuture<Void> disposeRequested = SettableFuture.create();
-    private final SettableFuture<Void> disposeCompleted = SettableFuture.create();
-
-    private final ListenableFuture<Void> unspillingOrDisposeRequested = whenAnyComplete(ImmutableList.of(unspillingRequested, disposeRequested));
 
     public SettableFuture<Void> getUnspillingRequested()
     {
@@ -121,5 +109,13 @@ final class SpilledLookupSourceHandle
     {
         //this.state.set(requireNonNull(newState, "newState is null"));
         this.state = requireNonNull(newState, "newState is null");
+    }
+
+    private enum State
+    {
+        SPILLED,
+        UNSPILLING,
+        PRODUCED,
+        DISPOSE_REQUESTED
     }
 }

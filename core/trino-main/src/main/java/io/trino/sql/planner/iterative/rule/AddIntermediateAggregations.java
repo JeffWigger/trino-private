@@ -77,6 +77,52 @@ public class AddIntermediateAggregations
             // Only consider aggregations without ORDER BY clause
             .matching(node -> !node.hasOrderings());
 
+    /**
+     * Rewrite assignments so that inputs are in terms of the output symbols.
+     * <p>
+     * Example:
+     * 'a' := sum('b') => 'a' := sum('a')
+     * 'a' := count(*) => 'a' := count('a')
+     */
+    private static Map<Symbol, AggregationNode.Aggregation> outputsAsInputs(Map<Symbol, AggregationNode.Aggregation> assignments)
+    {
+        ImmutableMap.Builder<Symbol, AggregationNode.Aggregation> builder = ImmutableMap.builder();
+        for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : assignments.entrySet()) {
+            Symbol output = entry.getKey();
+            AggregationNode.Aggregation aggregation = entry.getValue();
+            checkState(aggregation.getOrderingScheme().isEmpty(), "Intermediate aggregation does not support ORDER BY");
+            builder.put(
+                    output,
+                    new AggregationNode.Aggregation(
+                            aggregation.getResolvedFunction(),
+                            ImmutableList.of(output.toSymbolReference()),
+                            false,
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty()));  // No mask for INTERMEDIATE
+        }
+        return builder.build();
+    }
+
+    /**
+     * Rewrite assignments so that outputs are in terms of the input symbols.
+     * This operation only reliably applies to aggregation steps that take partial inputs (e.g. INTERMEDIATE and split FINALs),
+     * which are guaranteed to have exactly one input and one output.
+     * <p>
+     * Example:
+     * 'a' := sum('b') => 'b' := sum('b')
+     */
+    private static Map<Symbol, AggregationNode.Aggregation> inputsAsOutputs(Map<Symbol, AggregationNode.Aggregation> assignments)
+    {
+        ImmutableMap.Builder<Symbol, AggregationNode.Aggregation> builder = ImmutableMap.builder();
+        for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : assignments.entrySet()) {
+            // Should only have one input symbol
+            Symbol input = getOnlyElement(SymbolsExtractor.extractAll(entry.getValue()));
+            builder.put(input, entry.getValue());
+        }
+        return builder.build();
+    }
+
     @Override
     public Pattern<AggregationNode> getPattern()
     {
@@ -162,51 +208,5 @@ public class AddIntermediateAggregations
                 AggregationNode.Step.INTERMEDIATE,
                 aggregation.getHashSymbol(),
                 aggregation.getGroupIdSymbol());
-    }
-
-    /**
-     * Rewrite assignments so that inputs are in terms of the output symbols.
-     * <p>
-     * Example:
-     * 'a' := sum('b') => 'a' := sum('a')
-     * 'a' := count(*) => 'a' := count('a')
-     */
-    private static Map<Symbol, AggregationNode.Aggregation> outputsAsInputs(Map<Symbol, AggregationNode.Aggregation> assignments)
-    {
-        ImmutableMap.Builder<Symbol, AggregationNode.Aggregation> builder = ImmutableMap.builder();
-        for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : assignments.entrySet()) {
-            Symbol output = entry.getKey();
-            AggregationNode.Aggregation aggregation = entry.getValue();
-            checkState(aggregation.getOrderingScheme().isEmpty(), "Intermediate aggregation does not support ORDER BY");
-            builder.put(
-                    output,
-                    new AggregationNode.Aggregation(
-                            aggregation.getResolvedFunction(),
-                            ImmutableList.of(output.toSymbolReference()),
-                            false,
-                            Optional.empty(),
-                            Optional.empty(),
-                            Optional.empty()));  // No mask for INTERMEDIATE
-        }
-        return builder.build();
-    }
-
-    /**
-     * Rewrite assignments so that outputs are in terms of the input symbols.
-     * This operation only reliably applies to aggregation steps that take partial inputs (e.g. INTERMEDIATE and split FINALs),
-     * which are guaranteed to have exactly one input and one output.
-     * <p>
-     * Example:
-     * 'a' := sum('b') => 'b' := sum('b')
-     */
-    private static Map<Symbol, AggregationNode.Aggregation> inputsAsOutputs(Map<Symbol, AggregationNode.Aggregation> assignments)
-    {
-        ImmutableMap.Builder<Symbol, AggregationNode.Aggregation> builder = ImmutableMap.builder();
-        for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : assignments.entrySet()) {
-            // Should only have one input symbol
-            Symbol input = getOnlyElement(SymbolsExtractor.extractAll(entry.getValue()));
-            builder.put(input, entry.getValue());
-        }
-        return builder.build();
     }
 }

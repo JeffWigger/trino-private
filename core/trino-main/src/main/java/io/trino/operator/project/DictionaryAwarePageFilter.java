@@ -41,6 +41,49 @@ public class DictionaryAwarePageFilter
         verify(filter.getInputChannels().size() == 1, "filter must have only one input");
     }
 
+    private static SelectedPositions selectDictionaryPositions(DictionaryBlock dictionaryBlock, boolean[] selectedDictionaryPositions)
+    {
+        int selectedCount = 0;
+        for (int position = 0; position < dictionaryBlock.getPositionCount(); position++) {
+            if (selectedDictionaryPositions[dictionaryBlock.getId(position)]) {
+                selectedCount++;
+            }
+        }
+
+        if (selectedCount == 0 || selectedCount == dictionaryBlock.getPositionCount()) {
+            return SelectedPositions.positionsRange(0, selectedCount);
+        }
+
+        int[] positions = new int[selectedCount];
+        int index = 0;
+        for (int position = 0; position < dictionaryBlock.getPositionCount(); position++) {
+            if (selectedDictionaryPositions[dictionaryBlock.getId(position)]) {
+                positions[index] = position;
+                index++;
+            }
+        }
+        return SelectedPositions.positionsList(positions, 0, selectedCount);
+    }
+
+    private static boolean[] toPositionsMask(SelectedPositions selectedPositions, int positionCount)
+    {
+        boolean[] positionsMask = new boolean[positionCount];
+        if (selectedPositions.isList()) {
+            int offset = selectedPositions.getOffset();
+            int[] positions = selectedPositions.getPositions();
+            for (int index = offset; index < offset + selectedPositions.size(); index++) {
+                positionsMask[positions[index]] = true;
+            }
+        }
+        else {
+            int offset = selectedPositions.getOffset();
+            for (int position = offset; position < offset + selectedPositions.size(); position++) {
+                positionsMask[position] = true;
+            }
+        }
+        return positionsMask;
+    }
+
     @Override
     public boolean isDeterministic()
     {
@@ -115,48 +158,5 @@ public class DictionaryAwarePageFilter
             lastOutputDictionary = Optional.empty();
         }
         return lastOutputDictionary;
-    }
-
-    private static SelectedPositions selectDictionaryPositions(DictionaryBlock dictionaryBlock, boolean[] selectedDictionaryPositions)
-    {
-        int selectedCount = 0;
-        for (int position = 0; position < dictionaryBlock.getPositionCount(); position++) {
-            if (selectedDictionaryPositions[dictionaryBlock.getId(position)]) {
-                selectedCount++;
-            }
-        }
-
-        if (selectedCount == 0 || selectedCount == dictionaryBlock.getPositionCount()) {
-            return SelectedPositions.positionsRange(0, selectedCount);
-        }
-
-        int[] positions = new int[selectedCount];
-        int index = 0;
-        for (int position = 0; position < dictionaryBlock.getPositionCount(); position++) {
-            if (selectedDictionaryPositions[dictionaryBlock.getId(position)]) {
-                positions[index] = position;
-                index++;
-            }
-        }
-        return SelectedPositions.positionsList(positions, 0, selectedCount);
-    }
-
-    private static boolean[] toPositionsMask(SelectedPositions selectedPositions, int positionCount)
-    {
-        boolean[] positionsMask = new boolean[positionCount];
-        if (selectedPositions.isList()) {
-            int offset = selectedPositions.getOffset();
-            int[] positions = selectedPositions.getPositions();
-            for (int index = offset; index < offset + selectedPositions.size(); index++) {
-                positionsMask[positions[index]] = true;
-            }
-        }
-        else {
-            int offset = selectedPositions.getOffset();
-            for (int position = offset; position < offset + selectedPositions.size(); position++) {
-                positionsMask[position] = true;
-            }
-        }
-        return positionsMask;
     }
 }

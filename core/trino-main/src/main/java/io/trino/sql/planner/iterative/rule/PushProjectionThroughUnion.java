@@ -47,6 +47,13 @@ public class PushProjectionThroughUnion
             .matching(PushProjectionThroughUnion::nonTrivialProjection)
             .with(source().matching(union().capturedAs(CHILD)));
 
+    private static boolean nonTrivialProjection(ProjectNode project)
+    {
+        return !project.getAssignments()
+                .getExpressions().stream()
+                .allMatch(SymbolReference.class::isInstance);
+    }
+
     @Override
     public Pattern<ProjectNode> getPattern()
     {
@@ -87,12 +94,5 @@ public class PushProjectionThroughUnion
         }
 
         return Result.ofPlanNode(new UnionNode(parent.getId(), outputSources.build(), mappings.build(), ImmutableList.copyOf(mappings.build().keySet())));
-    }
-
-    private static boolean nonTrivialProjection(ProjectNode project)
-    {
-        return !project.getAssignments()
-                .getExpressions().stream()
-                .allMatch(SymbolReference.class::isInstance);
     }
 }

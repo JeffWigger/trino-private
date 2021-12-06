@@ -68,19 +68,15 @@ public class QueryContext
     private final long maxSpill;
     private final SpillSpaceTracker spillSpaceTracker;
     private final Map<TaskId, TaskContext> taskContexts = new ConcurrentHashMap<>();
-
+    private final MemoryTrackingContext queryMemoryContext;
     @GuardedBy("this")
     private boolean resourceOverCommit;
     private volatile boolean memoryLimitsInitialized;
-
     // TODO: This field should be final. However, due to the way QueryContext is constructed the memory limit is not known in advance
     @GuardedBy("this")
     private long maxUserMemory;
     @GuardedBy("this")
     private long maxTotalMemory;
-
-    private final MemoryTrackingContext queryMemoryContext;
-
     @GuardedBy("this")
     private MemoryPool memoryPool;
 
@@ -250,6 +246,11 @@ public class QueryContext
         spillSpaceTracker.free(bytes);
     }
 
+    public synchronized MemoryPool getMemoryPool()
+    {
+        return memoryPool;
+    }
+
     public synchronized void setMemoryPool(MemoryPool newMemoryPool)
     {
         // This method first acquires the monitor of this instance.
@@ -280,11 +281,6 @@ public class QueryContext
             // Unblock all the tasks, if they were waiting for memory, since we're in a new pool.
             taskContexts.values().forEach(TaskContext::moreMemoryAvailable);
         }, directExecutor());
-    }
-
-    public synchronized MemoryPool getMemoryPool()
-    {
-        return memoryPool;
     }
 
     public TaskContext addTaskContext(
@@ -326,33 +322,6 @@ public class QueryContext
     {
         TaskContext taskContext = taskContexts.get(taskId);
         return verifyNotNull(taskContext, "task does not exist");
-    }
-
-    private static class QueryMemoryReservationHandler
-            implements MemoryReservationHandler
-    {
-        private final BiFunction<String, Long, ListenableFuture<Void>> reserveMemoryFunction;
-        private final BiPredicate<String, Long> tryReserveMemoryFunction;
-
-        public QueryMemoryReservationHandler(
-                BiFunction<String, Long, ListenableFuture<Void>> reserveMemoryFunction,
-                BiPredicate<String, Long> tryReserveMemoryFunction)
-        {
-            this.reserveMemoryFunction = requireNonNull(reserveMemoryFunction, "reserveMemoryFunction is null");
-            this.tryReserveMemoryFunction = requireNonNull(tryReserveMemoryFunction, "tryReserveMemoryFunction is null");
-        }
-
-        @Override
-        public ListenableFuture<Void> reserveMemory(String allocationTag, long delta)
-        {
-            return reserveMemoryFunction.apply(allocationTag, delta);
-        }
-
-        @Override
-        public boolean tryReserveMemory(String allocationTag, long delta)
-        {
-            return tryReserveMemoryFunction.test(allocationTag, delta);
-        }
     }
 
     private boolean tryReserveMemoryNotSupported(String allocationTag, long bytes)
@@ -397,5 +366,32 @@ public class QueryContext
                 .toString();
 
         return format("%s, Top Consumers: %s", additionalInfo, topConsumers);
+    }
+
+    private static class QueryMemoryReservationHandler
+            implements MemoryReservationHandler
+    {
+        private final BiFunction<String, Long, ListenableFuture<Void>> reserveMemoryFunction;
+        private final BiPredicate<String, Long> tryReserveMemoryFunction;
+
+        public QueryMemoryReservationHandler(
+                BiFunction<String, Long, ListenableFuture<Void>> reserveMemoryFunction,
+                BiPredicate<String, Long> tryReserveMemoryFunction)
+        {
+            this.reserveMemoryFunction = requireNonNull(reserveMemoryFunction, "reserveMemoryFunction is null");
+            this.tryReserveMemoryFunction = requireNonNull(tryReserveMemoryFunction, "tryReserveMemoryFunction is null");
+        }
+
+        @Override
+        public ListenableFuture<Void> reserveMemory(String allocationTag, long delta)
+        {
+            return reserveMemoryFunction.apply(allocationTag, delta);
+        }
+
+        @Override
+        public boolean tryReserveMemory(String allocationTag, long delta)
+        {
+            return tryReserveMemoryFunction.test(allocationTag, delta);
+        }
     }
 }

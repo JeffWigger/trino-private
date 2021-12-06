@@ -58,6 +58,13 @@ public class TimestampEncoding
         trinoTimestampEncoder = createTimestampEncoder(this.type, UTC);
     }
 
+    private static DecodedTimestamp parseTimestamp(Slice slice, int offset, int length)
+    {
+        String timestamp = new String(slice.getBytes(offset, length), US_ASCII);
+        LocalDateTime localDateTime = LocalDateTime.parse(timestamp, HIVE_TIMESTAMP_PARSER);
+        return new DecodedTimestamp(localDateTime.toEpochSecond(ZoneOffset.UTC), localDateTime.getNano());
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -115,12 +122,5 @@ public class TimestampEncoding
     {
         DecodedTimestamp decodedTimestamp = parseTimestamp(slice, offset, length);
         trinoTimestampEncoder.write(decodedTimestamp, builder);
-    }
-
-    private static DecodedTimestamp parseTimestamp(Slice slice, int offset, int length)
-    {
-        String timestamp = new String(slice.getBytes(offset, length), US_ASCII);
-        LocalDateTime localDateTime = LocalDateTime.parse(timestamp, HIVE_TIMESTAMP_PARSER);
-        return new DecodedTimestamp(localDateTime.toEpochSecond(ZoneOffset.UTC), localDateTime.getNano());
     }
 }

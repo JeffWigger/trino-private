@@ -44,16 +44,6 @@ public class Re2JCastToRegexpFunction
     private final int dfaRetries;
     private final boolean padSpaces;
 
-    public static SqlOperator castVarcharToRe2JRegexp(int dfaStatesLimit, int dfaRetries)
-    {
-        return new Re2JCastToRegexpFunction("varchar(x)", dfaStatesLimit, dfaRetries, false);
-    }
-
-    public static SqlOperator castCharToRe2JRegexp(int dfaStatesLimit, int dfaRetries)
-    {
-        return new Re2JCastToRegexpFunction("char(x)", dfaStatesLimit, dfaRetries, true);
-    }
-
     private Re2JCastToRegexpFunction(String sourceType, int dfaStatesLimit, int dfaRetries, boolean padSpaces)
     {
         super(CAST, emptyList(), emptyList(), RE2J_REGEXP_SIGNATURE, ImmutableList.of(parseTypeSignature(sourceType, ImmutableSet.of("x"))), false);
@@ -62,14 +52,14 @@ public class Re2JCastToRegexpFunction
         this.padSpaces = padSpaces;
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    public static SqlOperator castVarcharToRe2JRegexp(int dfaStatesLimit, int dfaRetries)
     {
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                insertArguments(METHOD_HANDLE, 0, dfaStatesLimit, dfaRetries, padSpaces, functionBinding.getLongVariable("x")));
+        return new Re2JCastToRegexpFunction("varchar(x)", dfaStatesLimit, dfaRetries, false);
+    }
+
+    public static SqlOperator castCharToRe2JRegexp(int dfaStatesLimit, int dfaRetries)
+    {
+        return new Re2JCastToRegexpFunction("char(x)", dfaStatesLimit, dfaRetries, true);
     }
 
     @UsedByGeneratedCode
@@ -84,5 +74,15 @@ public class Re2JCastToRegexpFunction
         catch (Exception e) {
             throw new TrinoException(INVALID_FUNCTION_ARGUMENT, e);
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                insertArguments(METHOD_HANDLE, 0, dfaStatesLimit, dfaRetries, padSpaces, functionBinding.getLongVariable("x")));
     }
 }

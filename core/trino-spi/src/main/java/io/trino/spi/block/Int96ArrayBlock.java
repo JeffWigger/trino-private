@@ -31,9 +31,8 @@ import static io.trino.spi.block.BlockUtil.countUsedPositions;
 public class Int96ArrayBlock
         implements Block
 {
-    private static final int INSTANCE_SIZE = ClassLayout.parseClass(Int96ArrayBlock.class).instanceSize();
     public static final int INT96_BYTES = Long.BYTES + Integer.BYTES;
-
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(Int96ArrayBlock.class).instanceSize();
     private final int positionOffset;
     private final int positionCount;
     @Nullable

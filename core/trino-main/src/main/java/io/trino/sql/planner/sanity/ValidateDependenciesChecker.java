@@ -93,6 +93,16 @@ import static io.trino.sql.tree.BooleanLiteral.TRUE_LITERAL;
 public final class ValidateDependenciesChecker
         implements PlanSanityChecker.Checker
 {
+    public static void validate(PlanNode plan)
+    {
+        plan.accept(new Visitor(), ImmutableSet.of());
+    }
+
+    private static void checkDependencies(Collection<Symbol> inputs, Collection<Symbol> required, String message, Object... parameters)
+    {
+        checkArgument(ImmutableSet.copyOf(inputs).containsAll(required), message, parameters);
+    }
+
     @Override
     public void validate(PlanNode plan,
             Session session,
@@ -105,14 +115,17 @@ public final class ValidateDependenciesChecker
         validate(plan);
     }
 
-    public static void validate(PlanNode plan)
-    {
-        plan.accept(new Visitor(), ImmutableSet.of());
-    }
-
     private static class Visitor
             extends PlanVisitor<Void, Set<Symbol>>
     {
+        private static ImmutableSet<Symbol> createInputs(PlanNode source, Set<Symbol> boundSymbols)
+        {
+            return ImmutableSet.<Symbol>builder()
+                    .addAll(source.getOutputSymbols())
+                    .addAll(boundSymbols)
+                    .build();
+        }
+
         @Override
         protected Void visitPlan(PlanNode node, Set<Symbol> boundSymbols)
         {
@@ -777,18 +790,5 @@ public final class ValidateDependenciesChecker
 
             return null;
         }
-
-        private static ImmutableSet<Symbol> createInputs(PlanNode source, Set<Symbol> boundSymbols)
-        {
-            return ImmutableSet.<Symbol>builder()
-                    .addAll(source.getOutputSymbols())
-                    .addAll(boundSymbols)
-                    .build();
-        }
-    }
-
-    private static void checkDependencies(Collection<Symbol> inputs, Collection<Symbol> required, String message, Object... parameters)
-    {
-        checkArgument(ImmutableSet.copyOf(inputs).containsAll(required), message, parameters);
     }
 }

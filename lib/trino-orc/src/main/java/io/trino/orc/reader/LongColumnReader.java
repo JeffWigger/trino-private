@@ -61,26 +61,20 @@ public class LongColumnReader
 
     private final Type type;
     private final OrcColumn column;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<LongInputStream> dataStreamSource = missingStreamSource(LongInputStream.class);
     @Nullable
     private LongInputStream dataStream;
-
     private boolean rowGroupOpen;
-
     // only one of the three arrays will be used
     private short[] shortNonNullValueTemp = new short[0];
     private int[] intNonNullValueTemp = new int[0];
     private long[] longNonNullValueTemp = new long[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public LongColumnReader(Type type, OrcColumn column, LocalMemoryContext systemMemoryContext)
             throws OrcCorruptionException

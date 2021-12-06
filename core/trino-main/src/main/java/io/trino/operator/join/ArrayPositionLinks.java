@@ -28,6 +28,35 @@ public final class ArrayPositionLinks
         implements PositionLinks
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ArrayPositionLinks.class).instanceSize();
+    private final int[] positionLinks;
+
+    private ArrayPositionLinks(int[] positionLinks)
+    {
+        this.positionLinks = requireNonNull(positionLinks, "positionLinks is null");
+    }
+
+    public static FactoryBuilder builder(int size)
+    {
+        return new FactoryBuilder(size);
+    }
+
+    @Override
+    public int start(int position, int probePosition, Page allProbeChannelsPage)
+    {
+        return position;
+    }
+
+    @Override
+    public int next(int position, int probePosition, Page allProbeChannelsPage)
+    {
+        return positionLinks[position];
+    }
+
+    @Override
+    public long getSizeInBytes()
+    {
+        return INSTANCE_SIZE + sizeOf(positionLinks);
+    }
 
     public static class FactoryBuilder
             implements PositionLinks.FactoryBuilder
@@ -73,35 +102,5 @@ public final class ArrayPositionLinks
         {
             return size;
         }
-    }
-
-    private final int[] positionLinks;
-
-    private ArrayPositionLinks(int[] positionLinks)
-    {
-        this.positionLinks = requireNonNull(positionLinks, "positionLinks is null");
-    }
-
-    public static FactoryBuilder builder(int size)
-    {
-        return new FactoryBuilder(size);
-    }
-
-    @Override
-    public int start(int position, int probePosition, Page allProbeChannelsPage)
-    {
-        return position;
-    }
-
-    @Override
-    public int next(int position, int probePosition, Page allProbeChannelsPage)
-    {
-        return positionLinks[position];
-    }
-
-    @Override
-    public long getSizeInBytes()
-    {
-        return INSTANCE_SIZE + sizeOf(positionLinks);
     }
 }

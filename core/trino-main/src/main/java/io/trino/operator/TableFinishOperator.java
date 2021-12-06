@@ -48,78 +48,18 @@ public class TableFinishOperator
         implements Operator
 {
     public static final List<Type> TYPES = ImmutableList.of(BIGINT);
-
-    public static class TableFinishOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final TableFinisher tableFinisher;
-        private final OperatorFactory statisticsAggregationOperatorFactory;
-        private final StatisticAggregationsDescriptor<Integer> descriptor;
-        private final Session session;
-        private boolean closed;
-
-        public TableFinishOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                TableFinisher tableFinisher,
-                OperatorFactory statisticsAggregationOperatorFactory,
-                StatisticAggregationsDescriptor<Integer> descriptor,
-                Session session)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.tableFinisher = requireNonNull(tableFinisher, "tableFinisher is null");
-            this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
-            this.descriptor = requireNonNull(descriptor, "descriptor is null");
-            this.session = requireNonNull(session, "session is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableFinishOperator.class.getSimpleName());
-            Operator statisticsAggregationOperator = statisticsAggregationOperatorFactory.createOperator(driverContext);
-            boolean statisticsCpuTimerEnabled = !(statisticsAggregationOperator instanceof DevNullOperator) && isStatisticsCpuTimerEnabled(session);
-            return new TableFinishOperator(context, tableFinisher, statisticsAggregationOperator, descriptor, statisticsCpuTimerEnabled);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new TableFinishOperatorFactory(operatorId, planNodeId, tableFinisher, statisticsAggregationOperatorFactory, descriptor, session);
-        }
-    }
-
-    private enum State
-    {
-        RUNNING, FINISHING, FINISHED
-    }
-
     private final OperatorContext operatorContext;
     private final TableFinisher tableFinisher;
     private final Operator statisticsAggregationOperator;
     private final StatisticAggregationsDescriptor<Integer> descriptor;
-
-    private State state = State.RUNNING;
-    private long rowCount;
     private final AtomicReference<Optional<ConnectorOutputMetadata>> outputMetadata = new AtomicReference<>(Optional.empty());
     private final ImmutableList.Builder<Slice> fragmentBuilder = ImmutableList.builder();
     private final ImmutableList.Builder<ComputedStatistics> computedStatisticsBuilder = ImmutableList.builder();
-
     private final OperationTiming statisticsTiming = new OperationTiming();
     private final boolean statisticsCpuTimerEnabled;
-
     private final Supplier<TableFinishInfo> tableFinishInfoSupplier;
-
+    private State state = State.RUNNING;
+    private long rowCount;
     public TableFinishOperator(
             OperatorContext operatorContext,
             TableFinisher tableFinisher,
@@ -134,6 +74,82 @@ public class TableFinishOperator
         this.statisticsCpuTimerEnabled = statisticsCpuTimerEnabled;
         this.tableFinishInfoSupplier = createTableFinishInfoSupplier(outputMetadata, statisticsTiming);
         operatorContext.setInfoSupplier(tableFinishInfoSupplier);
+    }
+
+    private static Optional<Page> extractStatisticsRows(Page page)
+    {
+        int statisticsPositionCount = 0;
+        for (int position = 0; position < page.getPositionCount(); position++) {
+            if (isStatisticsPosition(page, position)) {
+                statisticsPositionCount++;
+            }
+        }
+
+        if (statisticsPositionCount == 0) {
+            return Optional.empty();
+        }
+
+        if (statisticsPositionCount == page.getPositionCount()) {
+            return Optional.of(page);
+        }
+
+        int selectedPositionsIndex = 0;
+        int[] selectedPositions = new int[statisticsPositionCount];
+        for (int position = 0; position < page.getPositionCount(); position++) {
+            if (isStatisticsPosition(page, position)) {
+                selectedPositions[selectedPositionsIndex] = position;
+                selectedPositionsIndex++;
+            }
+        }
+
+        Block[] blocks = new Block[page.getChannelCount()];
+        for (int channel = 0; channel < page.getChannelCount(); channel++) {
+            blocks[channel] = page.getBlock(channel).getPositions(selectedPositions, 0, statisticsPositionCount);
+        }
+        return Optional.of(new Page(statisticsPositionCount, blocks));
+    }
+
+    /**
+     * Both the statistics and the row_count + fragments are transferred over the same communication
+     * link between the TableWriterOperator and the TableFinishOperator. Thus the multiplexing is needed.
+     * <p>
+     * The transferred page layout looks like:
+     * <p>
+     * [[row_count_channel], [fragment_channel], [statistic_channel_1] ... [statistic_channel_N]]
+     * <p>
+     * [row_count_channel] - contains number of rows processed by a TableWriterOperator instance
+     * [fragment_channel] - contains arbitrary binary data provided by the ConnectorPageSink#finish for
+     * the further post processing on the coordinator
+     * <p>
+     * [statistic_channel_1] ... [statistic_channel_N] - contain pre-aggregated statistics computed by the
+     * statistics aggregation operator within the
+     * TableWriterOperator
+     * <p>
+     * Since the final aggregation operator in the TableFinishOperator doesn't know what to do with the
+     * first two channels, those must be pruned. For the convenience we never set both, the
+     * [row_count_channel] + [fragment_channel] and the [statistic_channel_1] ... [statistic_channel_N].
+     * <p>
+     * If this is a row that holds statistics - the [row_count_channel] + [fragment_channel] will be NULL.
+     * <p>
+     * It this is a row that holds the row count or the fragment - all the statistics channels will be set
+     * to NULL.
+     * <p>
+     * Since neither [row_count_channel] or [fragment_channel] cannot hold the NULL value naturally, by
+     * checking isNull on these two channels we can determine if this is a row that contains statistics.
+     */
+    private static boolean isStatisticsPosition(Page page, int position)
+    {
+        return page.getBlock(ROW_COUNT_CHANNEL).isNull(position) && page.getBlock(FRAGMENT_CHANNEL).isNull(position);
+    }
+
+    private static Supplier<TableFinishInfo> createTableFinishInfoSupplier(AtomicReference<Optional<ConnectorOutputMetadata>> outputMetadata, OperationTiming statisticsTiming)
+    {
+        requireNonNull(outputMetadata, "outputMetadata is null");
+        requireNonNull(statisticsTiming, "statisticsTiming is null");
+        return () -> new TableFinishInfo(
+                outputMetadata.get(),
+                new Duration(statisticsTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
+                new Duration(statisticsTiming.getCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit());
     }
 
     @Override
@@ -203,72 +219,6 @@ public class TableFinishOperator
         });
     }
 
-    private static Optional<Page> extractStatisticsRows(Page page)
-    {
-        int statisticsPositionCount = 0;
-        for (int position = 0; position < page.getPositionCount(); position++) {
-            if (isStatisticsPosition(page, position)) {
-                statisticsPositionCount++;
-            }
-        }
-
-        if (statisticsPositionCount == 0) {
-            return Optional.empty();
-        }
-
-        if (statisticsPositionCount == page.getPositionCount()) {
-            return Optional.of(page);
-        }
-
-        int selectedPositionsIndex = 0;
-        int[] selectedPositions = new int[statisticsPositionCount];
-        for (int position = 0; position < page.getPositionCount(); position++) {
-            if (isStatisticsPosition(page, position)) {
-                selectedPositions[selectedPositionsIndex] = position;
-                selectedPositionsIndex++;
-            }
-        }
-
-        Block[] blocks = new Block[page.getChannelCount()];
-        for (int channel = 0; channel < page.getChannelCount(); channel++) {
-            blocks[channel] = page.getBlock(channel).getPositions(selectedPositions, 0, statisticsPositionCount);
-        }
-        return Optional.of(new Page(statisticsPositionCount, blocks));
-    }
-
-    /**
-     * Both the statistics and the row_count + fragments are transferred over the same communication
-     * link between the TableWriterOperator and the TableFinishOperator. Thus the multiplexing is needed.
-     * <p>
-     * The transferred page layout looks like:
-     * <p>
-     * [[row_count_channel], [fragment_channel], [statistic_channel_1] ... [statistic_channel_N]]
-     * <p>
-     * [row_count_channel] - contains number of rows processed by a TableWriterOperator instance
-     * [fragment_channel] - contains arbitrary binary data provided by the ConnectorPageSink#finish for
-     * the further post processing on the coordinator
-     * <p>
-     * [statistic_channel_1] ... [statistic_channel_N] - contain pre-aggregated statistics computed by the
-     * statistics aggregation operator within the
-     * TableWriterOperator
-     * <p>
-     * Since the final aggregation operator in the TableFinishOperator doesn't know what to do with the
-     * first two channels, those must be pruned. For the convenience we never set both, the
-     * [row_count_channel] + [fragment_channel] and the [statistic_channel_1] ... [statistic_channel_N].
-     * <p>
-     * If this is a row that holds statistics - the [row_count_channel] + [fragment_channel] will be NULL.
-     * <p>
-     * It this is a row that holds the row count or the fragment - all the statistics channels will be set
-     * to NULL.
-     * <p>
-     * Since neither [row_count_channel] or [fragment_channel] cannot hold the NULL value naturally, by
-     * checking isNull on these two channels we can determine if this is a row that contains statistics.
-     */
-    private static boolean isStatisticsPosition(Page page, int position)
-    {
-        return page.getBlock(ROW_COUNT_CHANNEL).isNull(position) && page.getBlock(FRAGMENT_CHANNEL).isNull(position);
-    }
-
     @Override
     public Page getOutput()
     {
@@ -326,16 +276,6 @@ public class TableFinishOperator
         return statistics.build();
     }
 
-    private static Supplier<TableFinishInfo> createTableFinishInfoSupplier(AtomicReference<Optional<ConnectorOutputMetadata>> outputMetadata, OperationTiming statisticsTiming)
-    {
-        requireNonNull(outputMetadata, "outputMetadata is null");
-        requireNonNull(statisticsTiming, "statisticsTiming is null");
-        return () -> new TableFinishInfo(
-                outputMetadata.get(),
-                new Duration(statisticsTiming.getWallNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit(),
-                new Duration(statisticsTiming.getCpuNanos(), NANOSECONDS).convertToMostSuccinctTimeUnit());
-    }
-
     @Override
     public void close()
             throws Exception
@@ -343,8 +283,63 @@ public class TableFinishOperator
         statisticsAggregationOperator.close();
     }
 
+    private enum State
+    {
+        RUNNING, FINISHING, FINISHED
+    }
+
     public interface TableFinisher
     {
         Optional<ConnectorOutputMetadata> finishTable(Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics);
+    }
+
+    public static class TableFinishOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final TableFinisher tableFinisher;
+        private final OperatorFactory statisticsAggregationOperatorFactory;
+        private final StatisticAggregationsDescriptor<Integer> descriptor;
+        private final Session session;
+        private boolean closed;
+
+        public TableFinishOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                TableFinisher tableFinisher,
+                OperatorFactory statisticsAggregationOperatorFactory,
+                StatisticAggregationsDescriptor<Integer> descriptor,
+                Session session)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.tableFinisher = requireNonNull(tableFinisher, "tableFinisher is null");
+            this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
+            this.descriptor = requireNonNull(descriptor, "descriptor is null");
+            this.session = requireNonNull(session, "session is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableFinishOperator.class.getSimpleName());
+            Operator statisticsAggregationOperator = statisticsAggregationOperatorFactory.createOperator(driverContext);
+            boolean statisticsCpuTimerEnabled = !(statisticsAggregationOperator instanceof DevNullOperator) && isStatisticsCpuTimerEnabled(session);
+            return new TableFinishOperator(context, tableFinisher, statisticsAggregationOperator, descriptor, statisticsCpuTimerEnabled);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new TableFinishOperatorFactory(operatorId, planNodeId, tableFinisher, statisticsAggregationOperatorFactory, descriptor, session);
+        }
     }
 }

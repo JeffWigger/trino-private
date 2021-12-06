@@ -54,11 +54,10 @@ public class Histogram
         extends SqlAggregationFunction
 {
     public static final String NAME = "histogram";
+    public static final int EXPECTED_SIZE_FOR_HASHING = 10;
     private static final MethodHandle OUTPUT_FUNCTION = methodHandle(Histogram.class, "output", Type.class, HistogramState.class, BlockBuilder.class);
     private static final MethodHandle INPUT_FUNCTION = methodHandle(Histogram.class, "input", Type.class, HistogramState.class, Block.class, int.class);
     private static final MethodHandle COMBINE_FUNCTION = methodHandle(Histogram.class, "combine", HistogramState.class, HistogramState.class);
-
-    public static final int EXPECTED_SIZE_FOR_HASHING = 10;
     private final BlockTypeOperators blockTypeOperators;
 
     public Histogram(BlockTypeOperators blockTypeOperators)
@@ -81,23 +80,6 @@ public class Histogram
                 true,
                 false);
         this.blockTypeOperators = blockTypeOperators;
-    }
-
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type outputType = functionBinding.getBoundSignature().getReturnType();
-        return ImmutableList.of(outputType.getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
-        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
-        Type outputType = functionBinding.getBoundSignature().getReturnType();
-        return generateAggregation(NAME, keyType, keyEqual, keyHashCode, outputType);
     }
 
     private static InternalAggregationFunction generateAggregation(
@@ -164,5 +146,22 @@ public class Histogram
     {
         TypedHistogram typedHistogram = state.get();
         typedHistogram.serialize(out);
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type outputType = functionBinding.getBoundSignature().getReturnType();
+        return ImmutableList.of(outputType.getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
+        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
+        Type outputType = functionBinding.getBoundSignature().getReturnType();
+        return generateAggregation(NAME, keyType, keyEqual, keyHashCode, outputType);
     }
 }

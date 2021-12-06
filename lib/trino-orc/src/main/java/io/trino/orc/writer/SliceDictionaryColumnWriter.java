@@ -115,6 +115,49 @@ public class SliceDictionaryColumnWriter
         this.statisticsBuilder = statisticsBuilderSupplier.get();
     }
 
+    private static int[] getSortedDictionaryNullsLast(Block elementBlock)
+    {
+        int[] sortedPositions = new int[elementBlock.getPositionCount()];
+        for (int i = 0; i < sortedPositions.length; i++) {
+            sortedPositions[i] = i;
+        }
+
+        IntArrays.quickSort(sortedPositions, 0, sortedPositions.length, (int left, int right) -> {
+            boolean nullLeft = elementBlock.isNull(left);
+            boolean nullRight = elementBlock.isNull(right);
+            if (nullLeft && nullRight) {
+                return 0;
+            }
+            if (nullLeft) {
+                return 1;
+            }
+            if (nullRight) {
+                return -1;
+            }
+            return elementBlock.compareTo(
+                    left,
+                    0,
+                    elementBlock.getSliceLength(left),
+                    elementBlock,
+                    right,
+                    0,
+                    elementBlock.getSliceLength(right));
+        });
+
+        return sortedPositions;
+    }
+
+    private static List<Integer> createSliceColumnPositionList(
+            boolean compressed,
+            LongStreamCheckpoint dataCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(dataCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public long getRawBytes()
     {
@@ -404,38 +447,6 @@ public class SliceDictionaryColumnWriter
         presentStream.close();
     }
 
-    private static int[] getSortedDictionaryNullsLast(Block elementBlock)
-    {
-        int[] sortedPositions = new int[elementBlock.getPositionCount()];
-        for (int i = 0; i < sortedPositions.length; i++) {
-            sortedPositions[i] = i;
-        }
-
-        IntArrays.quickSort(sortedPositions, 0, sortedPositions.length, (int left, int right) -> {
-            boolean nullLeft = elementBlock.isNull(left);
-            boolean nullRight = elementBlock.isNull(right);
-            if (nullLeft && nullRight) {
-                return 0;
-            }
-            if (nullLeft) {
-                return 1;
-            }
-            if (nullRight) {
-                return -1;
-            }
-            return elementBlock.compareTo(
-                    left,
-                    0,
-                    elementBlock.getSliceLength(left),
-                    elementBlock,
-                    right,
-                    0,
-                    elementBlock.getSliceLength(right));
-        });
-
-        return sortedPositions;
-    }
-
     @Override
     public List<StreamDataOutput> getIndexStreams(CompressedMetadataWriter metadataWriter)
             throws IOException
@@ -462,17 +473,6 @@ public class SliceDictionaryColumnWriter
         Slice slice = metadataWriter.writeRowIndexes(rowGroupIndexes.build());
         Stream stream = new Stream(columnId, StreamKind.ROW_INDEX, slice.length(), false);
         return ImmutableList.of(new StreamDataOutput(slice, stream));
-    }
-
-    private static List<Integer> createSliceColumnPositionList(
-            boolean compressed,
-            LongStreamCheckpoint dataCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(dataCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

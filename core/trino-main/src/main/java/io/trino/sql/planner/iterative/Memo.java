@@ -247,21 +247,20 @@ public class Memo
 
     private static final class Group
     {
-        static Group withMember(PlanNode member)
-        {
-            return new Group(member);
-        }
-
-        private PlanNode membership;
         private final Multiset<Integer> incomingReferences = HashMultiset.create();
+        private PlanNode membership;
         @Nullable
         private PlanNodeStatsEstimate stats;
         @Nullable
         private PlanCostEstimate cost;
-
         private Group(PlanNode member)
         {
             this.membership = requireNonNull(member, "member is null");
+        }
+
+        static Group withMember(PlanNode member)
+        {
+            return new Group(member);
         }
     }
 }

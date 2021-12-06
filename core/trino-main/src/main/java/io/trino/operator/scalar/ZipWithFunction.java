@@ -75,22 +75,6 @@ public final class ZipWithFunction
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        Type leftElementType = functionBinding.getTypeVariable("T");
-        Type rightElementType = functionBinding.getTypeVariable("U");
-        Type outputElementType = functionBinding.getTypeVariable("R");
-        ArrayType outputArrayType = new ArrayType(outputElementType);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL, FUNCTION),
-                ImmutableList.of(BinaryFunctionInterface.class),
-                METHOD_HANDLE.bindTo(leftElementType).bindTo(rightElementType).bindTo(outputArrayType),
-                Optional.of(STATE_FACTORY.bindTo(outputArrayType)));
-    }
-
     public static Object createState(ArrayType arrayType)
     {
         return new PageBuilder(ImmutableList.of(arrayType));
@@ -138,5 +122,21 @@ public final class ZipWithFunction
         arrayBlockBuilder.closeEntry();
         pageBuilder.declarePosition();
         return outputArrayType.getObject(arrayBlockBuilder, arrayBlockBuilder.getPositionCount() - 1);
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        Type leftElementType = functionBinding.getTypeVariable("T");
+        Type rightElementType = functionBinding.getTypeVariable("U");
+        Type outputElementType = functionBinding.getTypeVariable("R");
+        ArrayType outputArrayType = new ArrayType(outputElementType);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL, FUNCTION),
+                ImmutableList.of(BinaryFunctionInterface.class),
+                METHOD_HANDLE.bindTo(leftElementType).bindTo(rightElementType).bindTo(outputArrayType),
+                Optional.of(STATE_FACTORY.bindTo(outputArrayType)));
     }
 }

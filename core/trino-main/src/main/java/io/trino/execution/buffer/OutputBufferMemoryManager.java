@@ -45,7 +45,9 @@ class OutputBufferMemoryManager
     private final long maxBufferedBytes;
     private final AtomicLong bufferedBytes = new AtomicLong();
     private final AtomicLong peakMemoryUsage = new AtomicLong();
-
+    private final AtomicBoolean blockOnFull = new AtomicBoolean(true);
+    private final Supplier<LocalMemoryContext> systemMemoryContextSupplier;
+    private final Executor notificationExecutor;
     @GuardedBy("this")
     private boolean closed;
     @Nullable
@@ -53,11 +55,6 @@ class OutputBufferMemoryManager
     private SettableFuture<Void> bufferBlockedFuture;
     @GuardedBy("this")
     private ListenableFuture<Void> blockedOnMemory = NOT_BLOCKED;
-
-    private final AtomicBoolean blockOnFull = new AtomicBoolean(true);
-
-    private final Supplier<LocalMemoryContext> systemMemoryContextSupplier;
-    private final Executor notificationExecutor;
 
     public OutputBufferMemoryManager(long maxBufferedBytes, Supplier<LocalMemoryContext> systemMemoryContextSupplier, Executor notificationExecutor)
     {

@@ -94,6 +94,11 @@ public class DriverContext
         this.yieldSignal = new DriverYieldSignal();
     }
 
+    private static long nanosBetween(long start, long end)
+    {
+        return max(0, end - start);
+    }
+
     public TaskId getTaskId()
     {
         return pipelineContext.getTaskId();
@@ -452,11 +457,6 @@ public class DriverContext
     public ScheduledExecutorService getYieldExecutor()
     {
         return yieldExecutor;
-    }
-
-    private static long nanosBetween(long start, long end)
-    {
-        return max(0, end - start);
     }
 
     private class BlockedMonitor

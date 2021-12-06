@@ -31,17 +31,17 @@ public class ResourceSecurityBinder
 {
     private final MapBinder<AnnotatedElement, AccessType> accessTypeBinder;
 
-    public static ResourceSecurityBinder resourceSecurityBinder(Binder binder)
-    {
-        return new ResourceSecurityBinder(binder);
-    }
-
     private ResourceSecurityBinder(Binder binder)
     {
         requireNonNull(binder, "binder is null");
         binder.bind(ResourceAccessType.class).in(SINGLETON);
         binder.bind(StaticResourceAccessTypeLoader.class).in(SINGLETON);
         accessTypeBinder = MapBinder.newMapBinder(binder, AnnotatedElement.class, AccessType.class);
+    }
+
+    public static ResourceSecurityBinder resourceSecurityBinder(Binder binder)
+    {
+        return new ResourceSecurityBinder(binder);
     }
 
     public ResourceSecurityBinder resourceSecurity(AnnotatedElement element, AccessType accessType)

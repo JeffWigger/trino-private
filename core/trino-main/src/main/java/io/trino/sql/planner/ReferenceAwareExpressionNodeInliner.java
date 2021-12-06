@@ -26,16 +26,16 @@ import static java.util.Objects.requireNonNull;
 public class ReferenceAwareExpressionNodeInliner
         extends ExpressionRewriter<Void>
 {
-    public static Expression replaceExpression(Expression expression, Map<NodeRef<Expression>, Expression> mappings)
-    {
-        return ExpressionTreeRewriter.rewriteWith(new ReferenceAwareExpressionNodeInliner(mappings), expression);
-    }
-
     private final Map<NodeRef<Expression>, Expression> mappings;
 
     private ReferenceAwareExpressionNodeInliner(Map<NodeRef<Expression>, Expression> mappings)
     {
         this.mappings = ImmutableMap.copyOf(requireNonNull(mappings, "mappings is null"));
+    }
+
+    public static Expression replaceExpression(Expression expression, Map<NodeRef<Expression>, Expression> mappings)
+    {
+        return ExpressionTreeRewriter.rewriteWith(new ReferenceAwareExpressionNodeInliner(mappings), expression);
     }
 
     @Override

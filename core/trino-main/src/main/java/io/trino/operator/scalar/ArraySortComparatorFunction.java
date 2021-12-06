@@ -37,14 +37,23 @@ import static io.trino.util.Failures.checkCondition;
 @Description("Sorts the given array with a lambda comparator.")
 public final class ArraySortComparatorFunction
 {
-    private final PageBuilder pageBuilder;
     private static final int INITIAL_LENGTH = 128;
+    private final PageBuilder pageBuilder;
     private List<Integer> positions = Ints.asList(new int[INITIAL_LENGTH]);
 
     @TypeParameter("T")
     public ArraySortComparatorFunction(@TypeParameter("T") Type elementType)
     {
         pageBuilder = new PageBuilder(ImmutableList.of(elementType));
+    }
+
+    private static int comparatorResult(Long result)
+    {
+        checkCondition(
+                (result != null) && ((result == -1) || (result == 0) || (result == 1)),
+                INVALID_FUNCTION_ARGUMENT,
+                "Lambda comparator must return either -1, 0, or 1");
+        return result.intValue();
     }
 
     @TypeParameter("T")
@@ -163,15 +172,6 @@ public final class ArraySortComparatorFunction
         pageBuilder.declarePositions(arrayLength);
 
         return blockBuilder.getRegion(blockBuilder.getPositionCount() - arrayLength, arrayLength);
-    }
-
-    private static int comparatorResult(Long result)
-    {
-        checkCondition(
-                (result != null) && ((result == -1) || (result == 0) || (result == 1)),
-                INVALID_FUNCTION_ARGUMENT,
-                "Lambda comparator must return either -1, 0, or 1");
-        return result.intValue();
     }
 
     @FunctionalInterface

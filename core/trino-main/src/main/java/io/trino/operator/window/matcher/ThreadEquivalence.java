@@ -94,45 +94,6 @@ public class ThreadEquivalence
                 .collect(toImmutableList());
     }
 
-    public boolean equivalent(int firstThread, ArrayView firstLabels, int secondThread, ArrayView secondLabels, int pointer)
-    {
-        checkArgument(firstLabels.length() == secondLabels.length(), "matched labels for compared threads differ in length");
-        checkArgument(pointer >= 0 && pointer < reachableLabels.size(), "instruction pointer out of program bounds");
-
-        if (firstThread == secondThread || firstLabels.length() == 0) {
-            return true;
-        }
-
-        // compare resulting positions for input navigations
-        Set<LogicalIndexNavigation> distinctPositionsToCompare = new HashSet<>();
-        for (int label : reachableLabels.get(pointer)) {
-            distinctPositionsToCompare.addAll(positionsToCompare.get(label));
-        }
-        for (LogicalIndexNavigation navigation : distinctPositionsToCompare) {
-            if (resolvePosition(navigation, firstLabels) != resolvePosition(navigation, secondLabels)) {
-                return false;
-            }
-        }
-
-        // compare resulting labels for `CLASSIFIER` navigations
-        Set<LogicalIndexNavigation> distinctLabelPositionsToCompare = new HashSet<>();
-        for (int label : reachableLabels.get(pointer)) {
-            distinctLabelPositionsToCompare.addAll(labelsToCompare.get(label));
-        }
-        for (LogicalIndexNavigation navigation : distinctLabelPositionsToCompare) {
-            int firstPosition = resolvePosition(navigation, firstLabels);
-            int secondPosition = resolvePosition(navigation, secondLabels);
-            if ((firstPosition == -1) != (secondPosition == -1)) {
-                return false;
-            }
-            if (firstPosition != -1 && firstLabels.get(firstPosition) != secondLabels.get(secondPosition)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     private static int resolvePosition(LogicalIndexNavigation navigation, ArrayView labels)
     {
         return navigation.resolvePosition(labels.length() - 1, labels, 0, labels.length(), 0);
@@ -234,5 +195,44 @@ public class ThreadEquivalence
         }
 
         return ImmutableList.of(navigation);
+    }
+
+    public boolean equivalent(int firstThread, ArrayView firstLabels, int secondThread, ArrayView secondLabels, int pointer)
+    {
+        checkArgument(firstLabels.length() == secondLabels.length(), "matched labels for compared threads differ in length");
+        checkArgument(pointer >= 0 && pointer < reachableLabels.size(), "instruction pointer out of program bounds");
+
+        if (firstThread == secondThread || firstLabels.length() == 0) {
+            return true;
+        }
+
+        // compare resulting positions for input navigations
+        Set<LogicalIndexNavigation> distinctPositionsToCompare = new HashSet<>();
+        for (int label : reachableLabels.get(pointer)) {
+            distinctPositionsToCompare.addAll(positionsToCompare.get(label));
+        }
+        for (LogicalIndexNavigation navigation : distinctPositionsToCompare) {
+            if (resolvePosition(navigation, firstLabels) != resolvePosition(navigation, secondLabels)) {
+                return false;
+            }
+        }
+
+        // compare resulting labels for `CLASSIFIER` navigations
+        Set<LogicalIndexNavigation> distinctLabelPositionsToCompare = new HashSet<>();
+        for (int label : reachableLabels.get(pointer)) {
+            distinctLabelPositionsToCompare.addAll(labelsToCompare.get(label));
+        }
+        for (LogicalIndexNavigation navigation : distinctLabelPositionsToCompare) {
+            int firstPosition = resolvePosition(navigation, firstLabels);
+            int secondPosition = resolvePosition(navigation, secondLabels);
+            if ((firstPosition == -1) != (secondPosition == -1)) {
+                return false;
+            }
+            if (firstPosition != -1 && firstLabels.get(firstPosition) != secondLabels.get(secondPosition)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

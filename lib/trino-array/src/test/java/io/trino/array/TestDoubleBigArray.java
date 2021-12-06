@@ -21,17 +21,6 @@ import static org.testng.Assert.assertEquals;
 
 public class TestDoubleBigArray
 {
-    @Test
-    public void testFill()
-    {
-        DoubleBigArray array = new DoubleBigArray();
-        assertFillCapacity(array, 0, 0.1);
-        assertFillCapacity(array, 1, 0.2);
-        assertFillCapacity(array, 1000, 0.3);
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, 0.4);
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, 0.5);
-    }
-
     private static void assertFillCapacity(DoubleBigArray array, long capacity, double value)
     {
         array.ensureCapacity(capacity);
@@ -39,21 +28,6 @@ public class TestDoubleBigArray
 
         for (int i = 0; i < capacity; i++) {
             assertEquals(array.get(i), value);
-        }
-    }
-
-    @Test
-    public void testCopyTo()
-    {
-        DoubleBigArray source = new DoubleBigArray();
-        DoubleBigArray destination = new DoubleBigArray();
-
-        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
-                }
-            }
         }
     }
 
@@ -82,6 +56,32 @@ public class TestDoubleBigArray
         }
         for (long i = destinationIndex + length; i < destinationCapacity; i++) {
             assertEquals(destination.get(i), destinationFillValue);
+        }
+    }
+
+    @Test
+    public void testFill()
+    {
+        DoubleBigArray array = new DoubleBigArray();
+        assertFillCapacity(array, 0, 0.1);
+        assertFillCapacity(array, 1, 0.2);
+        assertFillCapacity(array, 1000, 0.3);
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, 0.4);
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, 0.5);
+    }
+
+    @Test
+    public void testCopyTo()
+    {
+        DoubleBigArray source = new DoubleBigArray();
+        DoubleBigArray destination = new DoubleBigArray();
+
+        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
+                }
+            }
         }
     }
 }

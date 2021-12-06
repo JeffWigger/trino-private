@@ -31,8 +31,8 @@ import static java.util.Objects.requireNonNull;
 class GenericRecordRowDecoder
         implements RowDecoder
 {
-    private List<Map.Entry<DecoderColumnHandle, AvroColumnDecoder>> columnDecoders;
     private final AvroDeserializer<GenericRecord> deserializer;
+    private List<Map.Entry<DecoderColumnHandle, AvroColumnDecoder>> columnDecoders;
 
     public GenericRecordRowDecoder(AvroDeserializer<GenericRecord> deserializer, Set<DecoderColumnHandle> columns)
     {

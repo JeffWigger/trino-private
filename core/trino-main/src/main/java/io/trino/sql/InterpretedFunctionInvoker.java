@@ -46,23 +46,6 @@ public class InterpretedFunctionInvoker
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
-    public Object invoke(ResolvedFunction function, ConnectorSession session, Object... arguments)
-    {
-        return invoke(function, session, Arrays.asList(arguments));
-    }
-
-    /**
-     * Arguments must be the native container type for the corresponding SQL types.
-     * <p>
-     * Returns a value in the native container type corresponding to the declared SQL return type
-     */
-    public Object invoke(ResolvedFunction function, ConnectorSession session, List<Object> arguments)
-    {
-        FunctionMetadata functionMetadata = metadata.getFunctionMetadata(function);
-        FunctionInvoker invoker = metadata.getScalarFunctionInvoker(function, getInvocationConvention(function, functionMetadata));
-        return invoke(functionMetadata, invoker, session, arguments);
-    }
-
     public static Object invoke(FunctionMetadata functionMetadata, FunctionInvoker invoker, ConnectorSession session, List<Object> arguments)
     {
         MethodHandle method = invoker.getMethodHandle();
@@ -138,5 +121,22 @@ public class InterpretedFunctionInvoker
         }
         throwIfUnchecked(throwable);
         throw new RuntimeException(throwable);
+    }
+
+    public Object invoke(ResolvedFunction function, ConnectorSession session, Object... arguments)
+    {
+        return invoke(function, session, Arrays.asList(arguments));
+    }
+
+    /**
+     * Arguments must be the native container type for the corresponding SQL types.
+     * <p>
+     * Returns a value in the native container type corresponding to the declared SQL return type
+     */
+    public Object invoke(ResolvedFunction function, ConnectorSession session, List<Object> arguments)
+    {
+        FunctionMetadata functionMetadata = metadata.getFunctionMetadata(function);
+        FunctionInvoker invoker = metadata.getScalarFunctionInvoker(function, getInvocationConvention(function, functionMetadata));
+        return invoke(functionMetadata, invoker, session, arguments);
     }
 }

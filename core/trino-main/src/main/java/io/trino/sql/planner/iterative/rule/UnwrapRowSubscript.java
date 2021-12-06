@@ -31,11 +31,10 @@ import java.util.Deque;
  * Transforms expressions of the form
  *
  * <code>ROW(x, y)[1]</code> to <code>x</code>
- *
+ * <p>
  * and
  *
  * <code>CAST(ROW(x, y) AS row(f1 type1, f2 type2))[1]</code> to <code>CAST(x AS type1)</code>
- *
  */
 public class UnwrapRowSubscript
         extends ExpressionRewriteRuleSet

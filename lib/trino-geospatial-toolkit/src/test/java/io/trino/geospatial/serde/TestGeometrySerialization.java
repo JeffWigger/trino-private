@@ -38,6 +38,83 @@ import static org.testng.Assert.assertEquals;
 
 public class TestGeometrySerialization
 {
+    private static void testSerialization(String wkt)
+    {
+        testEsriSerialization(wkt);
+        testJtsSerialization(wkt);
+    }
+
+    private static void testEsriSerialization(String wkt)
+    {
+        OGCGeometry expected = OGCGeometry.fromText(wkt);
+        OGCGeometry actual = deserialize(serialize(expected));
+        assertGeometryEquals(actual, expected);
+    }
+
+    private static void testJtsSerialization(String wkt)
+    {
+        Geometry jtsGeometry = createJtsGeometry(wkt);
+        OGCGeometry esriGeometry = OGCGeometry.fromText(wkt);
+
+        Slice jtsSerialized = JtsGeometrySerde.serialize(jtsGeometry);
+        Slice esriSerialized = GeometrySerde.serialize(esriGeometry);
+        assertEquals(jtsSerialized, esriSerialized);
+
+        Geometry jtsDeserialized = JtsGeometrySerde.deserialize(jtsSerialized);
+        assertGeometryEquals(jtsDeserialized, jtsGeometry);
+
+        OGCGeometry esriDeserialized = GeometrySerde.deserialize(esriSerialized);
+        assertGeometryEquals(esriDeserialized, esriGeometry);
+    }
+
+    private static Slice geometryFromText(String wkt)
+    {
+        return serialize(OGCGeometry.fromText(wkt));
+    }
+
+    private static Geometry createJtsGeometry(String wkt)
+    {
+        try {
+            return new WKTReader().read(wkt);
+        }
+        catch (ParseException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void assertGeometryEquals(Geometry actual, Geometry expected)
+    {
+        assertEquals(actual.norm(), expected.norm());
+    }
+
+    private static void assertDeserializeEnvelope(String geometry, Envelope expectedEnvelope)
+    {
+        assertEquals(deserializeEnvelope(geometryFromText(geometry)), expectedEnvelope);
+    }
+
+    private static void assertDeserializeType(String wkt, GeometrySerializationType expectedType)
+    {
+        assertEquals(deserializeType(geometryFromText(wkt)), expectedType);
+    }
+
+    private static void assertGeometryEquals(OGCGeometry actual, OGCGeometry expected)
+    {
+        actual.setSpatialReference(null);
+        expected.setSpatialReference(null);
+        ensureEnvelopeLoaded(actual);
+        ensureEnvelopeLoaded(expected);
+        assertEquals(actual, expected);
+    }
+
+    /**
+     * There is a weird bug in geometry comparison. If a geometry envelope is not loaded it may return
+     * false for two empty line strings or multiline strings
+     */
+    private static void ensureEnvelopeLoaded(OGCGeometry geometry)
+    {
+        geometry.envelope();
+    }
+
     @Test
     public void testPoint()
     {
@@ -179,82 +256,5 @@ public class TestGeometrySerialization
         assertDeserializeType("GEOMETRYCOLLECTION EMPTY", GEOMETRY_COLLECTION);
 
         assertEquals(deserializeType(serialize(new Envelope(1, 2, 3, 4))), ENVELOPE);
-    }
-
-    private static void testSerialization(String wkt)
-    {
-        testEsriSerialization(wkt);
-        testJtsSerialization(wkt);
-    }
-
-    private static void testEsriSerialization(String wkt)
-    {
-        OGCGeometry expected = OGCGeometry.fromText(wkt);
-        OGCGeometry actual = deserialize(serialize(expected));
-        assertGeometryEquals(actual, expected);
-    }
-
-    private static void testJtsSerialization(String wkt)
-    {
-        Geometry jtsGeometry = createJtsGeometry(wkt);
-        OGCGeometry esriGeometry = OGCGeometry.fromText(wkt);
-
-        Slice jtsSerialized = JtsGeometrySerde.serialize(jtsGeometry);
-        Slice esriSerialized = GeometrySerde.serialize(esriGeometry);
-        assertEquals(jtsSerialized, esriSerialized);
-
-        Geometry jtsDeserialized = JtsGeometrySerde.deserialize(jtsSerialized);
-        assertGeometryEquals(jtsDeserialized, jtsGeometry);
-
-        OGCGeometry esriDeserialized = GeometrySerde.deserialize(esriSerialized);
-        assertGeometryEquals(esriDeserialized, esriGeometry);
-    }
-
-    private static Slice geometryFromText(String wkt)
-    {
-        return serialize(OGCGeometry.fromText(wkt));
-    }
-
-    private static Geometry createJtsGeometry(String wkt)
-    {
-        try {
-            return new WKTReader().read(wkt);
-        }
-        catch (ParseException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static void assertGeometryEquals(Geometry actual, Geometry expected)
-    {
-        assertEquals(actual.norm(), expected.norm());
-    }
-
-    private static void assertDeserializeEnvelope(String geometry, Envelope expectedEnvelope)
-    {
-        assertEquals(deserializeEnvelope(geometryFromText(geometry)), expectedEnvelope);
-    }
-
-    private static void assertDeserializeType(String wkt, GeometrySerializationType expectedType)
-    {
-        assertEquals(deserializeType(geometryFromText(wkt)), expectedType);
-    }
-
-    private static void assertGeometryEquals(OGCGeometry actual, OGCGeometry expected)
-    {
-        actual.setSpatialReference(null);
-        expected.setSpatialReference(null);
-        ensureEnvelopeLoaded(actual);
-        ensureEnvelopeLoaded(expected);
-        assertEquals(actual, expected);
-    }
-
-    /**
-     * There is a weird bug in geometry comparison. If a geometry envelope is not loaded it may return
-     * false for two empty line strings or multiline strings
-     */
-    private static void ensureEnvelopeLoaded(OGCGeometry geometry)
-    {
-        geometry.envelope();
     }
 }

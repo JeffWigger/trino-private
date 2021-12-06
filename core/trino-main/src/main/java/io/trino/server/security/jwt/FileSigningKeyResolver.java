@@ -68,31 +68,6 @@ public class FileSigningKeyResolver
         }
     }
 
-    @Override
-    public Key resolveSigningKey(JwsHeader header, Claims claims)
-    {
-        return getKey(header);
-    }
-
-    @Override
-    public Key resolveSigningKey(JwsHeader header, String plaintext)
-    {
-        return getKey(header);
-    }
-
-    private Key getKey(JwsHeader<?> header)
-    {
-        SignatureAlgorithm algorithm = SignatureAlgorithm.forName(header.getAlgorithm());
-
-        if (staticKey != null) {
-            return staticKey.getKey(algorithm);
-        }
-
-        String keyId = getKeyId(header);
-        LoadedKey key = keys.computeIfAbsent(keyId, this::loadKey);
-        return key.getKey(algorithm);
-    }
-
     private static String getKeyId(JwsHeader<?> header)
     {
         String keyId = header.getKeyId();
@@ -102,11 +77,6 @@ public class FileSigningKeyResolver
         }
         keyId = INVALID_KID_CHARS.replaceFrom(keyId, '_');
         return keyId;
-    }
-
-    private LoadedKey loadKey(String keyId)
-    {
-        return loadKeyFile(new File(keyFile.replace(KEY_ID_VARIABLE, keyId)));
     }
 
     public static LoadedKey loadKeyFile(File file)
@@ -141,6 +111,36 @@ public class FileSigningKeyResolver
         catch (RuntimeException e) {
             throw new SignatureException("Unable to decode HMAC signing key", e);
         }
+    }
+
+    @Override
+    public Key resolveSigningKey(JwsHeader header, Claims claims)
+    {
+        return getKey(header);
+    }
+
+    @Override
+    public Key resolveSigningKey(JwsHeader header, String plaintext)
+    {
+        return getKey(header);
+    }
+
+    private Key getKey(JwsHeader<?> header)
+    {
+        SignatureAlgorithm algorithm = SignatureAlgorithm.forName(header.getAlgorithm());
+
+        if (staticKey != null) {
+            return staticKey.getKey(algorithm);
+        }
+
+        String keyId = getKeyId(header);
+        LoadedKey key = keys.computeIfAbsent(keyId, this::loadKey);
+        return key.getKey(algorithm);
+    }
+
+    private LoadedKey loadKey(String keyId)
+    {
+        return loadKeyFile(new File(keyFile.replace(KEY_ID_VARIABLE, keyId)));
     }
 
     private static class LoadedKey

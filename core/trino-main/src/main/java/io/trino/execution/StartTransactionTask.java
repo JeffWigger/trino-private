@@ -38,47 +38,6 @@ import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 public class StartTransactionTask
         implements DataDefinitionTask<StartTransaction>
 {
-    @Override
-    public String getName()
-    {
-        return "START TRANSACTION";
-    }
-
-    @Override
-    public ListenableFuture<Void> execute(
-            StartTransaction statement,
-            TransactionManager transactionManager,
-            Metadata metadata,
-            AccessControl accessControl,
-            QueryStateMachine stateMachine,
-            List<Expression> parameters,
-            WarningCollector warningCollector)
-    {
-        Session session = stateMachine.getSession();
-        if (!session.isClientTransactionSupport()) {
-            throw new TrinoException(StandardErrorCode.INCOMPATIBLE_CLIENT, "Client does not support transactions");
-        }
-        if (session.getTransactionId().isPresent()) {
-            throw new TrinoException(StandardErrorCode.NOT_SUPPORTED, "Nested transactions not supported");
-        }
-
-        Optional<IsolationLevel> isolationLevel = extractIsolationLevel(statement);
-        Optional<Boolean> readOnly = extractReadOnly(statement);
-
-        TransactionId transactionId = transactionManager.beginTransaction(
-                isolationLevel.orElse(TransactionManager.DEFAULT_ISOLATION),
-                readOnly.orElse(TransactionManager.DEFAULT_READ_ONLY),
-                false);
-
-        stateMachine.setStartedTransactionId(transactionId);
-
-        // Since the current session does not contain this new transaction ID, we need to manually mark it as inactive
-        // when this statement completes.
-        transactionManager.trySetInactive(transactionId);
-
-        return immediateVoidFuture();
-    }
-
     private static Optional<IsolationLevel> extractIsolationLevel(StartTransaction startTransaction)
     {
         if (startTransaction.getTransactionModes().stream()
@@ -123,5 +82,46 @@ public class StartTransactionTask
                 return IsolationLevel.READ_UNCOMMITTED;
         }
         throw new AssertionError("Unhandled isolation level: " + level);
+    }
+
+    @Override
+    public String getName()
+    {
+        return "START TRANSACTION";
+    }
+
+    @Override
+    public ListenableFuture<Void> execute(
+            StartTransaction statement,
+            TransactionManager transactionManager,
+            Metadata metadata,
+            AccessControl accessControl,
+            QueryStateMachine stateMachine,
+            List<Expression> parameters,
+            WarningCollector warningCollector)
+    {
+        Session session = stateMachine.getSession();
+        if (!session.isClientTransactionSupport()) {
+            throw new TrinoException(StandardErrorCode.INCOMPATIBLE_CLIENT, "Client does not support transactions");
+        }
+        if (session.getTransactionId().isPresent()) {
+            throw new TrinoException(StandardErrorCode.NOT_SUPPORTED, "Nested transactions not supported");
+        }
+
+        Optional<IsolationLevel> isolationLevel = extractIsolationLevel(statement);
+        Optional<Boolean> readOnly = extractReadOnly(statement);
+
+        TransactionId transactionId = transactionManager.beginTransaction(
+                isolationLevel.orElse(TransactionManager.DEFAULT_ISOLATION),
+                readOnly.orElse(TransactionManager.DEFAULT_READ_ONLY),
+                false);
+
+        stateMachine.setStartedTransactionId(transactionId);
+
+        // Since the current session does not contain this new transaction ID, we need to manually mark it as inactive
+        // when this statement completes.
+        transactionManager.trySetInactive(transactionId);
+
+        return immediateVoidFuture();
     }
 }

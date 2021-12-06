@@ -277,119 +277,6 @@ public class HeartbeatFailureDetector
         return null;
     }
 
-    @ThreadSafe
-    private class MonitoringTask
-    {
-        private final ServiceDescriptor service;
-        private final URI uri;
-        private final Stats stats;
-
-        @GuardedBy("this")
-        private ScheduledFuture<?> future;
-
-        @GuardedBy("this")
-        private Long disabledTimestamp;
-
-        @GuardedBy("this")
-        private Long successTransitionTimestamp;
-
-        private MonitoringTask(ServiceDescriptor service, URI uri)
-        {
-            this.uri = uri;
-            this.service = service;
-            this.stats = new Stats(uri);
-        }
-
-        public Stats getStats()
-        {
-            return stats;
-        }
-
-        public ServiceDescriptor getService()
-        {
-            return service;
-        }
-
-        public synchronized void enable()
-        {
-            if (future == null) {
-                future = executor.scheduleAtFixedRate(() -> {
-                    try {
-                        ping();
-                        updateState();
-                    }
-                    catch (Throwable e) {
-                        // ignore to avoid getting unscheduled
-                        log.warn(e, "Error pinging service %s (%s)", service.getId(), uri);
-                    }
-                }, heartbeat.toMillis(), heartbeat.toMillis(), TimeUnit.MILLISECONDS);
-                disabledTimestamp = null;
-            }
-        }
-
-        public synchronized void disable()
-        {
-            if (future != null) {
-                future.cancel(true);
-                future = null;
-                disabledTimestamp = System.nanoTime();
-            }
-        }
-
-        public synchronized boolean isExpired()
-        {
-            return future == null && disabledTimestamp != null && Duration.nanosSince(disabledTimestamp).compareTo(gcGraceInterval) > 0;
-        }
-
-        public synchronized boolean isFailed()
-        {
-            return future == null || // are we disabled?
-                    successTransitionTimestamp == null || // are we in success state?
-                    Duration.nanosSince(successTransitionTimestamp).compareTo(warmupInterval) < 0; // are we within the warmup period?
-        }
-
-        private void ping()
-        {
-            try {
-                stats.recordStart();
-                httpClient.executeAsync(prepareHead().setUri(uri).build(), new ResponseHandler<Object, Exception>()
-                {
-                    @Override
-                    public Exception handleException(Request request, Exception exception)
-                    {
-                        // ignore error
-                        stats.recordFailure(exception);
-
-                        // TODO: this will technically cause an NPE in httpClient, but it's not triggered because
-                        // we never call get() on the response future. This behavior needs to be fixed in airlift
-                        return null;
-                    }
-
-                    @Override
-                    public Object handle(Request request, Response response)
-                    {
-                        stats.recordSuccess();
-                        return null;
-                    }
-                });
-            }
-            catch (RuntimeException e) {
-                log.warn(e, "Error scheduling request for %s", uri);
-            }
-        }
-
-        private synchronized void updateState()
-        {
-            // is this an over/under transition?
-            if (stats.getRecentFailureRatio() > failureRatioThreshold) {
-                successTransitionTimestamp = null;
-            }
-            else if (successTransitionTimestamp == null) {
-                successTransitionTimestamp = System.nanoTime();
-            }
-        }
-    }
-
     public static class Stats
     {
         private final long start = System.nanoTime();
@@ -516,6 +403,119 @@ public class HeartbeatFailureDetector
                 builder.put(entry.getKey().getName(), entry.getValue().getCount());
             }
             return builder.build();
+        }
+    }
+
+    @ThreadSafe
+    private class MonitoringTask
+    {
+        private final ServiceDescriptor service;
+        private final URI uri;
+        private final Stats stats;
+
+        @GuardedBy("this")
+        private ScheduledFuture<?> future;
+
+        @GuardedBy("this")
+        private Long disabledTimestamp;
+
+        @GuardedBy("this")
+        private Long successTransitionTimestamp;
+
+        private MonitoringTask(ServiceDescriptor service, URI uri)
+        {
+            this.uri = uri;
+            this.service = service;
+            this.stats = new Stats(uri);
+        }
+
+        public Stats getStats()
+        {
+            return stats;
+        }
+
+        public ServiceDescriptor getService()
+        {
+            return service;
+        }
+
+        public synchronized void enable()
+        {
+            if (future == null) {
+                future = executor.scheduleAtFixedRate(() -> {
+                    try {
+                        ping();
+                        updateState();
+                    }
+                    catch (Throwable e) {
+                        // ignore to avoid getting unscheduled
+                        log.warn(e, "Error pinging service %s (%s)", service.getId(), uri);
+                    }
+                }, heartbeat.toMillis(), heartbeat.toMillis(), TimeUnit.MILLISECONDS);
+                disabledTimestamp = null;
+            }
+        }
+
+        public synchronized void disable()
+        {
+            if (future != null) {
+                future.cancel(true);
+                future = null;
+                disabledTimestamp = System.nanoTime();
+            }
+        }
+
+        public synchronized boolean isExpired()
+        {
+            return future == null && disabledTimestamp != null && Duration.nanosSince(disabledTimestamp).compareTo(gcGraceInterval) > 0;
+        }
+
+        public synchronized boolean isFailed()
+        {
+            return future == null || // are we disabled?
+                    successTransitionTimestamp == null || // are we in success state?
+                    Duration.nanosSince(successTransitionTimestamp).compareTo(warmupInterval) < 0; // are we within the warmup period?
+        }
+
+        private void ping()
+        {
+            try {
+                stats.recordStart();
+                httpClient.executeAsync(prepareHead().setUri(uri).build(), new ResponseHandler<Object, Exception>()
+                {
+                    @Override
+                    public Exception handleException(Request request, Exception exception)
+                    {
+                        // ignore error
+                        stats.recordFailure(exception);
+
+                        // TODO: this will technically cause an NPE in httpClient, but it's not triggered because
+                        // we never call get() on the response future. This behavior needs to be fixed in airlift
+                        return null;
+                    }
+
+                    @Override
+                    public Object handle(Request request, Response response)
+                    {
+                        stats.recordSuccess();
+                        return null;
+                    }
+                });
+            }
+            catch (RuntimeException e) {
+                log.warn(e, "Error scheduling request for %s", uri);
+            }
+        }
+
+        private synchronized void updateState()
+        {
+            // is this an over/under transition?
+            if (stats.getRecentFailureRatio() > failureRatioThreshold) {
+                successTransitionTimestamp = null;
+            }
+            else if (successTransitionTimestamp == null) {
+                successTransitionTimestamp = System.nanoTime();
+            }
         }
     }
 }

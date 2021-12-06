@@ -93,6 +93,23 @@ public final class SortExpressionExtractor
         return new SortExpressionContext(left.getSortExpression(), searchExpressions.build());
     }
 
+    private static Optional<SymbolReference> asBuildSymbolReference(Set<Symbol> buildLayout, Expression expression)
+    {
+        // Currently we only support symbol as sort expression on build side
+        if (expression instanceof SymbolReference) {
+            SymbolReference symbolReference = (SymbolReference) expression;
+            if (buildLayout.contains(new Symbol(symbolReference.getName()))) {
+                return Optional.of(symbolReference);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean hasBuildSymbolReference(Set<Symbol> buildSymbols, Expression expression)
+    {
+        return new BuildSymbolReferenceFinder(buildSymbols).process(expression);
+    }
+
     private static class SortExpressionVisitor
             extends AstVisitor<Optional<SortExpressionContext>, Void>
     {
@@ -141,23 +158,6 @@ public final class SortExpressionExtractor
             }
             return visitComparisonExpression(new ComparisonExpression(LESS_THAN_OR_EQUAL, node.getValue(), node.getMax()), context);
         }
-    }
-
-    private static Optional<SymbolReference> asBuildSymbolReference(Set<Symbol> buildLayout, Expression expression)
-    {
-        // Currently we only support symbol as sort expression on build side
-        if (expression instanceof SymbolReference) {
-            SymbolReference symbolReference = (SymbolReference) expression;
-            if (buildLayout.contains(new Symbol(symbolReference.getName()))) {
-                return Optional.of(symbolReference);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static boolean hasBuildSymbolReference(Set<Symbol> buildSymbols, Expression expression)
-    {
-        return new BuildSymbolReferenceFinder(buildSymbols).process(expression);
     }
 
     private static class BuildSymbolReferenceFinder

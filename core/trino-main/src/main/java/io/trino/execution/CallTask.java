@@ -67,6 +67,13 @@ import static java.util.Arrays.asList;
 public class CallTask
         implements DataDefinitionTask<Call>
 {
+    private static Object toTypeObjectValue(Session session, Type type, Object value)
+    {
+        BlockBuilder blockBuilder = type.createBlockBuilder(null, 1);
+        writeNativeValue(type, blockBuilder, value);
+        return type.getObjectValue(session.toConnectorSession(), blockBuilder, 0);
+    }
+
     @Override
     public String getName()
     {
@@ -202,12 +209,5 @@ public class CallTask
         }
 
         return immediateVoidFuture();
-    }
-
-    private static Object toTypeObjectValue(Session session, Type type, Object value)
-    {
-        BlockBuilder blockBuilder = type.createBlockBuilder(null, 1);
-        writeNativeValue(type, blockBuilder, value);
-        return type.getObjectValue(session.toConnectorSession(), blockBuilder, 0);
     }
 }

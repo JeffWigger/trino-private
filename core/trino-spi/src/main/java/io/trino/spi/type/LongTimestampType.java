@@ -53,91 +53,6 @@ class LongTimestampType
         }
     }
 
-    @Override
-    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
-    {
-        return TYPE_OPERATOR_DECLARATION;
-    }
-
-    @Override
-    public int getFixedSize()
-    {
-        return Long.BYTES + Integer.BYTES;
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
-    {
-        int maxBlockSizeInBytes;
-        if (blockBuilderStatus == null) {
-            maxBlockSizeInBytes = PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
-        }
-        else {
-            maxBlockSizeInBytes = blockBuilderStatus.getMaxPageSizeInBytes();
-        }
-        return new Int96ArrayBlockBuilder(
-                blockBuilderStatus,
-                Math.min(expectedEntries, maxBlockSizeInBytes / getFixedSize()));
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
-    {
-        return createBlockBuilder(blockBuilderStatus, expectedEntries, getFixedSize());
-    }
-
-    @Override
-    public BlockBuilder createFixedSizeBlockBuilder(int positionCount)
-    {
-        return new Int96ArrayBlockBuilder(null, positionCount);
-    }
-
-    @Override
-    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
-    {
-        if (block.isNull(position)) {
-            blockBuilder.appendNull();
-        }
-        else {
-            blockBuilder.writeLong(getEpochMicros(block, position));
-            blockBuilder.writeInt(getFraction(block, position));
-            blockBuilder.closeEntry();
-        }
-    }
-
-    @Override
-    public Object getObject(Block block, int position)
-    {
-        return new LongTimestamp(getEpochMicros(block, position), getFraction(block, position));
-    }
-
-    @Override
-    public void writeObject(BlockBuilder blockBuilder, Object value)
-    {
-        LongTimestamp timestamp = (LongTimestamp) value;
-        write(blockBuilder, timestamp.getEpochMicros(), timestamp.getPicosOfMicro());
-    }
-
-    public void write(BlockBuilder blockBuilder, long epochMicros, int fraction)
-    {
-        blockBuilder.writeLong(epochMicros);
-        blockBuilder.writeInt(fraction);
-        blockBuilder.closeEntry();
-    }
-
-    @Override
-    public Object getObjectValue(ConnectorSession session, Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return null;
-        }
-
-        long epochMicros = getEpochMicros(block, position);
-        int fraction = getFraction(block, position);
-
-        return SqlTimestamp.newInstance(getPrecision(), epochMicros, fraction);
-    }
-
     private static long getEpochMicros(Block block, int position)
     {
         return block.getLong(position, 0);
@@ -259,5 +174,90 @@ class LongTimestampType
     {
         return (leftEpochMicros < rightEpochMicros) ||
                 ((leftEpochMicros == rightEpochMicros) && (leftPicosOfMicro <= rightPicosOfMicro));
+    }
+
+    @Override
+    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
+    {
+        return TYPE_OPERATOR_DECLARATION;
+    }
+
+    @Override
+    public int getFixedSize()
+    {
+        return Long.BYTES + Integer.BYTES;
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
+    {
+        int maxBlockSizeInBytes;
+        if (blockBuilderStatus == null) {
+            maxBlockSizeInBytes = PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
+        }
+        else {
+            maxBlockSizeInBytes = blockBuilderStatus.getMaxPageSizeInBytes();
+        }
+        return new Int96ArrayBlockBuilder(
+                blockBuilderStatus,
+                Math.min(expectedEntries, maxBlockSizeInBytes / getFixedSize()));
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
+    {
+        return createBlockBuilder(blockBuilderStatus, expectedEntries, getFixedSize());
+    }
+
+    @Override
+    public BlockBuilder createFixedSizeBlockBuilder(int positionCount)
+    {
+        return new Int96ArrayBlockBuilder(null, positionCount);
+    }
+
+    @Override
+    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
+    {
+        if (block.isNull(position)) {
+            blockBuilder.appendNull();
+        }
+        else {
+            blockBuilder.writeLong(getEpochMicros(block, position));
+            blockBuilder.writeInt(getFraction(block, position));
+            blockBuilder.closeEntry();
+        }
+    }
+
+    @Override
+    public Object getObject(Block block, int position)
+    {
+        return new LongTimestamp(getEpochMicros(block, position), getFraction(block, position));
+    }
+
+    @Override
+    public void writeObject(BlockBuilder blockBuilder, Object value)
+    {
+        LongTimestamp timestamp = (LongTimestamp) value;
+        write(blockBuilder, timestamp.getEpochMicros(), timestamp.getPicosOfMicro());
+    }
+
+    public void write(BlockBuilder blockBuilder, long epochMicros, int fraction)
+    {
+        blockBuilder.writeLong(epochMicros);
+        blockBuilder.writeInt(fraction);
+        blockBuilder.closeEntry();
+    }
+
+    @Override
+    public Object getObjectValue(ConnectorSession session, Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return null;
+        }
+
+        long epochMicros = getEpochMicros(block, position);
+        int fraction = getFraction(block, position);
+
+        return SqlTimestamp.newInstance(getPrecision(), epochMicros, fraction);
     }
 }

@@ -25,6 +25,25 @@ import static java.util.Objects.requireNonNull;
 public class UpdateOperator
         extends AbstractRowChangeOperator
 {
+    private final List<Integer> columnValueAndRowIdChannels;
+
+    public UpdateOperator(OperatorContext operatorContext, List<Integer> columnValueAndRowIdChannels)
+    {
+        super(operatorContext);
+        this.columnValueAndRowIdChannels = columnValueAndRowIdChannels;
+    }
+
+    @Override
+    public void addInput(Page page)
+    {
+        requireNonNull(page, "page is null");
+        checkState(state == State.RUNNING, "Operator is %s", state);
+
+        // Call the UpdatablePageSource to update rows in the page supplied.
+        pageSource().updateRows(page, columnValueAndRowIdChannels);
+        rowCount += page.getPositionCount();
+    }
+
     public static class UpdateOperatorFactory
             implements OperatorFactory
     {
@@ -59,24 +78,5 @@ public class UpdateOperator
         {
             return new UpdateOperatorFactory(operatorId, planNodeId, columnValueAndRowIdChannels);
         }
-    }
-
-    private final List<Integer> columnValueAndRowIdChannels;
-
-    public UpdateOperator(OperatorContext operatorContext, List<Integer> columnValueAndRowIdChannels)
-    {
-        super(operatorContext);
-        this.columnValueAndRowIdChannels = columnValueAndRowIdChannels;
-    }
-
-    @Override
-    public void addInput(Page page)
-    {
-        requireNonNull(page, "page is null");
-        checkState(state == State.RUNNING, "Operator is %s", state);
-
-        // Call the UpdatablePageSource to update rows in the page supplied.
-        pageSource().updateRows(page, columnValueAndRowIdChannels);
-        rowCount += page.getPositionCount();
     }
 }

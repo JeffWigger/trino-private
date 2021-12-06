@@ -45,6 +45,24 @@ public class SingleMapBlock
         this.mapBlock = mapBlock;
     }
 
+    private static RuntimeException handleThrowable(Throwable throwable)
+    {
+        if (throwable instanceof Error) {
+            throw (Error) throwable;
+        }
+        if (throwable instanceof TrinoException) {
+            throw (TrinoException) throwable;
+        }
+        throw new TrinoException(GENERIC_INTERNAL_ERROR, throwable);
+    }
+
+    private static void checkNotIndeterminate(Boolean equalResult)
+    {
+        if (equalResult == null) {
+            throw new TrinoException(NOT_SUPPORTED, "map key cannot be null or contain nulls");
+        }
+    }
+
     public Type getMapType()
     {
         return mapBlock.getMapType();
@@ -138,6 +156,9 @@ public class SingleMapBlock
         return mapBlock.getHashTables().tryGet();
     }
 
+    // The next 5 seekKeyExact functions are the same as seekKey
+    // except MethodHandle.invoke is replaced with invokeExact.
+
     /**
      * @return position of the value under {@code nativeValue} key. -1 when key is not found.
      */
@@ -228,9 +249,6 @@ public class SingleMapBlock
             }
         }
     }
-
-    // The next 5 seekKeyExact functions are the same as seekKey
-    // except MethodHandle.invoke is replaced with invokeExact.
 
     public int seekKeyExact(long nativeValue)
     {
@@ -405,24 +423,6 @@ public class SingleMapBlock
             if (position == hashTableSize) {
                 position = 0;
             }
-        }
-    }
-
-    private static RuntimeException handleThrowable(Throwable throwable)
-    {
-        if (throwable instanceof Error) {
-            throw (Error) throwable;
-        }
-        if (throwable instanceof TrinoException) {
-            throw (TrinoException) throwable;
-        }
-        throw new TrinoException(GENERIC_INTERNAL_ERROR, throwable);
-    }
-
-    private static void checkNotIndeterminate(Boolean equalResult)
-    {
-        if (equalResult == null) {
-            throw new TrinoException(NOT_SUPPORTED, "map key cannot be null or contain nulls");
         }
     }
 }

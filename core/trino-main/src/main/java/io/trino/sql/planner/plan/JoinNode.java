@@ -138,26 +138,6 @@ public class JoinNode
         }
     }
 
-    public JoinNode flipChildren()
-    {
-        return new JoinNode(
-                getId(),
-                flipType(type),
-                right,
-                left,
-                flipJoinCriteria(criteria),
-                rightOutputSymbols,
-                leftOutputSymbols,
-                maySkipOutputDuplicates,
-                filter,
-                rightHashSymbol,
-                leftHashSymbol,
-                distributionType,
-                spillable,
-                ImmutableMap.of(), // dynamicFilters are invalid after flipping children
-                reorderJoinStatsAndCost);
-    }
-
     private static Type flipType(Type type)
     {
         switch (type) {
@@ -180,47 +160,24 @@ public class JoinNode
                 .collect(toImmutableList());
     }
 
-    public enum DistributionType
+    public JoinNode flipChildren()
     {
-        PARTITIONED,
-        REPLICATED
-    }
-
-    public enum Type
-    {
-        INNER("InnerJoin"),
-        LEFT("LeftJoin"),
-        RIGHT("RightJoin"),
-        FULL("FullJoin");
-
-        private final String joinLabel;
-
-        Type(String joinLabel)
-        {
-            this.joinLabel = joinLabel;
-        }
-
-        public String getJoinLabel()
-        {
-            return joinLabel;
-        }
-
-        public static Type typeConvert(Join.Type joinType)
-        {
-            switch (joinType) {
-                case CROSS:
-                case IMPLICIT:
-                case INNER:
-                    return Type.INNER;
-                case LEFT:
-                    return Type.LEFT;
-                case RIGHT:
-                    return Type.RIGHT;
-                case FULL:
-                    return Type.FULL;
-            }
-            throw new UnsupportedOperationException("Unsupported join type: " + joinType);
-        }
+        return new JoinNode(
+                getId(),
+                flipType(type),
+                right,
+                left,
+                flipJoinCriteria(criteria),
+                rightOutputSymbols,
+                leftOutputSymbols,
+                maySkipOutputDuplicates,
+                filter,
+                rightHashSymbol,
+                leftHashSymbol,
+                distributionType,
+                spillable,
+                ImmutableMap.of(), // dynamicFilters are invalid after flipping children
+                reorderJoinStatsAndCost);
     }
 
     @JsonProperty("type")
@@ -358,6 +315,49 @@ public class JoinNode
     public boolean isCrossJoin()
     {
         return criteria.isEmpty() && filter.isEmpty() && type == INNER;
+    }
+
+    public enum DistributionType
+    {
+        PARTITIONED,
+        REPLICATED
+    }
+
+    public enum Type
+    {
+        INNER("InnerJoin"),
+        LEFT("LeftJoin"),
+        RIGHT("RightJoin"),
+        FULL("FullJoin");
+
+        private final String joinLabel;
+
+        Type(String joinLabel)
+        {
+            this.joinLabel = joinLabel;
+        }
+
+        public static Type typeConvert(Join.Type joinType)
+        {
+            switch (joinType) {
+                case CROSS:
+                case IMPLICIT:
+                case INNER:
+                    return Type.INNER;
+                case LEFT:
+                    return Type.LEFT;
+                case RIGHT:
+                    return Type.RIGHT;
+                case FULL:
+                    return Type.FULL;
+            }
+            throw new UnsupportedOperationException("Unsupported join type: " + joinType);
+        }
+
+        public String getJoinLabel()
+        {
+            return joinLabel;
+        }
     }
 
     public static class EquiJoinClause

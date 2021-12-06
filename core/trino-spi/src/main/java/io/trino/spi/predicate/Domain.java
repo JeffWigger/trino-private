@@ -106,6 +106,27 @@ public final class Domain
         return new Domain(ValueSet.of(type, values.get(0), values.subList(1, values.size()).toArray()), nullAllowed);
     }
 
+    public static Domain union(List<Domain> domains)
+    {
+        if (domains.isEmpty()) {
+            throw new IllegalArgumentException("domains cannot be empty for union");
+        }
+        if (domains.size() == 1) {
+            return domains.get(0);
+        }
+
+        boolean nullAllowed = false;
+        List<ValueSet> valueSets = new ArrayList<>(domains.size());
+        for (Domain domain : domains) {
+            valueSets.add(domain.getValues());
+            nullAllowed = nullAllowed || domain.nullAllowed;
+        }
+
+        ValueSet unionedValues = valueSets.get(0).union(valueSets.subList(1, valueSets.size()));
+
+        return new Domain(unionedValues, nullAllowed);
+    }
+
     public Type getType()
     {
         return values.getType();
@@ -221,27 +242,6 @@ public final class Domain
     {
         checkCompatibility(other);
         return new Domain(values.union(other.getValues()), this.isNullAllowed() || other.isNullAllowed());
-    }
-
-    public static Domain union(List<Domain> domains)
-    {
-        if (domains.isEmpty()) {
-            throw new IllegalArgumentException("domains cannot be empty for union");
-        }
-        if (domains.size() == 1) {
-            return domains.get(0);
-        }
-
-        boolean nullAllowed = false;
-        List<ValueSet> valueSets = new ArrayList<>(domains.size());
-        for (Domain domain : domains) {
-            valueSets.add(domain.getValues());
-            nullAllowed = nullAllowed || domain.nullAllowed;
-        }
-
-        ValueSet unionedValues = valueSets.get(0).union(valueSets.subList(1, valueSets.size()));
-
-        return new Domain(unionedValues, nullAllowed);
     }
 
     public Domain complement()

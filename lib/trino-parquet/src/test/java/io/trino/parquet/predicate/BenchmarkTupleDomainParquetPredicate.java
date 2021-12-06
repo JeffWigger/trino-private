@@ -51,6 +51,12 @@ import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT64;
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkTupleDomainParquetPredicate
 {
+    public static void main(String[] args)
+            throws RunnerException
+    {
+        benchmark(BenchmarkTupleDomainParquetPredicate.class).run();
+    }
+
     @Benchmark
     public List<?> domainFromDictionary(Data data)
     {
@@ -59,6 +65,15 @@ public class BenchmarkTupleDomainParquetPredicate
             result.add(TupleDomainParquetPredicate.getDomain(BIGINT, dictionary));
         }
         return result;
+    }
+
+    @Test
+    public void test()
+    {
+        Data data = new Data();
+        data.init();
+
+        domainFromDictionary(data);
     }
 
     @State(Scope.Thread)
@@ -99,20 +114,5 @@ public class BenchmarkTupleDomainParquetPredicate
                                     size,
                                     ParquetEncoding.PLAIN)));
         }
-    }
-
-    @Test
-    public void test()
-    {
-        Data data = new Data();
-        data.init();
-
-        domainFromDictionary(data);
-    }
-
-    public static void main(String[] args)
-            throws RunnerException
-    {
-        benchmark(BenchmarkTupleDomainParquetPredicate.class).run();
     }
 }

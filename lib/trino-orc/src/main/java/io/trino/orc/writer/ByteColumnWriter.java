@@ -76,6 +76,17 @@ public class ByteColumnWriter
         this.presentStream = new PresentOutputStream(compression, bufferSize);
     }
 
+    private static List<Integer> createByteColumnPositionList(
+            boolean compressed,
+            ByteStreamCheckpoint dataCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(dataCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public Map<OrcColumnId, ColumnEncoding> getColumnEncodings()
     {
@@ -156,17 +167,6 @@ public class ByteColumnWriter
         Slice slice = metadataWriter.writeRowIndexes(rowGroupIndexes.build());
         Stream stream = new Stream(columnId, StreamKind.ROW_INDEX, slice.length(), false);
         return ImmutableList.of(new StreamDataOutput(slice, stream));
-    }
-
-    private static List<Integer> createByteColumnPositionList(
-            boolean compressed,
-            ByteStreamCheckpoint dataCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(dataCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

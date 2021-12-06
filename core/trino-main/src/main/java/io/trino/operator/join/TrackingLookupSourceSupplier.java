@@ -19,10 +19,6 @@ import static java.util.Objects.requireNonNull;
 
 public interface TrackingLookupSourceSupplier
 {
-    LookupSource getLookupSource();
-
-    OuterPositionIterator getOuterPositionIterator();
-
     static TrackingLookupSourceSupplier nonTracking(Supplier<LookupSource> lookupSourceSupplier)
     {
         requireNonNull(lookupSourceSupplier, "lookupSourceSupplier is null");
@@ -41,4 +37,8 @@ public interface TrackingLookupSourceSupplier
             }
         };
     }
+
+    LookupSource getLookupSource();
+
+    OuterPositionIterator getOuterPositionIterator();
 }

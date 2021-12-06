@@ -25,17 +25,11 @@ import static java.util.Objects.requireNonNull;
 public class TimestampStatisticsBuilder
         implements LongValueStatisticsBuilder
 {
-    public interface MillisFunction
-    {
-        long getMillis(Type type, Block block, int position);
-    }
-
+    private final BloomFilterBuilder bloomFilterBuilder;
+    private final MillisFunction millisFunction;
     private long nonNullValueCount;
     private long minimum = Long.MAX_VALUE;
     private long maximum = Long.MIN_VALUE;
-    private final BloomFilterBuilder bloomFilterBuilder;
-    private final MillisFunction millisFunction;
-
     public TimestampStatisticsBuilder(BloomFilterBuilder bloomFilterBuilder)
     {
         this(bloomFilterBuilder, Type::getLong);
@@ -50,6 +44,22 @@ public class TimestampStatisticsBuilder
     {
         this.bloomFilterBuilder = requireNonNull(bloomFilterBuilder, "bloomFilterBuilder is nulll");
         this.millisFunction = requireNonNull(millisFunction, "millisFunction is null");
+    }
+
+    public static Optional<TimestampStatistics> mergeTimestampStatistics(List<ColumnStatistics> stats)
+    {
+        TimestampStatisticsBuilder timestampStatisticsBuilder = new TimestampStatisticsBuilder(new NoOpBloomFilterBuilder());
+        for (ColumnStatistics columnStatistics : stats) {
+            TimestampStatistics partialStatistics = columnStatistics.getTimestampStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null) {
+                    // there are non null values but no statistics, so we can not say anything about the data
+                    return Optional.empty();
+                }
+                timestampStatisticsBuilder.addTimestampStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return timestampStatisticsBuilder.buildTimestampStatistics();
     }
 
     @Override
@@ -105,19 +115,8 @@ public class TimestampStatisticsBuilder
                 bloomFilterBuilder.buildBloomFilter());
     }
 
-    public static Optional<TimestampStatistics> mergeTimestampStatistics(List<ColumnStatistics> stats)
+    public interface MillisFunction
     {
-        TimestampStatisticsBuilder timestampStatisticsBuilder = new TimestampStatisticsBuilder(new NoOpBloomFilterBuilder());
-        for (ColumnStatistics columnStatistics : stats) {
-            TimestampStatistics partialStatistics = columnStatistics.getTimestampStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null) {
-                    // there are non null values but no statistics, so we can not say anything about the data
-                    return Optional.empty();
-                }
-                timestampStatisticsBuilder.addTimestampStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return timestampStatisticsBuilder.buildTimestampStatistics();
+        long getMillis(Type type, Block block, int position);
     }
 }

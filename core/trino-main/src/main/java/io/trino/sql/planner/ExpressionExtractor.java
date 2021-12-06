@@ -35,6 +35,10 @@ import static java.util.Objects.requireNonNull;
 
 public final class ExpressionExtractor
 {
+    private ExpressionExtractor()
+    {
+    }
+
     public static List<Expression> extractExpressions(PlanNode plan)
     {
         return extractExpressions(plan, noLookup());
@@ -60,10 +64,6 @@ public final class ExpressionExtractor
     public static void forEachExpression(PlanNode plan, Consumer<Expression> expressionConsumer)
     {
         plan.accept(new Visitor(expressionConsumer, true, noLookup()), null);
-    }
-
-    private ExpressionExtractor()
-    {
     }
 
     private static class Visitor

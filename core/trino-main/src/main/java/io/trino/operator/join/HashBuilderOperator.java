@@ -62,181 +62,33 @@ public class HashBuilderOperator
         implements Operator
 {
     private static final Logger log = Logger.get(HashBuilderOperator.class);
-
-    public static class HashBuilderOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final JoinBridgeManager<PartitionedLookupSourceFactory> lookupSourceFactoryManager;
-        private final List<Integer> outputChannels;
-        private final List<Integer> hashChannels;
-        private final OptionalInt preComputedHashChannel;
-        private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
-        private final Optional<Integer> sortChannel;
-        private final List<JoinFilterFunctionFactory> searchFunctionFactories;
-        private final PagesIndex.Factory pagesIndexFactory;
-
-        private final int expectedPositions;
-        private final boolean spillEnabled;
-        private final SingleStreamSpillerFactory singleStreamSpillerFactory;
-
-        private final Map<Lifespan, Integer> partitionIndexManager = new HashMap<>();
-
-        private boolean closed;
-
-        public HashBuilderOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                JoinBridgeManager<PartitionedLookupSourceFactory> lookupSourceFactoryManager,
-                List<Integer> outputChannels,
-                List<Integer> hashChannels,
-                OptionalInt preComputedHashChannel,
-                Optional<JoinFilterFunctionFactory> filterFunctionFactory,
-                Optional<Integer> sortChannel,
-                List<JoinFilterFunctionFactory> searchFunctionFactories,
-                int expectedPositions,
-                PagesIndex.Factory pagesIndexFactory,
-                boolean spillEnabled,
-                SingleStreamSpillerFactory singleStreamSpillerFactory)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            requireNonNull(sortChannel, "sortChannel cannot be null");
-            requireNonNull(searchFunctionFactories, "searchFunctionFactories is null");
-            checkArgument(sortChannel.isPresent() != searchFunctionFactories.isEmpty(), "both or none sortChannel and searchFunctionFactories must be set");
-            this.lookupSourceFactoryManager = requireNonNull(lookupSourceFactoryManager, "lookupSourceFactoryManager is null");
-
-            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
-            this.hashChannels = ImmutableList.copyOf(requireNonNull(hashChannels, "hashChannels is null"));
-            this.preComputedHashChannel = requireNonNull(preComputedHashChannel, "preComputedHashChannel is null");
-            this.filterFunctionFactory = requireNonNull(filterFunctionFactory, "filterFunctionFactory is null");
-            this.sortChannel = sortChannel;
-            this.searchFunctionFactories = ImmutableList.copyOf(searchFunctionFactories);
-            this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
-            this.spillEnabled = spillEnabled;
-            this.singleStreamSpillerFactory = requireNonNull(singleStreamSpillerFactory, "singleStreamSpillerFactory is null");
-
-            this.expectedPositions = expectedPositions;
-        }
-
-        @Override
-        public HashBuilderOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, HashBuilderOperator.class.getSimpleName());
-
-            PartitionedLookupSourceFactory lookupSourceFactory = this.lookupSourceFactoryManager.getJoinBridge(driverContext.getLifespan());
-            int partitionIndex = getAndIncrementPartitionIndex(driverContext.getLifespan());
-            verify(partitionIndex < lookupSourceFactory.partitions());
-            return new HashBuilderOperator(
-                    operatorContext,
-                    lookupSourceFactory,
-                    partitionIndex,
-                    outputChannels,
-                    hashChannels,
-                    preComputedHashChannel,
-                    filterFunctionFactory,
-                    sortChannel,
-                    searchFunctionFactories,
-                    expectedPositions,
-                    pagesIndexFactory,
-                    spillEnabled,
-                    singleStreamSpillerFactory);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            throw new UnsupportedOperationException("Parallel hash build cannot be duplicated");
-        }
-
-        private int getAndIncrementPartitionIndex(Lifespan lifespan)
-        {
-            return partitionIndexManager.compute(lifespan, (k, v) -> v == null ? 1 : v + 1) - 1;
-        }
-    }
-
-    @VisibleForTesting
-    public enum State
-    {
-        /**
-         * Operator accepts input
-         */
-        CONSUMING_INPUT,
-
-        /**
-         * Memory revoking occurred during {@link #CONSUMING_INPUT}. Operator accepts input and spills it
-         */
-        SPILLING_INPUT,
-
-        /**
-         * LookupSource has been built and passed on without any spill occurring
-         */
-        LOOKUP_SOURCE_BUILT,
-
-        /**
-         * Input has been finished and spilled
-         */
-        INPUT_SPILLED,
-
-        /**
-         * Spilled input is being unspilled
-         */
-        INPUT_UNSPILLING,
-
-        /**
-         * Spilled input has been unspilled, LookupSource built from it
-         */
-        INPUT_UNSPILLED_AND_BUILT,
-
-        /**
-         * No longer needed
-         */
-        CLOSED
-    }
-
     private static final double INDEX_COMPACTION_ON_REVOCATION_TARGET = 0.8;
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext localUserMemoryContext;
     private final LocalMemoryContext localRevocableMemoryContext;
     private final PartitionedLookupSourceFactory lookupSourceFactory;
     private final ListenableFuture<Void> lookupSourceFactoryDestroyed;
     private final int partitionIndex;
-
     private final List<Integer> outputChannels;
     private final List<Integer> hashChannels;
     private final OptionalInt preComputedHashChannel;
     private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
     private final Optional<Integer> sortChannel;
     private final List<JoinFilterFunctionFactory> searchFunctionFactories;
-
     private final PagesIndex index;
-
     private final boolean spillEnabled;
     private final SingleStreamSpillerFactory singleStreamSpillerFactory;
-
     private final HashCollisionsCounter hashCollisionsCounter;
-
+    private final SpilledLookupSourceHandle spilledLookupSourceHandle = new SpilledLookupSourceHandle();
     private State state = State.CONSUMING_INPUT;
     private Optional<ListenableFuture<Void>> lookupSourceNotNeeded = Optional.empty();
-    private final SpilledLookupSourceHandle spilledLookupSourceHandle = new SpilledLookupSourceHandle();
     private Optional<SingleStreamSpiller> spiller = Optional.empty();
     private ListenableFuture<Void> spillInProgress = NOT_BLOCKED;
     private Optional<ListenableFuture<List<Page>>> unspillInProgress = Optional.empty();
     @Nullable
     private LookupSourceSupplier lookupSourceSupplier;
     private OptionalLong lookupSourceChecksum = OptionalLong.empty();
-
     private Optional<Runnable> finishMemoryRevoke = Optional.empty();
-
     public HashBuilderOperator(
             OperatorContext operatorContext,
             PartitionedLookupSourceFactory lookupSourceFactory,
@@ -275,6 +127,11 @@ public class HashBuilderOperator
 
         this.spillEnabled = spillEnabled;
         this.singleStreamSpillerFactory = requireNonNull(singleStreamSpillerFactory, "singleStreamSpillerFactory is null");
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -316,11 +173,6 @@ public class HashBuilderOperator
                 return NOT_BLOCKED;
         }
         throw new IllegalStateException("Unhandled state: " + state);
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -660,6 +512,145 @@ public class HashBuilderOperator
         }
         catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @VisibleForTesting
+    public enum State
+    {
+        /**
+         * Operator accepts input
+         */
+        CONSUMING_INPUT,
+
+        /**
+         * Memory revoking occurred during {@link #CONSUMING_INPUT}. Operator accepts input and spills it
+         */
+        SPILLING_INPUT,
+
+        /**
+         * LookupSource has been built and passed on without any spill occurring
+         */
+        LOOKUP_SOURCE_BUILT,
+
+        /**
+         * Input has been finished and spilled
+         */
+        INPUT_SPILLED,
+
+        /**
+         * Spilled input is being unspilled
+         */
+        INPUT_UNSPILLING,
+
+        /**
+         * Spilled input has been unspilled, LookupSource built from it
+         */
+        INPUT_UNSPILLED_AND_BUILT,
+
+        /**
+         * No longer needed
+         */
+        CLOSED
+    }
+
+    public static class HashBuilderOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final JoinBridgeManager<PartitionedLookupSourceFactory> lookupSourceFactoryManager;
+        private final List<Integer> outputChannels;
+        private final List<Integer> hashChannels;
+        private final OptionalInt preComputedHashChannel;
+        private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
+        private final Optional<Integer> sortChannel;
+        private final List<JoinFilterFunctionFactory> searchFunctionFactories;
+        private final PagesIndex.Factory pagesIndexFactory;
+
+        private final int expectedPositions;
+        private final boolean spillEnabled;
+        private final SingleStreamSpillerFactory singleStreamSpillerFactory;
+
+        private final Map<Lifespan, Integer> partitionIndexManager = new HashMap<>();
+
+        private boolean closed;
+
+        public HashBuilderOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                JoinBridgeManager<PartitionedLookupSourceFactory> lookupSourceFactoryManager,
+                List<Integer> outputChannels,
+                List<Integer> hashChannels,
+                OptionalInt preComputedHashChannel,
+                Optional<JoinFilterFunctionFactory> filterFunctionFactory,
+                Optional<Integer> sortChannel,
+                List<JoinFilterFunctionFactory> searchFunctionFactories,
+                int expectedPositions,
+                PagesIndex.Factory pagesIndexFactory,
+                boolean spillEnabled,
+                SingleStreamSpillerFactory singleStreamSpillerFactory)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            requireNonNull(sortChannel, "sortChannel cannot be null");
+            requireNonNull(searchFunctionFactories, "searchFunctionFactories is null");
+            checkArgument(sortChannel.isPresent() != searchFunctionFactories.isEmpty(), "both or none sortChannel and searchFunctionFactories must be set");
+            this.lookupSourceFactoryManager = requireNonNull(lookupSourceFactoryManager, "lookupSourceFactoryManager is null");
+
+            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
+            this.hashChannels = ImmutableList.copyOf(requireNonNull(hashChannels, "hashChannels is null"));
+            this.preComputedHashChannel = requireNonNull(preComputedHashChannel, "preComputedHashChannel is null");
+            this.filterFunctionFactory = requireNonNull(filterFunctionFactory, "filterFunctionFactory is null");
+            this.sortChannel = sortChannel;
+            this.searchFunctionFactories = ImmutableList.copyOf(searchFunctionFactories);
+            this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
+            this.spillEnabled = spillEnabled;
+            this.singleStreamSpillerFactory = requireNonNull(singleStreamSpillerFactory, "singleStreamSpillerFactory is null");
+
+            this.expectedPositions = expectedPositions;
+        }
+
+        @Override
+        public HashBuilderOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, HashBuilderOperator.class.getSimpleName());
+
+            PartitionedLookupSourceFactory lookupSourceFactory = this.lookupSourceFactoryManager.getJoinBridge(driverContext.getLifespan());
+            int partitionIndex = getAndIncrementPartitionIndex(driverContext.getLifespan());
+            verify(partitionIndex < lookupSourceFactory.partitions());
+            return new HashBuilderOperator(
+                    operatorContext,
+                    lookupSourceFactory,
+                    partitionIndex,
+                    outputChannels,
+                    hashChannels,
+                    preComputedHashChannel,
+                    filterFunctionFactory,
+                    sortChannel,
+                    searchFunctionFactories,
+                    expectedPositions,
+                    pagesIndexFactory,
+                    spillEnabled,
+                    singleStreamSpillerFactory);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            throw new UnsupportedOperationException("Parallel hash build cannot be duplicated");
+        }
+
+        private int getAndIncrementPartitionIndex(Lifespan lifespan)
+        {
+            return partitionIndexManager.compute(lifespan, (k, v) -> v == null ? 1 : v + 1) - 1;
         }
     }
 }

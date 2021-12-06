@@ -34,37 +34,6 @@ public class TestMethodHandleUtil
     // * The composed function type is expected
     // * Each argument is multiplied into the product exactly once. (by using prime numbers as input)
 
-    @Test
-    public void testCompose2()
-            throws Throwable
-    {
-        MethodHandle fUS2R = methodHandle(TestMethodHandleUtil.class, "fUS2R", U.class, S1.class, S2.class);
-        MethodHandle fT2U = methodHandle(TestMethodHandleUtil.class, "fT2U", T1.class, T2.class);
-        MethodHandle composed = compose(fUS2R, fT2U);
-        assertEquals((R) composed.invokeExact(new T1(2), new T2(3), new S1(5), new S2(7)), new R(210));
-    }
-
-    @Test
-    public void testCompose2withoutS()
-            throws Throwable
-    {
-        MethodHandle fU2R = methodHandle(TestMethodHandleUtil.class, "fU2R", U.class);
-        MethodHandle fT2U = methodHandle(TestMethodHandleUtil.class, "fT2U", T1.class, T2.class);
-        MethodHandle composed = compose(fU2R, fT2U);
-        assertEquals((R) composed.invokeExact(new T1(2), new T2(3)), new R(6));
-    }
-
-    @Test
-    public void testCompose3()
-            throws Throwable
-    {
-        MethodHandle fUV2R = methodHandle(TestMethodHandleUtil.class, "fUV2R", U.class, V.class);
-        MethodHandle fS2U = methodHandle(TestMethodHandleUtil.class, "fS2U", S1.class, S2.class);
-        MethodHandle fT2V = methodHandle(TestMethodHandleUtil.class, "fT2V", T1.class, T2.class);
-        MethodHandle composed = compose(fUV2R, fS2U, fT2V);
-        assertEquals((R) composed.invokeExact(new S1(2), new S2(3), new T1(5), new T2(7)), new R(210));
-    }
-
     public static R fU2R(U u)
     {
         return new R(u.getValue());
@@ -113,6 +82,37 @@ public class TestMethodHandleUtil
     public static double sum(long x, int c)
     {
         return (double) x + c;
+    }
+
+    @Test
+    public void testCompose2()
+            throws Throwable
+    {
+        MethodHandle fUS2R = methodHandle(TestMethodHandleUtil.class, "fUS2R", U.class, S1.class, S2.class);
+        MethodHandle fT2U = methodHandle(TestMethodHandleUtil.class, "fT2U", T1.class, T2.class);
+        MethodHandle composed = compose(fUS2R, fT2U);
+        assertEquals((R) composed.invokeExact(new T1(2), new T2(3), new S1(5), new S2(7)), new R(210));
+    }
+
+    @Test
+    public void testCompose2withoutS()
+            throws Throwable
+    {
+        MethodHandle fU2R = methodHandle(TestMethodHandleUtil.class, "fU2R", U.class);
+        MethodHandle fT2U = methodHandle(TestMethodHandleUtil.class, "fT2U", T1.class, T2.class);
+        MethodHandle composed = compose(fU2R, fT2U);
+        assertEquals((R) composed.invokeExact(new T1(2), new T2(3)), new R(6));
+    }
+
+    @Test
+    public void testCompose3()
+            throws Throwable
+    {
+        MethodHandle fUV2R = methodHandle(TestMethodHandleUtil.class, "fUV2R", U.class, V.class);
+        MethodHandle fS2U = methodHandle(TestMethodHandleUtil.class, "fS2U", S1.class, S2.class);
+        MethodHandle fT2V = methodHandle(TestMethodHandleUtil.class, "fT2V", T1.class, T2.class);
+        MethodHandle composed = compose(fUV2R, fS2U, fT2V);
+        assertEquals((R) composed.invokeExact(new S1(2), new S2(3), new T1(5), new T2(7)), new R(210));
     }
 
     private static class Base

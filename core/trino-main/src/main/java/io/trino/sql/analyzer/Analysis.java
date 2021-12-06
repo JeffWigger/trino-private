@@ -107,55 +107,36 @@ public class Analysis
     @Nullable
     private final Statement root;
     private final Map<NodeRef<Parameter>, Expression> parameters;
-    private String updateType;
-    private Optional<UpdateTarget> target = Optional.empty();
-    private boolean skipMaterializedViewRefresh;
-
     private final Map<NodeRef<Table>, Query> namedQueries = new LinkedHashMap<>();
-
     // map expandable query to the node being the inner recursive reference
     private final Map<NodeRef<Query>, Node> expandableNamedQueries = new LinkedHashMap<>();
-
     // map inner recursive reference in the expandable query to the recursion base scope
     private final Map<NodeRef<Node>, Scope> expandableBaseScopes = new LinkedHashMap<>();
-
     // Synthetic scope when a query does not have a FROM clause
     // We need to track this separately because there's no node we can attach it to.
     private final Map<NodeRef<QuerySpecification>, Scope> implicitFromScopes = new LinkedHashMap<>();
-
     private final Map<NodeRef<Node>, Scope> scopes = new LinkedHashMap<>();
     private final Map<NodeRef<Expression>, ResolvedField> columnReferences = new LinkedHashMap<>();
-
     // a map of users to the columns per table that they access
     private final Map<AccessControlInfo, Map<QualifiedObjectName, Set<String>>> tableColumnReferences = new LinkedHashMap<>();
-
     // Record fields prefixed with labels in row pattern recognition context
     private final Map<NodeRef<DereferenceExpression>, LabelPrefixedReference> labelDereferences = new LinkedHashMap<>();
-
     private final Set<NodeRef<FunctionCall>> patternRecognitionFunctions = new LinkedHashSet<>();
-
     private final Map<NodeRef<RangeQuantifier>, Range> ranges = new LinkedHashMap<>();
-
     private final Map<NodeRef<RowPattern>, Set<String>> undefinedLabels = new LinkedHashMap<>();
-
     private final Map<NodeRef<WindowOperation>, MeasureDefinition> measureDefinitions = new LinkedHashMap<>();
-
     private final Map<NodeRef<QuerySpecification>, List<FunctionCall>> aggregates = new LinkedHashMap<>();
     private final Map<NodeRef<OrderBy>, List<Expression>> orderByAggregates = new LinkedHashMap<>();
     private final Map<NodeRef<QuerySpecification>, GroupingSetAnalysis> groupingSets = new LinkedHashMap<>();
-
     private final Map<NodeRef<Node>, Expression> where = new LinkedHashMap<>();
     private final Map<NodeRef<QuerySpecification>, Expression> having = new LinkedHashMap<>();
     private final Map<NodeRef<Node>, List<Expression>> orderByExpressions = new LinkedHashMap<>();
     private final Set<NodeRef<OrderBy>> redundantOrderBy = new HashSet<>();
     private final Map<NodeRef<Node>, List<SelectExpression>> selectExpressions = new LinkedHashMap<>();
-
     // Store resolved window specifications defined in WINDOW clause
     private final Map<NodeRef<QuerySpecification>, Map<CanonicalizationAware<Identifier>, ResolvedWindow>> windowDefinitions = new LinkedHashMap<>();
-
     // Store resolved window specifications for window functions and row pattern measures
     private final Map<NodeRef<Node>, ResolvedWindow> windows = new LinkedHashMap<>();
-
     private final Map<NodeRef<QuerySpecification>, List<FunctionCall>> windowFunctions = new LinkedHashMap<>();
     private final Map<NodeRef<OrderBy>, List<FunctionCall>> orderByWindowFunctions = new LinkedHashMap<>();
     private final Map<NodeRef<QuerySpecification>, List<WindowOperation>> windowMeasures = new LinkedHashMap<>();
@@ -163,55 +144,45 @@ public class Analysis
     private final Map<NodeRef<Offset>, Long> offset = new LinkedHashMap<>();
     private final Map<NodeRef<Node>, OptionalLong> limit = new LinkedHashMap<>();
     private final Map<NodeRef<AllColumns>, List<Field>> selectAllResultFields = new LinkedHashMap<>();
-
     private final Map<NodeRef<Join>, Expression> joins = new LinkedHashMap<>();
     private final Map<NodeRef<Join>, JoinUsingAnalysis> joinUsing = new LinkedHashMap<>();
     private final Map<NodeRef<Node>, SubqueryAnalysis> subqueries = new LinkedHashMap<>();
     private final Map<NodeRef<Expression>, PredicateCoercions> predicateCoercions = new LinkedHashMap<>();
-
     private final Map<NodeRef<Table>, TableEntry> tables = new LinkedHashMap<>();
-
     private final Map<NodeRef<Expression>, Type> types = new LinkedHashMap<>();
     private final Map<NodeRef<Expression>, Type> coercions = new LinkedHashMap<>();
     private final Set<NodeRef<Expression>> typeOnlyCoercions = new LinkedHashSet<>();
-
     private final Map<NodeRef<Expression>, Type> sortKeyCoercionsForFrameBoundCalculation = new LinkedHashMap<>();
     private final Map<NodeRef<Expression>, Type> sortKeyCoercionsForFrameBoundComparison = new LinkedHashMap<>();
     private final Map<NodeRef<Expression>, ResolvedFunction> frameBoundCalculations = new LinkedHashMap<>();
     private final Map<NodeRef<Relation>, List<Type>> relationCoercions = new LinkedHashMap<>();
     private final Map<NodeRef<FunctionCall>, RoutineEntry> resolvedFunctions = new LinkedHashMap<>();
     private final Map<NodeRef<Identifier>, LambdaArgumentDeclaration> lambdaArgumentReferences = new LinkedHashMap<>();
-
     private final Map<Field, ColumnHandle> columns = new LinkedHashMap<>();
-
     private final Map<NodeRef<SampledRelation>, Double> sampleRatios = new LinkedHashMap<>();
-
     private final Map<NodeRef<QuerySpecification>, List<GroupingOperation>> groupingOperations = new LinkedHashMap<>();
-
     private final Multiset<RowFilterScopeEntry> rowFilterScopes = HashMultiset.create();
     private final Map<NodeRef<Table>, List<Expression>> rowFilters = new LinkedHashMap<>();
-
     private final Multiset<ColumnMaskScopeEntry> columnMaskScopes = HashMultiset.create();
     private final Map<NodeRef<Table>, Map<String, List<Expression>>> columnMasks = new LinkedHashMap<>();
-
     private final Map<NodeRef<Unnest>, UnnestAnalysis> unnestAnalysis = new LinkedHashMap<>();
+    // for describe input and describe output
+    private final boolean isDescribe;
+    // for recursive view detection
+    private final Deque<Table> tablesForView = new ArrayDeque<>();
+    // row id field for update/delete queries
+    private final Map<NodeRef<Table>, FieldReference> rowIdField = new LinkedHashMap<>();
+    private final Multimap<Field, SourceColumn> originColumnDetails = ArrayListMultimap.create();
+    private final Multimap<NodeRef<Expression>, Field> fieldLineage = ArrayListMultimap.create();
+    private String updateType;
+    private Optional<UpdateTarget> target = Optional.empty();
+    private boolean skipMaterializedViewRefresh;
     private Optional<Create> create = Optional.empty();
     private Optional<Insert> insert = Optional.empty();
     private Optional<RefreshMaterializedViewAnalysis> refreshMaterializedView = Optional.empty();
     private Optional<QualifiedObjectName> delegatedRefreshMaterializedView = Optional.empty();
     private Optional<TableHandle> analyzeTarget = Optional.empty();
     private Optional<List<ColumnMetadata>> updatedColumns = Optional.empty();
-
-    // for describe input and describe output
-    private final boolean isDescribe;
-
-    // for recursive view detection
-    private final Deque<Table> tablesForView = new ArrayDeque<>();
-
-    // row id field for update/delete queries
-    private final Map<NodeRef<Table>, FieldReference> rowIdField = new LinkedHashMap<>();
-    private final Multimap<Field, SourceColumn> originColumnDetails = ArrayListMultimap.create();
-    private final Multimap<NodeRef<Expression>, Field> fieldLineage = ArrayListMultimap.create();
 
     public Analysis(@Nullable Statement root, Map<NodeRef<Parameter>, Expression> parameters, boolean isDescribe)
     {
@@ -705,19 +676,14 @@ public class Analysis
         this.analyzeTarget = Optional.of(analyzeTarget);
     }
 
-    public void setCreate(Create create)
-    {
-        this.create = Optional.of(create);
-    }
-
     public Optional<Create> getCreate()
     {
         return create;
     }
 
-    public void setInsert(Insert insert)
+    public void setCreate(Create create)
     {
-        this.insert = Optional.of(insert);
+        this.create = Optional.of(create);
     }
 
     public Optional<Insert> getInsert()
@@ -725,9 +691,9 @@ public class Analysis
         return insert;
     }
 
-    public void setUpdatedColumns(List<ColumnMetadata> updatedColumns)
+    public void setInsert(Insert insert)
     {
-        this.updatedColumns = Optional.of(updatedColumns);
+        this.insert = Optional.of(insert);
     }
 
     public Optional<List<ColumnMetadata>> getUpdatedColumns()
@@ -735,9 +701,9 @@ public class Analysis
         return updatedColumns;
     }
 
-    public void setRefreshMaterializedView(RefreshMaterializedViewAnalysis refreshMaterializedView)
+    public void setUpdatedColumns(List<ColumnMetadata> updatedColumns)
     {
-        this.refreshMaterializedView = Optional.of(refreshMaterializedView);
+        this.updatedColumns = Optional.of(updatedColumns);
     }
 
     public Optional<RefreshMaterializedViewAnalysis> getRefreshMaterializedView()
@@ -745,14 +711,19 @@ public class Analysis
         return refreshMaterializedView;
     }
 
-    public void setDelegatedRefreshMaterializedView(QualifiedObjectName viewName)
+    public void setRefreshMaterializedView(RefreshMaterializedViewAnalysis refreshMaterializedView)
     {
-        this.delegatedRefreshMaterializedView = Optional.of(viewName);
+        this.refreshMaterializedView = Optional.of(refreshMaterializedView);
     }
 
     public Optional<QualifiedObjectName> getDelegatedRefreshMaterializedView()
     {
         return delegatedRefreshMaterializedView;
+    }
+
+    public void setDelegatedRefreshMaterializedView(QualifiedObjectName viewName)
+    {
+        this.delegatedRefreshMaterializedView = Optional.of(viewName);
     }
 
     public Query getNamedQuery(Table table)
@@ -1338,11 +1309,11 @@ public class Analysis
         public Set<FieldId> getAllFields()
         {
             return Streams.concat(
-                    cubes.stream().flatMap(Collection::stream),
-                    rollups.stream().flatMap(Collection::stream),
-                    ordinarySets.stream()
-                            .flatMap(Collection::stream)
-                            .flatMap(Collection::stream))
+                            cubes.stream().flatMap(Collection::stream),
+                            rollups.stream().flatMap(Collection::stream),
+                            ordinarySets.stream()
+                                    .flatMap(Collection::stream)
+                                    .flatMap(Collection::stream))
                     .collect(toImmutableSet());
         }
     }

@@ -40,18 +40,6 @@ public class InternalTable
         this.pages = ImmutableList.copyOf(requireNonNull(pages, "pages is null"));
     }
 
-    public int getColumnIndex(String columnName)
-    {
-        Integer index = columnIndexes.get(columnName);
-        checkArgument(index != null, "Column '%s' not found", columnName);
-        return index;
-    }
-
-    public List<Page> getPages()
-    {
-        return pages;
-    }
-
     public static Builder builder(ColumnMetadata... columns)
     {
         return builder(ImmutableList.copyOf(columns));
@@ -66,6 +54,18 @@ public class InternalTable
             types.add(column.getType());
         }
         return new Builder(names.build(), types.build());
+    }
+
+    public int getColumnIndex(String columnName)
+    {
+        Integer index = columnIndexes.get(columnName);
+        checkArgument(index != null, "Column '%s' not found", columnName);
+        return index;
+    }
+
+    public List<Page> getPages()
+    {
+        return pages;
     }
 
     public static class Builder

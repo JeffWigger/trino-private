@@ -84,6 +84,7 @@ public class VariableWidthBlockEncoding
                     .writeBytes(variableWidthBlock.getRawSlice(0), variableWidthBlock.getPositionOffset(0), totalLength);
         }
     }
+
     @Override
     public Block readBlock(BlockEncodingSerde blockEncodingSerde, SliceInput sliceInput)
     {

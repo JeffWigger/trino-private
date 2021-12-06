@@ -68,6 +68,37 @@ public class OAuth2TokenExchangeResource
         this.responseExecutor = requireNonNull(executor, "executor is null").getExecutor();
     }
 
+    private static Response toResponse(TokenPoll poll)
+    {
+        if (poll.getError().isPresent()) {
+            return Response.ok(jsonMap("error", poll.getError().get()), APPLICATION_JSON_TYPE).build();
+        }
+        if (poll.getToken().isPresent()) {
+            return Response.ok(jsonMap("token", poll.getToken().get()), APPLICATION_JSON_TYPE).build();
+        }
+        throw new VerifyException("invalid TokenPoll state");
+    }
+
+    private static Response pendingResponse(HttpServletRequest request)
+    {
+        return Response.ok(jsonMap("nextUri", request.getRequestURL()), APPLICATION_JSON_TYPE).build();
+    }
+
+    public static String getTokenUri(UUID authId)
+    {
+        return TOKEN_ENDPOINT + authId;
+    }
+
+    public static String getInitiateUri(UUID authId)
+    {
+        return TOKEN_ENDPOINT + "initiate/" + hashAuthId(authId);
+    }
+
+    private static String jsonMap(String key, Object value)
+    {
+        return MAP_CODEC.toJson(ImmutableMap.of(key, value));
+    }
+
     @ResourceSecurity(PUBLIC)
     @Path("initiate/{authIdHash}")
     @GET
@@ -95,22 +126,6 @@ public class OAuth2TokenExchangeResource
                 .withTimeout(MAX_POLL_TIME, pendingResponse(request));
     }
 
-    private static Response toResponse(TokenPoll poll)
-    {
-        if (poll.getError().isPresent()) {
-            return Response.ok(jsonMap("error", poll.getError().get()), APPLICATION_JSON_TYPE).build();
-        }
-        if (poll.getToken().isPresent()) {
-            return Response.ok(jsonMap("token", poll.getToken().get()), APPLICATION_JSON_TYPE).build();
-        }
-        throw new VerifyException("invalid TokenPoll state");
-    }
-
-    private static Response pendingResponse(HttpServletRequest request)
-    {
-        return Response.ok(jsonMap("nextUri", request.getRequestURL()), APPLICATION_JSON_TYPE).build();
-    }
-
     @ResourceSecurity(PUBLIC)
     @DELETE
     @Path("{authId}")
@@ -121,20 +136,5 @@ public class OAuth2TokenExchangeResource
         }
 
         tokenExchange.dropToken(authId);
-    }
-
-    public static String getTokenUri(UUID authId)
-    {
-        return TOKEN_ENDPOINT + authId;
-    }
-
-    public static String getInitiateUri(UUID authId)
-    {
-        return TOKEN_ENDPOINT + "initiate/" + hashAuthId(authId);
-    }
-
-    private static String jsonMap(String key, Object value)
-    {
-        return MAP_CODEC.toJson(ImmutableMap.of(key, value));
     }
 }

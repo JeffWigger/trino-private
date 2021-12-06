@@ -45,6 +45,32 @@ import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 public class RevokeTask
         implements DataDefinitionTask<Revoke>
 {
+    private static Set<Privilege> parseStatementPrivileges(Revoke statement)
+    {
+        Set<Privilege> privileges;
+        if (statement.getPrivileges().isPresent()) {
+            privileges = statement.getPrivileges().get().stream()
+                    .map(privilege -> parsePrivilege(statement, privilege))
+                    .collect(toImmutableSet());
+        }
+        else {
+            // All privileges
+            privileges = EnumSet.allOf(Privilege.class);
+        }
+        return privileges;
+    }
+
+    private static Privilege parsePrivilege(Revoke statement, String privilegeString)
+    {
+        for (Privilege privilege : Privilege.values()) {
+            if (privilege.name().equalsIgnoreCase(privilegeString)) {
+                return privilege;
+            }
+        }
+
+        throw semanticException(INVALID_PRIVILEGE, statement, "Unknown privilege: '%s'", privilegeString);
+    }
+
     @Override
     public String getName()
     {
@@ -100,31 +126,5 @@ public class RevokeTask
         }
 
         metadata.revokeTablePrivileges(session, tableName, privileges, createPrincipal(statement.getGrantee()), statement.isGrantOptionFor());
-    }
-
-    private static Set<Privilege> parseStatementPrivileges(Revoke statement)
-    {
-        Set<Privilege> privileges;
-        if (statement.getPrivileges().isPresent()) {
-            privileges = statement.getPrivileges().get().stream()
-                    .map(privilege -> parsePrivilege(statement, privilege))
-                    .collect(toImmutableSet());
-        }
-        else {
-            // All privileges
-            privileges = EnumSet.allOf(Privilege.class);
-        }
-        return privileges;
-    }
-
-    private static Privilege parsePrivilege(Revoke statement, String privilegeString)
-    {
-        for (Privilege privilege : Privilege.values()) {
-            if (privilege.name().equalsIgnoreCase(privilegeString)) {
-                return privilege;
-            }
-        }
-
-        throw semanticException(INVALID_PRIVILEGE, statement, "Unknown privilege: '%s'", privilegeString);
     }
 }

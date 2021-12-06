@@ -47,14 +47,12 @@ public class IndexSnapshotBuilder
     private final PagesIndex.Factory pagesIndexFactory;
 
     private final long maxMemoryInBytes;
+    private final List<Page> pages = new ArrayList<>();
+    private final PageBuilder missingKeysPageBuilder;
     private PagesIndex outputPagesIndex;
     private PagesIndex missingKeysIndex;
     private LookupSource missingKeys;
-
-    private final List<Page> pages = new ArrayList<>();
     private long memoryInBytes;
-
-    private final PageBuilder missingKeysPageBuilder;
 
     public IndexSnapshotBuilder(List<Type> outputTypes,
             List<Integer> keyOutputChannels,

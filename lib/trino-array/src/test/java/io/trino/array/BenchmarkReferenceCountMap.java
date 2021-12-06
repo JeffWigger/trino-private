@@ -46,6 +46,28 @@ public class BenchmarkReferenceCountMap
     private static final int NUMBER_OF_ENTRIES = 1_000_000;
     private static final int NUMBER_OF_BASES = 100;
 
+    public static void main(String[] args)
+            throws RunnerException
+    {
+        benchmark(BenchmarkReferenceCountMap.class, WarmupMode.BULK)
+                .withOptions(optionsBuilder -> optionsBuilder
+                        .addProfiler(GCProfiler.class)
+                        .jvmArgs("-XX:+UseG1GC"))
+                .run();
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(NUMBER_OF_ENTRIES)
+    public ReferenceCountMap benchmarkInserts(Data data)
+    {
+        ReferenceCountMap map = new ReferenceCountMap();
+        for (int i = 0; i < NUMBER_OF_ENTRIES; i++) {
+            map.incrementAndGet(data.slices[i]);
+            map.incrementAndGet(data.slices[i].getBase());
+        }
+        return map;
+    }
+
     @State(Scope.Thread)
     public static class Data
     {
@@ -100,27 +122,5 @@ public class BenchmarkReferenceCountMap
                 }
             }
         }
-    }
-
-    @Benchmark
-    @OperationsPerInvocation(NUMBER_OF_ENTRIES)
-    public ReferenceCountMap benchmarkInserts(Data data)
-    {
-        ReferenceCountMap map = new ReferenceCountMap();
-        for (int i = 0; i < NUMBER_OF_ENTRIES; i++) {
-            map.incrementAndGet(data.slices[i]);
-            map.incrementAndGet(data.slices[i].getBase());
-        }
-        return map;
-    }
-
-    public static void main(String[] args)
-            throws RunnerException
-    {
-        benchmark(BenchmarkReferenceCountMap.class, WarmupMode.BULK)
-                .withOptions(optionsBuilder -> optionsBuilder
-                        .addProfiler(GCProfiler.class)
-                        .jvmArgs("-XX:+UseG1GC"))
-                .run();
     }
 }

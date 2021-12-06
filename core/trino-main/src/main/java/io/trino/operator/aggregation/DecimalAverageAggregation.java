@@ -99,19 +99,6 @@ public class DecimalAverageAggregation
                 false);
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        return ImmutableList.of(new LongDecimalWithOverflowAndLongStateSerializer().getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type type = getOnlyElement(functionBinding.getBoundSignature().getArgumentTypes());
-        return generateAggregation(type);
-    }
-
     private static InternalAggregationFunction generateAggregation(Type type)
     {
         checkArgument(type instanceof DecimalType, "type must be Decimal");
@@ -229,5 +216,18 @@ public class DecimalAverageAggregation
             sum = sum.add(new BigDecimal(OVERFLOW_MULTIPLIER.multiply(BigInteger.valueOf(overflow))));
         }
         return sum.divide(count, type.getScale(), ROUND_HALF_UP);
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        return ImmutableList.of(new LongDecimalWithOverflowAndLongStateSerializer().getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type type = getOnlyElement(functionBinding.getBoundSignature().getArgumentTypes());
+        return generateAggregation(type);
     }
 }

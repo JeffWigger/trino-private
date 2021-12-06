@@ -49,16 +49,6 @@ public class Scope
     private final RelationType relation;
     private final Map<String, WithQuery> namedQueries;
 
-    public static Scope create()
-    {
-        return builder().build();
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
     private Scope(
             Optional<Scope> parent,
             boolean queryBoundary,
@@ -71,6 +61,27 @@ public class Scope
         this.queryBoundary = queryBoundary;
         this.relation = requireNonNull(relation, "relation is null");
         this.namedQueries = ImmutableMap.copyOf(requireNonNull(namedQueries, "namedQueries is null"));
+    }
+
+    public static Scope create()
+    {
+        return builder().build();
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    private static boolean isColumnReference(QualifiedName name, RelationType relation)
+    {
+        while (name.getPrefix().isPresent()) {
+            name = name.getPrefix().get();
+            if (!relation.resolveFields(name).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public Scope withRelationType(RelationType relationType)
@@ -299,17 +310,6 @@ public class Scope
         return false;
     }
 
-    private static boolean isColumnReference(QualifiedName name, RelationType relation)
-    {
-        while (name.getPrefix().isPresent()) {
-            name = name.getPrefix().get();
-            if (!relation.resolveFields(name).isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     public Optional<WithQuery> getNamedQuery(String name)
     {
         if (namedQueries.containsKey(name)) {
@@ -331,11 +331,17 @@ public class Scope
                 .toString();
     }
 
+    enum BasisType
+    {
+        TABLE,
+        FIELD
+    }
+
     public static final class Builder
     {
+        private final Map<String, WithQuery> namedQueries = new HashMap<>();
         private RelationId relationId = RelationId.anonymous();
         private RelationType relationType = new RelationType();
-        private final Map<String, WithQuery> namedQueries = new HashMap<>();
         private Optional<Scope> parent = Optional.empty();
         private boolean queryBoundary;
 
@@ -408,11 +414,5 @@ public class Scope
         {
             return relationType;
         }
-    }
-
-    enum BasisType
-    {
-        TABLE,
-        FIELD
     }
 }

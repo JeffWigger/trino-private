@@ -74,31 +74,12 @@ public final class PartitionedLookupSourceFactory
 
     @GuardedBy("lock")
     private final SettableFuture<Void> destroyed = SettableFuture.create();
-
-    @GuardedBy("lock")
-    private int partitionsSet;
-
-    @GuardedBy("lock")
-    private SpillingInfo spillingInfo = new SpillingInfo(NO_SPILL_EPOCH, ImmutableSet.of());
-
     @GuardedBy("lock")
     private final Map<Integer, SpilledLookupSourceHandle> spilledPartitions = new HashMap<>();
-
-    @GuardedBy("lock")
-    private TrackingLookupSourceSupplier lookupSourceSupplier;
-
     @GuardedBy("lock")
     private final List<SettableFuture<LookupSourceProvider>> lookupSourceFutures = new ArrayList<>();
-
-    @GuardedBy("lock")
-    private int finishedProbeOperators;
-
-    @GuardedBy("lock")
-    private OptionalInt partitionedConsumptionParticipants = OptionalInt.empty();
-
     @GuardedBy("lock")
     private final SettableFuture<PartitionedConsumption<Supplier<LookupSource>>> partitionedConsumption = SettableFuture.create();
-
     /**
      * Cached LookupSource on behalf of LookupJoinOperator (represented by SpillAwareLookupSourceProvider). LookupSource instantiation has non-negligible cost.
      * <p>
@@ -107,6 +88,16 @@ public final class PartitionedLookupSourceFactory
      * the prolong time, and other threads would not be able to insert new (cached) lookup sources in this map, harming work concurrency.
      */
     private final ConcurrentHashMap<SpillAwareLookupSourceProvider, LookupSource> suppliedLookupSources = new ConcurrentHashMap<>();
+    @GuardedBy("lock")
+    private int partitionsSet;
+    @GuardedBy("lock")
+    private SpillingInfo spillingInfo = new SpillingInfo(NO_SPILL_EPOCH, ImmutableSet.of());
+    @GuardedBy("lock")
+    private TrackingLookupSourceSupplier lookupSourceSupplier;
+    @GuardedBy("lock")
+    private int finishedProbeOperators;
+    @GuardedBy("lock")
+    private OptionalInt partitionedConsumptionParticipants = OptionalInt.empty();
 
     public PartitionedLookupSourceFactory(List<Type> types, List<Type> outputTypes, List<Type> hashChannelTypes, int partitionCount, boolean outer, BlockTypeOperators blockTypeOperators)
     {
@@ -447,41 +438,6 @@ public final class PartitionedLookupSourceFactory
         return nonCancellationPropagating(destroyed);
     }
 
-    @NotThreadSafe
-    private class SpillAwareLookupSourceProvider
-            implements LookupSourceProvider
-    {
-        @Override
-        public <R> R withLease(Function<LookupSourceLease, R> action)
-        {
-            lock.readLock().lock();
-            try {
-                LookupSource lookupSource = suppliedLookupSources.computeIfAbsent(this, k -> lookupSourceSupplier.getLookupSource());
-                LookupSourceLease lease = new SpillAwareLookupSourceLease(lookupSource, spillingInfo);
-                return action.apply(lease);
-            }
-            finally {
-                lock.readLock().unlock();
-            }
-        }
-
-        @Override
-        public void close()
-        {
-            LookupSource lookupSource;
-            lock.readLock().lock();
-            try {
-                lookupSource = suppliedLookupSources.remove(this);
-            }
-            finally {
-                lock.readLock().unlock();
-            }
-            if (lookupSource != null) {
-                lookupSource.close();
-            }
-        }
-    }
-
     private static class SpillAwareLookupSourceLease
             implements LookupSourceLease
     {
@@ -602,6 +558,41 @@ public final class PartitionedLookupSourceFactory
         IntPredicate getSpillMask()
         {
             return spilledPartitions::contains;
+        }
+    }
+
+    @NotThreadSafe
+    private class SpillAwareLookupSourceProvider
+            implements LookupSourceProvider
+    {
+        @Override
+        public <R> R withLease(Function<LookupSourceLease, R> action)
+        {
+            lock.readLock().lock();
+            try {
+                LookupSource lookupSource = suppliedLookupSources.computeIfAbsent(this, k -> lookupSourceSupplier.getLookupSource());
+                LookupSourceLease lease = new SpillAwareLookupSourceLease(lookupSource, spillingInfo);
+                return action.apply(lease);
+            }
+            finally {
+                lock.readLock().unlock();
+            }
+        }
+
+        @Override
+        public void close()
+        {
+            LookupSource lookupSource;
+            lock.readLock().lock();
+            try {
+                lookupSource = suppliedLookupSources.remove(this);
+            }
+            finally {
+                lock.readLock().unlock();
+            }
+            if (lookupSource != null) {
+                lookupSource.close();
+            }
         }
     }
 }

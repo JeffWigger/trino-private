@@ -26,6 +26,11 @@ public class TypeProvider
 {
     private final Map<Symbol, Type> types;
 
+    private TypeProvider(Map<Symbol, Type> types)
+    {
+        this.types = types;
+    }
+
     public static TypeProvider viewOf(Map<Symbol, Type> types)
     {
         return new TypeProvider(types);
@@ -39,11 +44,6 @@ public class TypeProvider
     public static TypeProvider empty()
     {
         return new TypeProvider(ImmutableMap.of());
-    }
-
-    private TypeProvider(Map<Symbol, Type> types)
-    {
-        this.types = types;
     }
 
     public Type get(Symbol symbol)

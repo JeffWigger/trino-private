@@ -36,9 +36,25 @@ public class RowBlock
     private final boolean[] rowIsNull;
     private final int[] fieldBlockOffsets;
     private final Block[] fieldBlocks;
-
-    private volatile long sizeInBytes = -1;
     private final long retainedSizeInBytes;
+    private volatile long sizeInBytes = -1;
+
+    /**
+     * Use createRowBlockInternal or fromFieldBlocks instead of this method.  The caller of this method is assumed to have
+     * validated the arguments with validateConstructorArguments.
+     */
+    private RowBlock(int startOffset, int positionCount, @Nullable boolean[] rowIsNull, int[] fieldBlockOffsets, Block[] fieldBlocks)
+    {
+        super(fieldBlocks.length);
+
+        this.startOffset = startOffset;
+        this.positionCount = positionCount;
+        this.rowIsNull = rowIsNull;
+        this.fieldBlockOffsets = fieldBlockOffsets;
+        this.fieldBlocks = fieldBlocks;
+
+        this.retainedSizeInBytes = INSTANCE_SIZE + sizeOf(fieldBlockOffsets) + sizeOf(rowIsNull);
+    }
 
     /**
      * Create a row block directly from columnar nulls and field blocks.
@@ -110,23 +126,6 @@ public class RowBlock
                 throw new IllegalArgumentException(format("length of field blocks differ: field 0: %s, block %s: %s", firstFieldBlockPositionCount, i, fieldBlocks[i].getPositionCount()));
             }
         }
-    }
-
-    /**
-     * Use createRowBlockInternal or fromFieldBlocks instead of this method.  The caller of this method is assumed to have
-     * validated the arguments with validateConstructorArguments.
-     */
-    private RowBlock(int startOffset, int positionCount, @Nullable boolean[] rowIsNull, int[] fieldBlockOffsets, Block[] fieldBlocks)
-    {
-        super(fieldBlocks.length);
-
-        this.startOffset = startOffset;
-        this.positionCount = positionCount;
-        this.rowIsNull = rowIsNull;
-        this.fieldBlockOffsets = fieldBlockOffsets;
-        this.fieldBlocks = fieldBlocks;
-
-        this.retainedSizeInBytes = INSTANCE_SIZE + sizeOf(fieldBlockOffsets) + sizeOf(rowIsNull);
     }
 
     @Override

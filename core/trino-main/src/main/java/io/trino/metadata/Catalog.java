@@ -22,22 +22,14 @@ import static java.util.Objects.requireNonNull;
 
 public class Catalog
 {
-    public enum SecurityManagement
-    {
-        SYSTEM, CONNECTOR
-    }
-
     private final String catalogName;
     private final CatalogName connectorCatalogName;
     private final Connector connector;
     private final SecurityManagement securityManagement;
-
     private final CatalogName informationSchemaId;
     private final Connector informationSchema;
-
     private final CatalogName systemTablesId;
     private final Connector systemTables;
-
     public Catalog(
             String catalogName,
             CatalogName connectorCatalogName,
@@ -104,5 +96,10 @@ public class Catalog
                 .add("catalogName", catalogName)
                 .add("connectorConnectorId", connectorCatalogName)
                 .toString();
+    }
+
+    public enum SecurityManagement
+    {
+        SYSTEM, CONNECTOR
     }
 }

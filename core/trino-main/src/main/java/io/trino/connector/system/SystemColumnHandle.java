@@ -36,6 +36,13 @@ public class SystemColumnHandle
         this.columnName = requireNonNull(columnName, "columnName is null");
     }
 
+    public static Map<String, ColumnHandle> toSystemColumnHandles(ConnectorTableMetadata tableMetadata)
+    {
+        return tableMetadata.getColumns().stream().collect(toImmutableMap(
+                ColumnMetadata::getName,
+                column -> new SystemColumnHandle(column.getName())));
+    }
+
     @JsonProperty
     public String getColumnName()
     {
@@ -65,12 +72,5 @@ public class SystemColumnHandle
     public String toString()
     {
         return columnName;
-    }
-
-    public static Map<String, ColumnHandle> toSystemColumnHandles(ConnectorTableMetadata tableMetadata)
-    {
-        return tableMetadata.getColumns().stream().collect(toImmutableMap(
-                ColumnMetadata::getName,
-                column -> new SystemColumnHandle(column.getName())));
     }
 }

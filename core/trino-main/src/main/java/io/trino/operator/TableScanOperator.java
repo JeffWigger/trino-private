@@ -50,95 +50,6 @@ import static java.util.Objects.requireNonNull;
 public class TableScanOperator
         implements SourceOperator
 {
-    public static class TableScanOperatorFactory
-            implements SourceOperatorFactory, WorkProcessorSourceOperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId sourceId;
-        private final PageSourceProvider pageSourceProvider;
-        private final TableHandle table;
-        private final List<ColumnHandle> columns;
-        private final DynamicFilter dynamicFilter;
-        private boolean closed;
-
-        public TableScanOperatorFactory(
-                int operatorId,
-                PlanNodeId sourceId,
-                PageSourceProvider pageSourceProvider,
-                TableHandle table,
-                Iterable<ColumnHandle> columns,
-                DynamicFilter dynamicFilter)
-        {
-            this.operatorId = operatorId;
-            this.sourceId = requireNonNull(sourceId, "sourceId is null");
-            this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
-            this.table = requireNonNull(table, "table is null");
-            this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
-            this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
-        }
-
-        @Override
-        public int getOperatorId()
-        {
-            return operatorId;
-        }
-
-        @Override
-        public PlanNodeId getSourceId()
-        {
-            return sourceId;
-        }
-
-        @Override
-        public PlanNodeId getPlanNodeId()
-        {
-            return sourceId;
-        }
-
-        @Override
-        public String getOperatorType()
-        {
-            return TableScanOperator.class.getSimpleName();
-        }
-
-        @Override
-        public SourceOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, getOperatorType());
-            return new TableScanOperator(
-                    operatorContext,
-                    sourceId,
-                    pageSourceProvider,
-                    table,
-                    columns,
-                    dynamicFilter);
-        }
-
-        @Override
-        public WorkProcessorSourceOperator create(
-                Session session,
-                MemoryTrackingContext memoryTrackingContext,
-                DriverYieldSignal yieldSignal,
-                WorkProcessor<Split> splits)
-        {
-            return new TableScanWorkProcessorOperator(
-                    session,
-                    memoryTrackingContext,
-                    splits,
-                    pageSourceProvider,
-                    table,
-                    columns,
-                    dynamicFilter);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final PlanNodeId planNodeId;
     private final PageSourceProvider pageSourceProvider;
@@ -147,19 +58,15 @@ public class TableScanOperator
     private final DynamicFilter dynamicFilter;
     private final LocalMemoryContext systemMemoryContext;
     private final SettableFuture<Void> blocked = SettableFuture.create();
-
     @Nullable
     private Split split;
     @Nullable
     private ConnectorPageSource source;
-
     private boolean finished;
-
     private long completedBytes;
     private long completedPositions;
     private long readTimeNanos;
     private int counter = 0;
-
     public TableScanOperator(
             OperatorContext operatorContext,
             PlanNodeId planNodeId,
@@ -175,6 +82,11 @@ public class TableScanOperator
         this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
         this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
         this.systemMemoryContext = operatorContext.newLocalSystemMemoryContext(TableScanOperator.class.getSimpleName());
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -279,11 +191,6 @@ public class TableScanOperator
         return NOT_BLOCKED;
     }
 
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
-    }
-
     @Override
     public boolean needsInput()
     {
@@ -332,8 +239,97 @@ public class TableScanOperator
         // updating system memory usage should happen after page is loaded.
         systemMemoryContext.setBytes(source.getSystemMemoryUsage());
         operatorContext.setLatestConnectorMetrics(source.getMetrics());
-        System.out.println(String.format("Tablescan: %d page == %b",counter, page==null));
+        System.out.println(String.format("Tablescan: %d page == %b", counter, page == null));
         counter++;
         return page;
+    }
+
+    public static class TableScanOperatorFactory
+            implements SourceOperatorFactory, WorkProcessorSourceOperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId sourceId;
+        private final PageSourceProvider pageSourceProvider;
+        private final TableHandle table;
+        private final List<ColumnHandle> columns;
+        private final DynamicFilter dynamicFilter;
+        private boolean closed;
+
+        public TableScanOperatorFactory(
+                int operatorId,
+                PlanNodeId sourceId,
+                PageSourceProvider pageSourceProvider,
+                TableHandle table,
+                Iterable<ColumnHandle> columns,
+                DynamicFilter dynamicFilter)
+        {
+            this.operatorId = operatorId;
+            this.sourceId = requireNonNull(sourceId, "sourceId is null");
+            this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
+            this.table = requireNonNull(table, "table is null");
+            this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
+            this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
+        }
+
+        @Override
+        public int getOperatorId()
+        {
+            return operatorId;
+        }
+
+        @Override
+        public PlanNodeId getSourceId()
+        {
+            return sourceId;
+        }
+
+        @Override
+        public PlanNodeId getPlanNodeId()
+        {
+            return sourceId;
+        }
+
+        @Override
+        public String getOperatorType()
+        {
+            return TableScanOperator.class.getSimpleName();
+        }
+
+        @Override
+        public SourceOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, getOperatorType());
+            return new TableScanOperator(
+                    operatorContext,
+                    sourceId,
+                    pageSourceProvider,
+                    table,
+                    columns,
+                    dynamicFilter);
+        }
+
+        @Override
+        public WorkProcessorSourceOperator create(
+                Session session,
+                MemoryTrackingContext memoryTrackingContext,
+                DriverYieldSignal yieldSignal,
+                WorkProcessor<Split> splits)
+        {
+            return new TableScanWorkProcessorOperator(
+                    session,
+                    memoryTrackingContext,
+                    splits,
+                    pageSourceProvider,
+                    table,
+                    columns,
+                    dynamicFilter);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
     }
 }

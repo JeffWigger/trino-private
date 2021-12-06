@@ -35,6 +35,13 @@ public final class SqlTimeWithTimeZone
     private final long picos;
     private final int offsetMinutes;
 
+    private SqlTimeWithTimeZone(int precision, long picos, int offsetMinutes)
+    {
+        this.precision = precision;
+        this.picos = picos;
+        this.offsetMinutes = offsetMinutes;
+    }
+
     public static SqlTimeWithTimeZone newInstance(int precision, long picoseconds, int offsetMinutes)
     {
         if (precision < 0 || precision > 12) {
@@ -52,13 +59,6 @@ public final class SqlTimeWithTimeZone
         }
 
         return new SqlTimeWithTimeZone(precision, picoseconds, offsetMinutes);
-    }
-
-    private SqlTimeWithTimeZone(int precision, long picos, int offsetMinutes)
-    {
-        this.precision = precision;
-        this.picos = picos;
-        this.offsetMinutes = offsetMinutes;
     }
 
     public long getPicos()

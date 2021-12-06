@@ -52,6 +52,11 @@ public class TestMetadataReader
     // Used by Presto [305, ?)
     private static final Optional<String> PARQUET_MR_1_10 = Optional.of("parquet-mr version 1.10.1 (build a89df8f9932b6ef6633d06069e50c9b7970bebd1)");
 
+    private static byte[] fromHex(String hex)
+    {
+        return BaseEncoding.base16().decode(hex);
+    }
+
     @Test(dataProvider = "allCreatedBy")
     public void testReadStatsInt32(Optional<String> fileCreatedBy)
     {
@@ -332,10 +337,5 @@ public class TestMetadataReader
                 {PARQUET_MR_1_8},
                 {PARQUET_MR_1_10},
         };
-    }
-
-    private static byte[] fromHex(String hex)
-    {
-        return BaseEncoding.base16().decode(hex);
     }
 }

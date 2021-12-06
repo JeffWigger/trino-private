@@ -96,6 +96,11 @@ public class MergeProjectWithValues
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
+    private static boolean isSupportedValues(ValuesNode valuesNode)
+    {
+        return valuesNode.getRows().isEmpty() || valuesNode.getRows().get().stream().allMatch(Row.class::isInstance);
+    }
+
     @Override
     public Pattern<ProjectNode> getPattern()
     {
@@ -166,11 +171,6 @@ public class MergeProjectWithValues
             projectedRows.add(projectedRow);
         }
         return Result.ofPlanNode(new ValuesNode(valuesNode.getId(), outputs, projectedRows.build()));
-    }
-
-    private static boolean isSupportedValues(ValuesNode valuesNode)
-    {
-        return valuesNode.getRows().isEmpty() || valuesNode.getRows().get().stream().allMatch(Row.class::isInstance);
     }
 
     private Map<SymbolReference, Expression> buildMappings(List<Symbol> symbols, Row row)

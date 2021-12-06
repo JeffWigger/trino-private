@@ -17,27 +17,24 @@ package io.trino.array;
 // Copyright (C) 2010-2013 Sebastiano Vigna
 public final class BigArrays
 {
-    private BigArrays() {}
-
     /**
      * Initial number of segments to support in array.
      */
     static final int INITIAL_SEGMENTS = 1024;
-
     /**
      * The shift used to compute the segment associated with an index (equivalently, the logarithm of the segment size).
      */
     static final int SEGMENT_SHIFT = 10;
-
     /**
      * Size of a single segment of a BigArray.
      */
     public static final int SEGMENT_SIZE = 1 << SEGMENT_SHIFT;
-
     /**
      * The mask used to compute the offset associated to an index.
      */
     static final int SEGMENT_MASK = SEGMENT_SIZE - 1;
+
+    private BigArrays() {}
 
     /**
      * Computes the segment associated with a given index.

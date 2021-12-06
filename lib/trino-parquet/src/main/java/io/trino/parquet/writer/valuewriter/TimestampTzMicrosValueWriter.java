@@ -31,6 +31,12 @@ public class TimestampTzMicrosValueWriter
         super(parquetType, valuesWriter);
     }
 
+    private static long toMicros(LongTimestampWithTimeZone timestamp)
+    {
+        return (timestamp.getEpochMillis() * MICROSECONDS_PER_MILLISECOND) +
+                roundDiv(timestamp.getPicosOfMilli(), PICOSECONDS_PER_MICROSECOND);
+    }
+
     @Override
     public void write(Block block)
     {
@@ -41,11 +47,5 @@ public class TimestampTzMicrosValueWriter
                 getStatistics().updateStats(micros);
             }
         }
-    }
-
-    private static long toMicros(LongTimestampWithTimeZone timestamp)
-    {
-        return (timestamp.getEpochMillis() * MICROSECONDS_PER_MILLISECOND) +
-                roundDiv(timestamp.getPicosOfMilli(), PICOSECONDS_PER_MICROSECOND);
     }
 }

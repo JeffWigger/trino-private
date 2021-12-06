@@ -34,52 +34,10 @@ public class TableDeleteOperator
         implements Operator
 {
     public static final List<Type> TYPES = ImmutableList.of(BIGINT);
-
-    public static class TableDeleteOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Metadata metadata;
-        private final Session session;
-        private final TableHandle tableHandle;
-        private boolean closed;
-
-        public TableDeleteOperatorFactory(int operatorId, PlanNodeId planNodeId, Metadata metadata, Session session, TableHandle tableHandle)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.metadata = requireNonNull(metadata, "metadata is null");
-            this.session = requireNonNull(session, "session is null");
-            this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableDeleteOperator.class.getSimpleName());
-            return new TableDeleteOperator(context, metadata, session, tableHandle);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new TableDeleteOperatorFactory(operatorId, planNodeId, metadata, session, tableHandle);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final Metadata metadata;
     private final Session session;
     private final TableHandle tableHandle;
-
     private boolean finished;
 
     public TableDeleteOperator(OperatorContext operatorContext, Metadata metadata, Session session, TableHandle tableHandle)
@@ -141,5 +99,45 @@ public class TableDeleteOperator
             rowsBuilder.appendNull();
         }
         return page.build();
+    }
+
+    public static class TableDeleteOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Metadata metadata;
+        private final Session session;
+        private final TableHandle tableHandle;
+        private boolean closed;
+
+        public TableDeleteOperatorFactory(int operatorId, PlanNodeId planNodeId, Metadata metadata, Session session, TableHandle tableHandle)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.metadata = requireNonNull(metadata, "metadata is null");
+            this.session = requireNonNull(session, "session is null");
+            this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableDeleteOperator.class.getSimpleName());
+            return new TableDeleteOperator(context, metadata, session, tableHandle);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new TableDeleteOperatorFactory(operatorId, planNodeId, metadata, session, tableHandle);
+        }
     }
 }

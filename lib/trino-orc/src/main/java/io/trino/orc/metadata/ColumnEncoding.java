@@ -18,17 +18,8 @@ import static java.util.Objects.requireNonNull;
 
 public class ColumnEncoding
 {
-    public enum ColumnEncodingKind
-    {
-        DIRECT,
-        DICTIONARY,
-        DIRECT_V2,
-        DICTIONARY_V2,
-    }
-
     private final ColumnEncodingKind columnEncodingKind;
     private final int dictionarySize;
-
     public ColumnEncoding(ColumnEncodingKind columnEncodingKind, int dictionarySize)
     {
         this.columnEncodingKind = requireNonNull(columnEncodingKind, "columnEncodingKind is null");
@@ -52,5 +43,13 @@ public class ColumnEncoding
                 .add("columnEncodingKind", columnEncodingKind)
                 .add("dictionarySize", dictionarySize)
                 .toString();
+    }
+
+    public enum ColumnEncodingKind
+    {
+        DIRECT,
+        DICTIONARY,
+        DIRECT_V2,
+        DICTIONARY_V2,
     }
 }

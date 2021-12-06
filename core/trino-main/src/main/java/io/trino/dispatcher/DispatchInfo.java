@@ -27,6 +27,14 @@ public class DispatchInfo
     private final Duration elapsedTime;
     private final Duration queuedTime;
 
+    private DispatchInfo(Optional<CoordinatorLocation> coordinatorLocation, Optional<ExecutionFailureInfo> failureInfo, Duration elapsedTime, Duration queuedTime)
+    {
+        this.coordinatorLocation = requireNonNull(coordinatorLocation, "coordinatorLocation is null");
+        this.failureInfo = requireNonNull(failureInfo, "failureInfo is null");
+        this.elapsedTime = requireNonNull(elapsedTime, "elapsedTime is null");
+        this.queuedTime = requireNonNull(queuedTime, "queuedTime is null");
+    }
+
     public static DispatchInfo queued(Duration elapsedTime, Duration queuedTime)
     {
         return new DispatchInfo(Optional.empty(), Optional.empty(), elapsedTime, queuedTime);
@@ -42,14 +50,6 @@ public class DispatchInfo
     {
         requireNonNull(failureInfo, "failureInfo is null");
         return new DispatchInfo(Optional.empty(), Optional.of(failureInfo), elapsedTime, queuedTime);
-    }
-
-    private DispatchInfo(Optional<CoordinatorLocation> coordinatorLocation, Optional<ExecutionFailureInfo> failureInfo, Duration elapsedTime, Duration queuedTime)
-    {
-        this.coordinatorLocation = requireNonNull(coordinatorLocation, "coordinatorLocation is null");
-        this.failureInfo = requireNonNull(failureInfo, "failureInfo is null");
-        this.elapsedTime = requireNonNull(elapsedTime, "elapsedTime is null");
-        this.queuedTime = requireNonNull(queuedTime, "queuedTime is null");
     }
 
     public Optional<CoordinatorLocation> getCoordinatorLocation()

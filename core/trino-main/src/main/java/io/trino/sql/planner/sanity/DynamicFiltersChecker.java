@@ -51,6 +51,27 @@ import static com.google.common.collect.Sets.intersection;
 public class DynamicFiltersChecker
         implements PlanSanityChecker.Checker
 {
+    private static void validateDynamicFilterExpression(Expression expression)
+    {
+        if (expression instanceof SymbolReference) {
+            return;
+        }
+        verify(expression instanceof Cast,
+                "Dynamic filter expression %s must be a SymbolReference or a CAST of SymbolReference.", expression);
+        Cast castExpression = (Cast) expression;
+        verify(castExpression.getExpression() instanceof SymbolReference,
+                "The expression %s within in a CAST in dynamic filter must be a SymbolReference.", castExpression.getExpression());
+    }
+
+    private static List<DynamicFilters.Descriptor> extractDynamicPredicates(Expression expression)
+    {
+        return SubExpressionExtractor.extract(expression)
+                .map(DynamicFilters::getDescriptor)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(toImmutableList());
+    }
+
     @Override
     public void validate(
             PlanNode plan,
@@ -145,26 +166,5 @@ public class DynamicFiltersChecker
                 return consumed.build();
             }
         }, null);
-    }
-
-    private static void validateDynamicFilterExpression(Expression expression)
-    {
-        if (expression instanceof SymbolReference) {
-            return;
-        }
-        verify(expression instanceof Cast,
-                "Dynamic filter expression %s must be a SymbolReference or a CAST of SymbolReference.", expression);
-        Cast castExpression = (Cast) expression;
-        verify(castExpression.getExpression() instanceof SymbolReference,
-                "The expression %s within in a CAST in dynamic filter must be a SymbolReference.", castExpression.getExpression());
-    }
-
-    private static List<DynamicFilters.Descriptor> extractDynamicPredicates(Expression expression)
-    {
-        return SubExpressionExtractor.extract(expression)
-                .map(DynamicFilters::getDescriptor)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(toImmutableList());
     }
 }

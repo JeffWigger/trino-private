@@ -37,12 +37,15 @@ public final class BooleanType
         extends AbstractType
         implements FixedWidthType
 {
+    public static final BooleanType BOOLEAN = new BooleanType();
     private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(BooleanType.class, lookup(), boolean.class);
-
     private static final long TRUE_XX_HASH = XxHash64.hash(1);
     private static final long FALSE_XX_HASH = XxHash64.hash(0);
 
-    public static final BooleanType BOOLEAN = new BooleanType();
+    private BooleanType()
+    {
+        super(new TypeSignature(StandardTypes.BOOLEAN), boolean.class);
+    }
 
     /**
      * This method signifies a contract to callers that as an optimization, they can encode BooleanType blocks as a byte[] directly
@@ -58,12 +61,37 @@ public final class BooleanType
     public static Block createBlockForSingleNonNullValue(boolean value)
     {
         byte byteValue = value ? (byte) 1 : 0;
-        return new ByteArrayBlock(1, Optional.empty(), new byte[]{byteValue});
+        return new ByteArrayBlock(1, Optional.empty(), new byte[] {byteValue});
     }
 
-    private BooleanType()
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(boolean left, boolean right)
     {
-        super(new TypeSignature(StandardTypes.BOOLEAN), boolean.class);
+        return left == right;
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(boolean value)
+    {
+        return value ? TRUE_XX_HASH : FALSE_XX_HASH;
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(boolean left, boolean right)
+    {
+        return Boolean.compare(left, right);
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(boolean left, boolean right)
+    {
+        return !left && right;
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(boolean left, boolean right)
+    {
+        return !left || right;
     }
 
     @Override
@@ -160,35 +188,5 @@ public final class BooleanType
     public int hashCode()
     {
         return getClass().hashCode();
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(boolean left, boolean right)
-    {
-        return left == right;
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(boolean value)
-    {
-        return value ? TRUE_XX_HASH : FALSE_XX_HASH;
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(boolean left, boolean right)
-    {
-        return Boolean.compare(left, right);
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(boolean left, boolean right)
-    {
-        return !left && right;
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(boolean left, boolean right)
-    {
-        return !left || right;
     }
 }

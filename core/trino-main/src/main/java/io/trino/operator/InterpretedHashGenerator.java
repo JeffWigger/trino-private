@@ -41,11 +41,6 @@ public class InterpretedHashGenerator
     private final int[] hashChannels; // null value indicates that the identity channel mapping is used
     private final BlockPositionHashCode[] hashCodeOperators;
 
-    public static InterpretedHashGenerator createPositionalWithTypes(List<Type> hashChannelTypes, BlockTypeOperators blockTypeOperators)
-    {
-        return new InterpretedHashGenerator(hashChannelTypes, null, blockTypeOperators, true);
-    }
-
     public InterpretedHashGenerator(List<Type> hashChannelTypes, List<Integer> hashChannels, BlockTypeOperators blockTypeOperators)
     {
         this(hashChannelTypes, Ints.toArray(requireNonNull(hashChannels, "hashChannels is null")), blockTypeOperators);
@@ -71,6 +66,32 @@ public class InterpretedHashGenerator
             // simple positional indices are converted to null
             this.hashChannels = isPositionalChannels(hashChannels) ? null : hashChannels;
         }
+    }
+
+    public static InterpretedHashGenerator createPositionalWithTypes(List<Type> hashChannelTypes, BlockTypeOperators blockTypeOperators)
+    {
+        return new InterpretedHashGenerator(hashChannelTypes, null, blockTypeOperators, true);
+    }
+
+    private static boolean isPositionalChannels(int[] hashChannels)
+    {
+        for (int i = 0; i < hashChannels.length; i++) {
+            if (hashChannels[i] != i) {
+                return false; // hashChannels is not a simple positional identity mapping
+            }
+        }
+        return true;
+    }
+
+    private static BlockPositionHashCode[] createHashCodeOperators(List<Type> hashChannelTypes, BlockTypeOperators blockTypeOperators)
+    {
+        requireNonNull(hashChannelTypes, "hashChannelTypes is null");
+        requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        BlockPositionHashCode[] hashCodeOperators = new BlockPositionHashCode[hashChannelTypes.size()];
+        for (int i = 0; i < hashCodeOperators.length; i++) {
+            hashCodeOperators[i] = blockTypeOperators.getHashCodeOperator(hashChannelTypes.get(i));
+        }
+        return hashCodeOperators;
     }
 
     @Override
@@ -103,26 +124,5 @@ public class InterpretedHashGenerator
                 .add("hashChannelTypes", hashChannelTypes)
                 .add("hashChannels", hashChannels == null ? "<identity>" : Arrays.toString(hashChannels))
                 .toString();
-    }
-
-    private static boolean isPositionalChannels(int[] hashChannels)
-    {
-        for (int i = 0; i < hashChannels.length; i++) {
-            if (hashChannels[i] != i) {
-                return false; // hashChannels is not a simple positional identity mapping
-            }
-        }
-        return true;
-    }
-
-    private static BlockPositionHashCode[] createHashCodeOperators(List<Type> hashChannelTypes, BlockTypeOperators blockTypeOperators)
-    {
-        requireNonNull(hashChannelTypes, "hashChannelTypes is null");
-        requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        BlockPositionHashCode[] hashCodeOperators = new BlockPositionHashCode[hashChannelTypes.size()];
-        for (int i = 0; i < hashCodeOperators.length; i++) {
-            hashCodeOperators[i] = blockTypeOperators.getHashCodeOperator(hashChannelTypes.get(i));
-        }
-        return hashCodeOperators;
     }
 }

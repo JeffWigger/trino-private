@@ -26,12 +26,12 @@ public class SingleListaggAggregationState
         implements ListaggAggregationState
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleListaggAggregationState.class).instanceSize();
+    private final Type type;
     private BlockBuilder blockBuilder;
     private Slice separator;
     private boolean overflowError;
     private Slice overflowFiller;
     private boolean showOverflowEntryCount;
-    private final Type type;
 
     public SingleListaggAggregationState(Type type)
     {
@@ -49,21 +49,15 @@ public class SingleListaggAggregationState
     }
 
     @Override
-    public void setSeparator(Slice separator)
-    {
-        this.separator = separator;
-    }
-
-    @Override
     public Slice getSeparator()
     {
         return separator;
     }
 
     @Override
-    public void setOverflowFiller(Slice overflowFiller)
+    public void setSeparator(Slice separator)
     {
-        this.overflowFiller = overflowFiller;
+        this.separator = separator;
     }
 
     @Override
@@ -73,15 +67,21 @@ public class SingleListaggAggregationState
     }
 
     @Override
-    public void setOverflowError(boolean overflowError)
+    public void setOverflowFiller(Slice overflowFiller)
     {
-        this.overflowError = overflowError;
+        this.overflowFiller = overflowFiller;
     }
 
     @Override
     public boolean isOverflowError()
     {
         return overflowError;
+    }
+
+    @Override
+    public void setOverflowError(boolean overflowError)
+    {
+        this.overflowError = overflowError;
     }
 
     @Override

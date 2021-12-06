@@ -42,6 +42,19 @@ import static java.util.Locale.ENGLISH;
 public class SetRoleTask
         implements DataDefinitionTask<SetRole>
 {
+    private static SelectedRole.Type toSelectedRoleType(SetRole.Type statementRoleType)
+    {
+        switch (statementRoleType) {
+            case ROLE:
+                return SelectedRole.Type.ROLE;
+            case ALL:
+                return SelectedRole.Type.ALL;
+            case NONE:
+                return SelectedRole.Type.NONE;
+        }
+        throw new IllegalArgumentException("Unsupported type: " + statementRoleType);
+    }
+
     @Override
     public String getName()
     {
@@ -78,18 +91,5 @@ public class SetRoleTask
         SelectedRole.Type type = toSelectedRoleType(statement.getType());
         stateMachine.addSetRole(catalog.orElse("system"), new SelectedRole(type, statement.getRole().map(c -> c.getValue().toLowerCase(ENGLISH))));
         return immediateVoidFuture();
-    }
-
-    private static SelectedRole.Type toSelectedRoleType(SetRole.Type statementRoleType)
-    {
-        switch (statementRoleType) {
-            case ROLE:
-                return SelectedRole.Type.ROLE;
-            case ALL:
-                return SelectedRole.Type.ALL;
-            case NONE:
-                return SelectedRole.Type.NONE;
-        }
-        throw new IllegalArgumentException("Unsupported type: " + statementRoleType);
     }
 }

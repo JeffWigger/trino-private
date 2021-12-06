@@ -82,7 +82,8 @@ public class GroupedTypedHistogram
 
     // per groupId, we have a pointer to the first in the list of nodes for this group
     private final LongBigArray headPointers;
-
+    //
+    private final ValueStore valueStore;
     private IntBigArray buckets;
     private int nextNodePointer;
     private int mask;
@@ -91,8 +92,6 @@ public class GroupedTypedHistogram
     // at most one thread uses this object at one time, so this must be set to the group being operated on
     private int currentGroupId = -1;
     private long numberOfGroups = 1;
-    //
-    private final ValueStore valueStore;
 
     public GroupedTypedHistogram(Type type, BlockPositionEqual equalOperator, BlockPositionHashCode hashCodeOperator, int expectedCount)
     {
@@ -138,6 +137,11 @@ public class GroupedTypedHistogram
         for (int i = 0; i < block.getPositionCount(); i += 2) {
             add(groupId, block, i, BIGINT.getLong(block, i + 1));
         }
+    }
+
+    private static int computeBucketCount(int expectedSize, float maxFillRatio)
+    {
+        return arraySize(expectedSize, maxFillRatio);
     }
 
     @Override
@@ -237,11 +241,6 @@ public class GroupedTypedHistogram
         if (nextNodePointer >= maxFill) {
             rehash();
         }
-    }
-
-    private static int computeBucketCount(int expectedSize, float maxFillRatio)
-    {
-        return arraySize(expectedSize, maxFillRatio);
     }
 
     private void addAll(long groupId, TypedHistogram other)
@@ -347,6 +346,11 @@ public class GroupedTypedHistogram
         int bucketId = (int) (valueAndGroupHash & mask);
 
         return bucketId;
+    }
+
+    private interface NodeReader
+    {
+        void read(int nodePointer);
     }
 
     //short-lived abstraction that is basically a position into parallel arrays that we can treat as one data structure
@@ -512,10 +516,5 @@ public class GroupedTypedHistogram
         {
             return new ValueNode(nodePointer);
         }
-    }
-
-    private interface NodeReader
-    {
-        void read(int nodePointer);
     }
 }

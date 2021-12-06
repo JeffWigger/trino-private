@@ -36,6 +36,22 @@ import static java.util.Objects.requireNonNull;
 public class InvokeFunctionBytecodeExpression
         extends BytecodeExpression
 {
+    private final BytecodeNode invocation;
+    private final String oneLineDescription;
+    private InvokeFunctionBytecodeExpression(
+            Scope scope,
+            CallSiteBinder binder,
+            Type type,
+            FunctionMetadata functionMetadata,
+            Function<InvocationConvention, FunctionInvoker> functionInvokerProvider,
+            List<BytecodeExpression> parameters)
+    {
+        super(type(Primitives.unwrap(type.getJavaType())));
+
+        this.invocation = generateInvocation(scope, functionMetadata, functionInvokerProvider, parameters.stream().map(BytecodeNode.class::cast).collect(toImmutableList()), binder);
+        this.oneLineDescription = functionMetadata.getSignature().getName() + "(" + Joiner.on(", ").join(parameters) + ")";
+    }
+
     public static BytecodeExpression invokeFunction(Scope scope,
             CachedInstanceBinder cachedInstanceBinder,
             Type type,
@@ -54,23 +70,6 @@ public class InvokeFunctionBytecodeExpression
                 functionMetadata,
                 functionInvokerProvider,
                 ImmutableList.copyOf(parameters));
-    }
-
-    private final BytecodeNode invocation;
-    private final String oneLineDescription;
-
-    private InvokeFunctionBytecodeExpression(
-            Scope scope,
-            CallSiteBinder binder,
-            Type type,
-            FunctionMetadata functionMetadata,
-            Function<InvocationConvention, FunctionInvoker> functionInvokerProvider,
-            List<BytecodeExpression> parameters)
-    {
-        super(type(Primitives.unwrap(type.getJavaType())));
-
-        this.invocation = generateInvocation(scope, functionMetadata, functionInvokerProvider, parameters.stream().map(BytecodeNode.class::cast).collect(toImmutableList()), binder);
-        this.oneLineDescription = functionMetadata.getSignature().getName() + "(" + Joiner.on(", ").join(parameters) + ")";
     }
 
     @Override

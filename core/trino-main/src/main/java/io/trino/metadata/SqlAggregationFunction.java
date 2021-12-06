@@ -35,6 +35,14 @@ public abstract class SqlAggregationFunction
     private final boolean orderSensitive;
     private final boolean decomposable;
 
+    protected SqlAggregationFunction(FunctionMetadata functionMetadata, boolean decomposable, boolean orderSensitive)
+    {
+        this.functionMetadata = requireNonNull(functionMetadata, "functionMetadata is null");
+        checkArgument(functionMetadata.isDeterministic(), "Aggregation function must be deterministic");
+        this.orderSensitive = orderSensitive;
+        this.decomposable = decomposable;
+    }
+
     public static List<SqlAggregationFunction> createFunctionByAnnotations(Class<?> aggregationDefinition)
     {
         return ImmutableList.of(AggregationFromAnnotationsParser.parseFunctionDefinition(aggregationDefinition));
@@ -46,14 +54,6 @@ public abstract class SqlAggregationFunction
                 .stream()
                 .map(SqlAggregationFunction.class::cast)
                 .collect(toImmutableList());
-    }
-
-    protected SqlAggregationFunction(FunctionMetadata functionMetadata, boolean decomposable, boolean orderSensitive)
-    {
-        this.functionMetadata = requireNonNull(functionMetadata, "functionMetadata is null");
-        checkArgument(functionMetadata.isDeterministic(), "Aggregation function must be deterministic");
-        this.orderSensitive = orderSensitive;
-        this.decomposable = decomposable;
     }
 
     @Override

@@ -51,18 +51,17 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 public class FormWebUiAuthenticationFilter
         implements WebUiAuthenticationFilter
 {
-    private static final String TRINO_UI_AUDIENCE = "trino-ui";
-    private static final String TRINO_UI_COOKIE = "Trino-UI-Token";
+    public static final String UI_LOCATION = "/ui/";
     static final String TRINO_FORM_LOGIN = "Trino-Form-Login";
     static final String LOGIN_FORM = "/ui/login.html";
     static final URI LOGIN_FORM_URI = URI.create(LOGIN_FORM);
     static final String DISABLED_LOCATION = "/ui/disabled.html";
     static final URI DISABLED_LOCATION_URI = URI.create(DISABLED_LOCATION);
-    public static final String UI_LOCATION = "/ui/";
     static final URI UI_LOCATION_URI = URI.create(UI_LOCATION);
     static final String UI_LOGIN = "/ui/login";
     static final String UI_LOGOUT = "/ui/logout";
-
+    private static final String TRINO_UI_AUDIENCE = "trino-ui";
+    private static final String TRINO_UI_COOKIE = "Trino-UI-Token";
     private final Function<String, String> jwtParser;
     private final Function<String, String> jwtGenerator;
     private final FormAuthenticator formAuthenticator;
@@ -90,60 +89,6 @@ public class FormWebUiAuthenticationFilter
 
         this.formAuthenticator = requireNonNull(formAuthenticator, "formAuthenticator is null");
         this.authenticator = requireNonNull(authenticator, "authenticator is null");
-    }
-
-    @Override
-    public void filter(ContainerRequestContext request)
-    {
-        String path = request.getUriInfo().getRequestUri().getPath();
-
-        // disabled page is always visible
-        if (path.equals(DISABLED_LOCATION)) {
-            return;
-        }
-
-        // authenticator over a secure connection bypasses the form login
-        if (authenticator.isPresent() && request.getSecurityContext().isSecure()) {
-            handleProtocolLoginRequest(authenticator.get(), request);
-            return;
-        }
-
-        // login and logout resource is not visible to protocol authenticators
-        if ((path.equals(UI_LOGIN) && request.getMethod().equals("POST")) || path.equals(UI_LOGOUT)) {
-            return;
-        }
-
-        // check if the user is already authenticated
-        Optional<String> username = getAuthenticatedUsername(request);
-        if (username.isPresent()) {
-            // if the authenticated user is requesting the login page, send them directly to the ui
-            if (path.equals(LOGIN_FORM)) {
-                request.abortWith(redirectFromSuccessfulLoginResponse(request.getUriInfo().getRequestUri().getQuery()).build());
-                return;
-            }
-            setAuthenticatedIdentity(request, username.get());
-            return;
-        }
-
-        // send 401 to REST api calls and redirect to others
-        if (path.startsWith("/ui/api/")) {
-            sendWwwAuthenticate(request, "Unauthorized", ImmutableSet.of(TRINO_FORM_LOGIN));
-            return;
-        }
-
-        if (!isAuthenticationEnabled(request.getSecurityContext().isSecure())) {
-            request.abortWith(Response.seeOther(DISABLED_LOCATION_URI).build());
-            return;
-        }
-
-        if (path.equals(LOGIN_FORM)) {
-            return;
-        }
-
-        // redirect to login page
-        request.abortWith(Response.seeOther(LOGIN_FORM_URI).build());
-
-        request.abortWith(Response.seeOther(buildLoginFormURI(request.getUriInfo())).build());
     }
 
     private static URI buildLoginFormURI(UriInfo uriInfo)
@@ -219,6 +164,106 @@ public class FormWebUiAuthenticationFilter
         return Response.seeOther(redirectLocation);
     }
 
+    public static NewCookie getDeleteCookie(boolean secure)
+    {
+        return new NewCookie(
+                TRINO_UI_COOKIE,
+                "delete",
+                "/ui",
+                null,
+                Cookie.DEFAULT_VERSION,
+                null,
+                0,
+                null,
+                secure,
+                true);
+    }
+
+    private static String generateJwt(byte[] hmac, String username, long sessionTimeoutNanos)
+    {
+        return Jwts.builder()
+                .signWith(SignatureAlgorithm.HS256, hmac)
+                .setSubject(username)
+                .setExpiration(Date.from(ZonedDateTime.now().plusNanos(sessionTimeoutNanos).toInstant()))
+                .setAudience(TRINO_UI_AUDIENCE)
+                .compact();
+    }
+
+    private static String parseJwt(byte[] hmac, String jwt)
+    {
+        return Jwts.parser()
+                .setSigningKey(hmac)
+                .requireAudience(TRINO_UI_AUDIENCE)
+                .parseClaimsJws(jwt)
+                .getBody()
+                .getSubject();
+    }
+
+    public static boolean redirectAllFormLoginToUi(ContainerRequestContext request)
+    {
+        // these paths should never be used with a protocol login, but the user might have this cached or linked, so redirect back ot the main UI page.
+        String path = request.getUriInfo().getRequestUri().getPath();
+        if (path.equals(LOGIN_FORM) || path.equals(UI_LOGIN) || path.equals(UI_LOGOUT)) {
+            request.abortWith(Response.seeOther(UI_LOCATION_URI).build());
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public void filter(ContainerRequestContext request)
+    {
+        String path = request.getUriInfo().getRequestUri().getPath();
+
+        // disabled page is always visible
+        if (path.equals(DISABLED_LOCATION)) {
+            return;
+        }
+
+        // authenticator over a secure connection bypasses the form login
+        if (authenticator.isPresent() && request.getSecurityContext().isSecure()) {
+            handleProtocolLoginRequest(authenticator.get(), request);
+            return;
+        }
+
+        // login and logout resource is not visible to protocol authenticators
+        if ((path.equals(UI_LOGIN) && request.getMethod().equals("POST")) || path.equals(UI_LOGOUT)) {
+            return;
+        }
+
+        // check if the user is already authenticated
+        Optional<String> username = getAuthenticatedUsername(request);
+        if (username.isPresent()) {
+            // if the authenticated user is requesting the login page, send them directly to the ui
+            if (path.equals(LOGIN_FORM)) {
+                request.abortWith(redirectFromSuccessfulLoginResponse(request.getUriInfo().getRequestUri().getQuery()).build());
+                return;
+            }
+            setAuthenticatedIdentity(request, username.get());
+            return;
+        }
+
+        // send 401 to REST api calls and redirect to others
+        if (path.startsWith("/ui/api/")) {
+            sendWwwAuthenticate(request, "Unauthorized", ImmutableSet.of(TRINO_FORM_LOGIN));
+            return;
+        }
+
+        if (!isAuthenticationEnabled(request.getSecurityContext().isSecure())) {
+            request.abortWith(Response.seeOther(DISABLED_LOCATION_URI).build());
+            return;
+        }
+
+        if (path.equals(LOGIN_FORM)) {
+            return;
+        }
+
+        // redirect to login page
+        request.abortWith(Response.seeOther(LOGIN_FORM_URI).build());
+
+        request.abortWith(Response.seeOther(buildLoginFormURI(request.getUriInfo())).build());
+    }
+
     public Optional<NewCookie> checkLoginCredentials(String username, String password, boolean secure)
     {
         return formAuthenticator.isValidCredential(username, password, secure)
@@ -259,21 +304,6 @@ public class FormWebUiAuthenticationFilter
                 true);
     }
 
-    public static NewCookie getDeleteCookie(boolean secure)
-    {
-        return new NewCookie(
-                TRINO_UI_COOKIE,
-                "delete",
-                "/ui",
-                null,
-                Cookie.DEFAULT_VERSION,
-                null,
-                0,
-                null,
-                secure,
-                true);
-    }
-
     public boolean isPasswordAllowed(boolean secure)
     {
         return formAuthenticator.isPasswordAllowed(secure);
@@ -282,36 +312,5 @@ public class FormWebUiAuthenticationFilter
     boolean isAuthenticationEnabled(boolean secure)
     {
         return formAuthenticator.isLoginEnabled(secure) || authenticator.isPresent();
-    }
-
-    private static String generateJwt(byte[] hmac, String username, long sessionTimeoutNanos)
-    {
-        return Jwts.builder()
-                .signWith(SignatureAlgorithm.HS256, hmac)
-                .setSubject(username)
-                .setExpiration(Date.from(ZonedDateTime.now().plusNanos(sessionTimeoutNanos).toInstant()))
-                .setAudience(TRINO_UI_AUDIENCE)
-                .compact();
-    }
-
-    private static String parseJwt(byte[] hmac, String jwt)
-    {
-        return Jwts.parser()
-                .setSigningKey(hmac)
-                .requireAudience(TRINO_UI_AUDIENCE)
-                .parseClaimsJws(jwt)
-                .getBody()
-                .getSubject();
-    }
-
-    public static boolean redirectAllFormLoginToUi(ContainerRequestContext request)
-    {
-        // these paths should never be used with a protocol login, but the user might have this cached or linked, so redirect back ot the main UI page.
-        String path = request.getUriInfo().getRequestUri().getPath();
-        if (path.equals(LOGIN_FORM) || path.equals(UI_LOGIN) || path.equals(UI_LOGOUT)) {
-            request.abortWith(Response.seeOther(UI_LOCATION_URI).build());
-            return true;
-        }
-        return false;
     }
 }

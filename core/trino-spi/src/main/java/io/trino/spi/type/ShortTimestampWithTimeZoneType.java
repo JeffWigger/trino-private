@@ -54,6 +54,44 @@ class ShortTimestampWithTimeZoneType
         }
     }
 
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long left, long right)
+    {
+        long leftValue = unpackMillisUtc(left);
+        long rightValue = unpackMillisUtc(right);
+        return leftValue == rightValue;
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long value)
+    {
+        return AbstractLongType.hash(unpackMillisUtc(value));
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long value)
+    {
+        return XxHash64.hash(unpackMillisUtc(value));
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Long.compare(unpackMillisUtc(left), unpackMillisUtc(right));
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return unpackMillisUtc(left) < unpackMillisUtc(right);
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return unpackMillisUtc(left) <= unpackMillisUtc(right);
+    }
+
     @Override
     public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
     {
@@ -131,43 +169,5 @@ class ShortTimestampWithTimeZoneType
 
         long value = block.getLong(position, 0);
         return SqlTimestampWithTimeZone.newInstance(getPrecision(), unpackMillisUtc(value), 0, unpackZoneKey(value));
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
-    {
-        long leftValue = unpackMillisUtc(left);
-        long rightValue = unpackMillisUtc(right);
-        return leftValue == rightValue;
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long value)
-    {
-        return AbstractLongType.hash(unpackMillisUtc(value));
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long value)
-    {
-        return XxHash64.hash(unpackMillisUtc(value));
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Long.compare(unpackMillisUtc(left), unpackMillisUtc(right));
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return unpackMillisUtc(left) < unpackMillisUtc(right);
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return unpackMillisUtc(left) <= unpackMillisUtc(right);
     }
 }

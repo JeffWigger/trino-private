@@ -42,10 +42,9 @@ import static java.util.Arrays.setAll;
 @Description("Return n-element subsets from array")
 public final class ArrayCombinationsFunction
 {
-    private ArrayCombinationsFunction() {}
-
     private static final int MAX_COMBINATION_LENGTH = 5;
     private static final int MAX_RESULT_ELEMENTS = 100_000;
+    private ArrayCombinationsFunction() {}
 
     @TypeParameter("T")
     @SqlType("array(array(T))")

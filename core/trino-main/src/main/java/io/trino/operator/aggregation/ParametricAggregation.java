@@ -82,16 +82,6 @@ public class ParametricAggregation
         this.implementations = requireNonNull(implementations, "implementations is null");
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        FunctionDependencyDeclarationBuilder builder = FunctionDependencyDeclaration.builder();
-        declareDependencies(builder, implementations.getExactImplementations().values());
-        declareDependencies(builder, implementations.getSpecializedImplementations());
-        declareDependencies(builder, implementations.getGenericImplementations());
-        return builder.build();
-    }
-
     private static void declareDependencies(FunctionDependencyDeclarationBuilder builder, Collection<AggregationImplementation> implementations)
     {
         for (AggregationImplementation implementation : implementations) {
@@ -105,6 +95,46 @@ public class ParametricAggregation
                 dependency.declareDependencies(builder);
             }
         }
+    }
+
+    private static List<TypeSignature> signaturesFromTypes(List<Type> types)
+    {
+        return types
+                .stream()
+                .map(Type::getTypeSignature)
+                .collect(toImmutableList());
+    }
+
+    private static List<ParameterMetadata> buildParameterMetadata(List<ParameterType> parameterMetadataTypes, List<Type> inputTypes)
+    {
+        ImmutableList.Builder<ParameterMetadata> builder = ImmutableList.builder();
+        int inputId = 0;
+
+        for (ParameterType parameterMetadataType : parameterMetadataTypes) {
+            switch (parameterMetadataType) {
+                case STATE:
+                case BLOCK_INDEX:
+                    builder.add(new ParameterMetadata(parameterMetadataType));
+                    break;
+                case INPUT_CHANNEL:
+                case BLOCK_INPUT_CHANNEL:
+                case NULLABLE_BLOCK_INPUT_CHANNEL:
+                    builder.add(new ParameterMetadata(parameterMetadataType, inputTypes.get(inputId++)));
+                    break;
+            }
+        }
+
+        return builder.build();
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        FunctionDependencyDeclarationBuilder builder = FunctionDependencyDeclaration.builder();
+        declareDependencies(builder, implementations.getExactImplementations().values());
+        declareDependencies(builder, implementations.getSpecializedImplementations());
+        declareDependencies(builder, implementations.getGenericImplementations());
+        return builder.build();
     }
 
     @Override
@@ -204,35 +234,5 @@ public class ParametricAggregation
             throw new TrinoException(FUNCTION_IMPLEMENTATION_MISSING, format("Unsupported type parameters (%s) for %s", boundSignature, getFunctionMetadata().getSignature()));
         }
         return foundImplementation.get();
-    }
-
-    private static List<TypeSignature> signaturesFromTypes(List<Type> types)
-    {
-        return types
-                .stream()
-                .map(Type::getTypeSignature)
-                .collect(toImmutableList());
-    }
-
-    private static List<ParameterMetadata> buildParameterMetadata(List<ParameterType> parameterMetadataTypes, List<Type> inputTypes)
-    {
-        ImmutableList.Builder<ParameterMetadata> builder = ImmutableList.builder();
-        int inputId = 0;
-
-        for (ParameterType parameterMetadataType : parameterMetadataTypes) {
-            switch (parameterMetadataType) {
-                case STATE:
-                case BLOCK_INDEX:
-                    builder.add(new ParameterMetadata(parameterMetadataType));
-                    break;
-                case INPUT_CHANNEL:
-                case BLOCK_INPUT_CHANNEL:
-                case NULLABLE_BLOCK_INPUT_CHANNEL:
-                    builder.add(new ParameterMetadata(parameterMetadataType, inputTypes.get(inputId++)));
-                    break;
-            }
-        }
-
-        return builder.build();
     }
 }

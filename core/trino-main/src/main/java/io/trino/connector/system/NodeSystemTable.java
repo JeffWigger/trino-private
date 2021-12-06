@@ -62,6 +62,11 @@ public class NodeSystemTable
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
     }
 
+    private static String getNodeVersion(InternalNode node)
+    {
+        return node.getNodeVersion().toString();
+    }
+
     @Override
     public Distribution getDistribution()
     {
@@ -90,11 +95,6 @@ public class NodeSystemTable
         for (InternalNode node : nodes) {
             table.addRow(node.getNodeIdentifier(), node.getInternalUri().toString(), getNodeVersion(node), isCoordinator(node), state.toString().toLowerCase(Locale.ENGLISH));
         }
-    }
-
-    private static String getNodeVersion(InternalNode node)
-    {
-        return node.getNodeVersion().toString();
     }
 
     private boolean isCoordinator(InternalNode node)

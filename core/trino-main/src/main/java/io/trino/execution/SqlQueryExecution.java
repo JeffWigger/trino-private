@@ -108,8 +108,9 @@ public class SqlQueryExecution
     private static final OutputBufferId OUTPUT_BUFFER_ID = new OutputBufferId(0);
 
     public final QueryStateMachine stateMachine;
-    private final Slug slug;
     public final Metadata metadata;
+    public final AtomicReference<SqlQueryScheduler> queryScheduler = new AtomicReference<>();
+    private final Slug slug;
     private final TypeOperators typeOperators;
     private final SqlParser sqlParser;
     private final SplitManager splitManager;
@@ -122,8 +123,6 @@ public class SqlQueryExecution
     private final ExecutorService queryExecutor;
     private final ScheduledExecutorService schedulerExecutor;
     private final FailureDetector failureDetector;
-
-    public final AtomicReference<SqlQueryScheduler> queryScheduler = new AtomicReference<>();
     private final AtomicReference<Plan> queryPlan = new AtomicReference<>();
     private final NodeTaskMap nodeTaskMap;
     private final ExecutionPolicy executionPolicy;
@@ -212,6 +211,22 @@ public class SqlQueryExecution
             });
 
             this.remoteTaskFactory = new MemoryTrackingRemoteTaskFactory(requireNonNull(remoteTaskFactory, "remoteTaskFactory is null"), stateMachine);
+        }
+    }
+
+    private static void closeSplitSources(StageExecutionPlan plan)
+    {
+        for (SplitSource source : plan.getSplitSources().values()) {
+            try {
+                source.close();
+            }
+            catch (Throwable t) {
+                log.warn(t, "Error closing split source");
+            }
+        }
+
+        for (StageExecutionPlan stage : plan.getSubStages()) {
+            closeSplitSources(stage);
         }
     }
 
@@ -553,22 +568,6 @@ public class SqlQueryExecution
         if (stateMachine.isDone()) {
             scheduler.abort();
             queryScheduler.set(null);
-        }
-    }
-
-    private static void closeSplitSources(StageExecutionPlan plan)
-    {
-        for (SplitSource source : plan.getSplitSources().values()) {
-            try {
-                source.close();
-            }
-            catch (Throwable t) {
-                log.warn(t, "Error closing split source");
-            }
-        }
-
-        for (StageExecutionPlan stage : plan.getSubStages()) {
-            closeSplitSources(stage);
         }
     }
 

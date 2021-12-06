@@ -38,6 +38,11 @@ public class PruneDistinctAggregation
     private static final Pattern<AggregationNode> PATTERN = aggregation()
             .matching(PruneDistinctAggregation::isDistinctOperator);
 
+    private static boolean isDistinctOperator(AggregationNode node)
+    {
+        return node.getAggregations().isEmpty();
+    }
+
     @Override
     public Pattern<AggregationNode> getPattern()
     {
@@ -61,11 +66,6 @@ public class PruneDistinctAggregation
         else {
             return Result.empty();
         }
-    }
-
-    private static boolean isDistinctOperator(AggregationNode node)
-    {
-        return node.getAggregations().isEmpty();
     }
 
     private static class DistinctAggregationRewriter

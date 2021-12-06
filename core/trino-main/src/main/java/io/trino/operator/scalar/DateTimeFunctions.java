@@ -69,9 +69,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 public final class DateTimeFunctions
 {
-    private static final ThreadLocalCache<Slice, DateTimeFormatter> DATETIME_FORMATTER_CACHE =
-            new ThreadLocalCache<>(100, DateTimeFunctions::createDateTimeFormatter);
-
     private static final ISOChronology UTC_CHRONOLOGY = ISOChronology.getInstanceUTC();
     private static final DateTimeField DAY_OF_WEEK = UTC_CHRONOLOGY.dayOfWeek();
     private static final DateTimeField DAY_OF_MONTH = UTC_CHRONOLOGY.dayOfMonth();
@@ -86,6 +83,8 @@ public final class DateTimeFunctions
     private static final int MILLISECONDS_IN_HOUR = 60 * MILLISECONDS_IN_MINUTE;
     private static final int MILLISECONDS_IN_DAY = 24 * MILLISECONDS_IN_HOUR;
     private static final int PIVOT_YEAR = 2020; // yy = 70 will correspond to 1970 but 69 to 2069
+    private static final ThreadLocalCache<Slice, DateTimeFormatter> DATETIME_FORMATTER_CACHE =
+            new ThreadLocalCache<>(100, DateTimeFunctions::createDateTimeFormatter);
 
     private DateTimeFunctions() {}
 
@@ -146,38 +145,6 @@ public final class DateTimeFunctions
     public static long fromUnixTime(@SqlType(StandardTypes.DOUBLE) double unixTime, @SqlType("varchar(x)") Slice zoneId)
     {
         return packDateTimeWithZone(Math.round(unixTime * 1000), zoneId.toStringUtf8());
-    }
-
-    @ScalarFunction("from_unixtime_nanos")
-    public static final class FromUnixtimeNanosDecimal
-    {
-        private FromUnixtimeNanosDecimal() {}
-
-        @LiteralParameters({"p", "s"})
-        @SqlType("timestamp(9) with time zone")
-        public static LongTimestampWithTimeZone fromLong(@LiteralParameter("s") long scale, ConnectorSession session, @SqlType("decimal(p, s)") Slice unixTimeNanos)
-        {
-            // TODO (https://github.com/trinodb/trino/issues/5781)
-            BigInteger unixTimeNanosInt = unscaledDecimalToBigInteger(rescale(unixTimeNanos, -(int) scale));
-            long epochSeconds = unixTimeNanosInt.divide(BigInteger.valueOf(NANOSECONDS_PER_SECOND)).longValue();
-            long nanosOfSecond = unixTimeNanosInt.remainder(BigInteger.valueOf(NANOSECONDS_PER_SECOND)).longValue();
-            long picosOfSecond = nanosOfSecond * PICOSECONDS_PER_NANOSECOND;
-            // simulate floorDiv and floorMod as BigInteger does not support those
-            if (picosOfSecond < 0) {
-                epochSeconds -= 1;
-                picosOfSecond += PICOSECONDS_PER_SECOND;
-            }
-            return DateTimes.longTimestampWithTimeZone(epochSeconds, picosOfSecond, session.getTimeZoneKey().getZoneId());
-        }
-
-        @LiteralParameters({"p", "s"})
-        @SqlType("timestamp(9) with time zone")
-        public static LongTimestampWithTimeZone fromShort(@LiteralParameter("s") long scale, ConnectorSession session, @SqlType("decimal(p, s)") long unixTimeNanos)
-        {
-            // TODO (https://github.com/trinodb/trino/issues/5781)
-            long roundedUnixTimeNanos = MathFunctions.Round.roundShort(scale, unixTimeNanos);
-            return fromUnixtimeNanosLong(session, roundedUnixTimeNanos);
-        }
     }
 
     @ScalarFunction("from_unixtime_nanos")
@@ -671,5 +638,37 @@ public final class DateTimeFunctions
     public static long toMilliseconds(@SqlType(StandardTypes.INTERVAL_DAY_TO_SECOND) long value)
     {
         return value;
+    }
+
+    @ScalarFunction("from_unixtime_nanos")
+    public static final class FromUnixtimeNanosDecimal
+    {
+        private FromUnixtimeNanosDecimal() {}
+
+        @LiteralParameters({"p", "s"})
+        @SqlType("timestamp(9) with time zone")
+        public static LongTimestampWithTimeZone fromLong(@LiteralParameter("s") long scale, ConnectorSession session, @SqlType("decimal(p, s)") Slice unixTimeNanos)
+        {
+            // TODO (https://github.com/trinodb/trino/issues/5781)
+            BigInteger unixTimeNanosInt = unscaledDecimalToBigInteger(rescale(unixTimeNanos, -(int) scale));
+            long epochSeconds = unixTimeNanosInt.divide(BigInteger.valueOf(NANOSECONDS_PER_SECOND)).longValue();
+            long nanosOfSecond = unixTimeNanosInt.remainder(BigInteger.valueOf(NANOSECONDS_PER_SECOND)).longValue();
+            long picosOfSecond = nanosOfSecond * PICOSECONDS_PER_NANOSECOND;
+            // simulate floorDiv and floorMod as BigInteger does not support those
+            if (picosOfSecond < 0) {
+                epochSeconds -= 1;
+                picosOfSecond += PICOSECONDS_PER_SECOND;
+            }
+            return DateTimes.longTimestampWithTimeZone(epochSeconds, picosOfSecond, session.getTimeZoneKey().getZoneId());
+        }
+
+        @LiteralParameters({"p", "s"})
+        @SqlType("timestamp(9) with time zone")
+        public static LongTimestampWithTimeZone fromShort(@LiteralParameter("s") long scale, ConnectorSession session, @SqlType("decimal(p, s)") long unixTimeNanos)
+        {
+            // TODO (https://github.com/trinodb/trino/issues/5781)
+            long roundedUnixTimeNanos = MathFunctions.Round.roundShort(scale, unixTimeNanos);
+            return fromUnixtimeNanosLong(session, roundedUnixTimeNanos);
+        }
     }
 }

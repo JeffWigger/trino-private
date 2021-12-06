@@ -91,6 +91,26 @@ public final class InternalResourceGroupManager<C>
         this.configurationManager = new AtomicReference<>(cast(legacyManager));
     }
 
+    private static int getQueriesQueuedOnInternal(InternalResourceGroup resourceGroup)
+    {
+        if (resourceGroup.subGroups().isEmpty()) {
+            return Math.min(resourceGroup.getQueuedQueries(), resourceGroup.getSoftConcurrencyLimit() - resourceGroup.getRunningQueries());
+        }
+
+        int queriesQueuedInternal = 0;
+        for (InternalResourceGroup subGroup : resourceGroup.subGroups()) {
+            queriesQueuedInternal += getQueriesQueuedOnInternal(subGroup);
+        }
+
+        return queriesQueuedInternal;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <C> ResourceGroupConfigurationManager<C> cast(ResourceGroupConfigurationManager<?> manager)
+    {
+        return (ResourceGroupConfigurationManager<C>) manager;
+    }
+
     @Override
     public Optional<ResourceGroupInfo> tryGetResourceGroupInfo(ResourceGroupId id)
     {
@@ -268,25 +288,5 @@ public final class InternalResourceGroupManager<C>
         }
 
         return queriesQueuedInternal;
-    }
-
-    private static int getQueriesQueuedOnInternal(InternalResourceGroup resourceGroup)
-    {
-        if (resourceGroup.subGroups().isEmpty()) {
-            return Math.min(resourceGroup.getQueuedQueries(), resourceGroup.getSoftConcurrencyLimit() - resourceGroup.getRunningQueries());
-        }
-
-        int queriesQueuedInternal = 0;
-        for (InternalResourceGroup subGroup : resourceGroup.subGroups()) {
-            queriesQueuedInternal += getQueriesQueuedOnInternal(subGroup);
-        }
-
-        return queriesQueuedInternal;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <C> ResourceGroupConfigurationManager<C> cast(ResourceGroupConfigurationManager<?> manager)
-    {
-        return (ResourceGroupConfigurationManager<C>) manager;
     }
 }

@@ -21,11 +21,11 @@ import java.util.Optional;
 
 public final class TestingHandles
 {
-    private TestingHandles() {}
-
     public static final TableHandle TEST_TABLE_HANDLE = new TableHandle(
             new CatalogName("test"),
             new TestingTableHandle(),
             TestingTransactionHandle.create(),
             Optional.of(TestingHandle.INSTANCE));
+
+    private TestingHandles() {}
 }

@@ -39,6 +39,14 @@ public class FixedUserWebUiAuthenticationFilter
         this.webUiIdentity = requireNonNull(webUiIdentity, "webUiIdentity is null");
     }
 
+    private static Identity basicIdentity(String username)
+    {
+        requireNonNull(username, "username is null");
+        return Identity.forUser(username)
+                .withPrincipal(new BasicPrincipal(username))
+                .build();
+    }
+
     @Override
     public void filter(ContainerRequestContext request)
     {
@@ -47,13 +55,5 @@ public class FixedUserWebUiAuthenticationFilter
         }
 
         setAuthenticatedIdentity(request, webUiIdentity);
-    }
-
-    private static Identity basicIdentity(String username)
-    {
-        requireNonNull(username, "username is null");
-        return Identity.forUser(username)
-                .withPrincipal(new BasicPrincipal(username))
-                .build();
     }
 }

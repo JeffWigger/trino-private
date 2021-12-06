@@ -20,6 +20,12 @@ public final class ColumnarRow
     private final Block nullCheckBlock;
     private final Block[] fields;
 
+    private ColumnarRow(Block nullCheckBlock, Block[] fields)
+    {
+        this.nullCheckBlock = nullCheckBlock;
+        this.fields = fields.clone();
+    }
+
     public static ColumnarRow toColumnarRow(Block block)
     {
         requireNonNull(block, "block is null");
@@ -103,12 +109,6 @@ public final class ColumnarRow
             }
         }
         return new ColumnarRow(rleBlock, fields);
-    }
-
-    private ColumnarRow(Block nullCheckBlock, Block[] fields)
-    {
-        this.nullCheckBlock = nullCheckBlock;
-        this.fields = fields.clone();
     }
 
     public int getPositionCount()

@@ -50,83 +50,6 @@ class LongTimeWithTimeZoneType
         }
     }
 
-    @Override
-    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
-    {
-        return TYPE_OPERATOR_DECLARATION;
-    }
-
-    @Override
-    public int getFixedSize()
-    {
-        return Long.BYTES + Integer.BYTES;
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
-    {
-        int maxBlockSizeInBytes;
-        if (blockBuilderStatus == null) {
-            maxBlockSizeInBytes = PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
-        }
-        else {
-            maxBlockSizeInBytes = blockBuilderStatus.getMaxPageSizeInBytes();
-        }
-        return new Int96ArrayBlockBuilder(
-                blockBuilderStatus,
-                Math.min(expectedEntries, maxBlockSizeInBytes / getFixedSize()));
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
-    {
-        return createBlockBuilder(blockBuilderStatus, expectedEntries, getFixedSize());
-    }
-
-    @Override
-    public BlockBuilder createFixedSizeBlockBuilder(int positionCount)
-    {
-        return new Int96ArrayBlockBuilder(null, positionCount);
-    }
-
-    @Override
-    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
-    {
-        if (block.isNull(position)) {
-            blockBuilder.appendNull();
-        }
-        else {
-            blockBuilder.writeLong(getPicos(block, position));
-            blockBuilder.writeInt(getOffsetMinutes(block, position));
-            blockBuilder.closeEntry();
-        }
-    }
-
-    @Override
-    public Object getObject(Block block, int position)
-    {
-        return new LongTimeWithTimeZone(getPicos(block, position), getOffsetMinutes(block, position));
-    }
-
-    @Override
-    public void writeObject(BlockBuilder blockBuilder, Object value)
-    {
-        LongTimeWithTimeZone timestamp = (LongTimeWithTimeZone) value;
-        blockBuilder.writeLong(timestamp.getPicoseconds());
-        blockBuilder.writeInt(timestamp.getOffsetMinutes());
-        blockBuilder.closeEntry();
-    }
-
-    @Override
-    public Object getObjectValue(ConnectorSession session, Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return null;
-        }
-
-        return SqlTimeWithTimeZone.newInstance(getPrecision(), getPicos(block, position), getOffsetMinutes(block, position));
-    }
-
     private static long getPicos(Block block, int position)
     {
         return block.getLong(position, 0);
@@ -269,5 +192,82 @@ class LongTimeWithTimeZoneType
     private static boolean lessThanOrEqual(long leftPicos, int leftOffsetMinutes, long rightPicos, int rightOffsetMinutes)
     {
         return normalizePicos(leftPicos, leftOffsetMinutes) <= normalizePicos(rightPicos, rightOffsetMinutes);
+    }
+
+    @Override
+    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
+    {
+        return TYPE_OPERATOR_DECLARATION;
+    }
+
+    @Override
+    public int getFixedSize()
+    {
+        return Long.BYTES + Integer.BYTES;
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
+    {
+        int maxBlockSizeInBytes;
+        if (blockBuilderStatus == null) {
+            maxBlockSizeInBytes = PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
+        }
+        else {
+            maxBlockSizeInBytes = blockBuilderStatus.getMaxPageSizeInBytes();
+        }
+        return new Int96ArrayBlockBuilder(
+                blockBuilderStatus,
+                Math.min(expectedEntries, maxBlockSizeInBytes / getFixedSize()));
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
+    {
+        return createBlockBuilder(blockBuilderStatus, expectedEntries, getFixedSize());
+    }
+
+    @Override
+    public BlockBuilder createFixedSizeBlockBuilder(int positionCount)
+    {
+        return new Int96ArrayBlockBuilder(null, positionCount);
+    }
+
+    @Override
+    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
+    {
+        if (block.isNull(position)) {
+            blockBuilder.appendNull();
+        }
+        else {
+            blockBuilder.writeLong(getPicos(block, position));
+            blockBuilder.writeInt(getOffsetMinutes(block, position));
+            blockBuilder.closeEntry();
+        }
+    }
+
+    @Override
+    public Object getObject(Block block, int position)
+    {
+        return new LongTimeWithTimeZone(getPicos(block, position), getOffsetMinutes(block, position));
+    }
+
+    @Override
+    public void writeObject(BlockBuilder blockBuilder, Object value)
+    {
+        LongTimeWithTimeZone timestamp = (LongTimeWithTimeZone) value;
+        blockBuilder.writeLong(timestamp.getPicoseconds());
+        blockBuilder.writeInt(timestamp.getOffsetMinutes());
+        blockBuilder.closeEntry();
+    }
+
+    @Override
+    public Object getObjectValue(ConnectorSession session, Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return null;
+        }
+
+        return SqlTimeWithTimeZone.newInstance(getPrecision(), getPicos(block, position), getOffsetMinutes(block, position));
     }
 }

@@ -102,18 +102,6 @@ public class ListaggAggregationFunction
                 true);
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        return ImmutableList.of(new ListaggAggregationStateSerializer(VARCHAR).getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        return generateAggregation(VARCHAR);
-    }
-
     private static InternalAggregationFunction generateAggregation(Type type)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(ListaggAggregationFunction.class.getClassLoader());
@@ -242,6 +230,18 @@ public class ListaggAggregationFunction
         }
 
         out.closeEntry();
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        return ImmutableList.of(new ListaggAggregationStateSerializer(VARCHAR).getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        return generateAggregation(VARCHAR);
     }
 
     private static class OutputContext

@@ -71,6 +71,11 @@ public class BeginTableWrite
         this.metadata = metadata;
     }
 
+    private static WriterTarget getContextTarget(RewriteContext<Optional<WriterTarget>> context)
+    {
+        return context.get().orElseThrow(() -> new IllegalStateException("WriterTarget not present"));
+    }
+
     @Override
     public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
@@ -311,10 +316,5 @@ public class BeginTableWrite
             }
             throw new IllegalArgumentException("Invalid descendant for DeleteNode or UpdateNode: " + node.getClass().getName());
         }
-    }
-
-    private static WriterTarget getContextTarget(RewriteContext<Optional<WriterTarget>> context)
-    {
-        return context.get().orElseThrow(() -> new IllegalStateException("WriterTarget not present"));
     }
 }

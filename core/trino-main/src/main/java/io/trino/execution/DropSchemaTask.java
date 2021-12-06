@@ -38,6 +38,26 @@ import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 public class DropSchemaTask
         implements DataDefinitionTask<DropSchema>
 {
+    private static boolean isSchemaEmpty(Session session, CatalogSchemaName schema, Metadata metadata)
+    {
+        QualifiedTablePrefix tablePrefix = new QualifiedTablePrefix(schema.getCatalogName(), schema.getSchemaName());
+
+        // These are best efforts checks that don't provide any guarantees against concurrent DDL operations
+        if (!metadata.listTables(session, tablePrefix).isEmpty()) {
+            return false;
+        }
+
+        if (!metadata.listViews(session, tablePrefix).isEmpty()) {
+            return false;
+        }
+
+        if (!metadata.listMaterializedViews(session, tablePrefix).isEmpty()) {
+            return false;
+        }
+
+        return true;
+    }
+
     @Override
     public String getName()
     {
@@ -83,25 +103,5 @@ public class DropSchemaTask
         metadata.dropSchema(session, schema);
 
         return immediateVoidFuture();
-    }
-
-    private static boolean isSchemaEmpty(Session session, CatalogSchemaName schema, Metadata metadata)
-    {
-        QualifiedTablePrefix tablePrefix = new QualifiedTablePrefix(schema.getCatalogName(), schema.getSchemaName());
-
-        // These are best efforts checks that don't provide any guarantees against concurrent DDL operations
-        if (!metadata.listTables(session, tablePrefix).isEmpty()) {
-            return false;
-        }
-
-        if (!metadata.listViews(session, tablePrefix).isEmpty()) {
-            return false;
-        }
-
-        if (!metadata.listMaterializedViews(session, tablePrefix).isEmpty()) {
-            return false;
-        }
-
-        return true;
     }
 }

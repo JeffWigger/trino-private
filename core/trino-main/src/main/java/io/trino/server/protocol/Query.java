@@ -185,30 +185,6 @@ public class Query
     @GuardedBy("this")
     private Long updateCount;
 
-    public static Query create(
-            Session session,
-            Slug slug,
-            QueryManager queryManager,
-            Optional<URI> queryInfoUrl,
-            ExchangeClient exchangeClient,
-            Executor dataProcessorExecutor,
-            ScheduledExecutorService timeoutExecutor,
-            BlockEncodingSerde blockEncodingSerde)
-    {
-        Query result = new Query(session, slug, queryManager, queryInfoUrl, exchangeClient, dataProcessorExecutor, timeoutExecutor, blockEncodingSerde);
-
-        result.queryManager.addOutputInfoListener(result.getQueryId(), result::setQueryOutputInfo);
-
-        result.queryManager.addStateChangeListener(result.getQueryId(), state -> {
-            if (state.isDone()) {
-                QueryInfo queryInfo = queryManager.getFullQueryInfo(result.getQueryId());
-                result.closeExchangeClientIfNecessary(queryInfo);
-            }
-        });
-
-        return result;
-    }
-
     private Query(
             Session session,
             Slug slug,
@@ -238,6 +214,186 @@ public class Query
         this.timeoutExecutor = timeoutExecutor;
         this.supportsParametricDateTime = session.getClientCapabilities().contains(ClientCapabilities.PARAMETRIC_DATETIME.toString());
         serde = new PagesSerdeFactory(blockEncodingSerde, isExchangeCompressionEnabled(session)).createPagesSerde();
+    }
+
+    public static Query create(
+            Session session,
+            Slug slug,
+            QueryManager queryManager,
+            Optional<URI> queryInfoUrl,
+            ExchangeClient exchangeClient,
+            Executor dataProcessorExecutor,
+            ScheduledExecutorService timeoutExecutor,
+            BlockEncodingSerde blockEncodingSerde)
+    {
+        Query result = new Query(session, slug, queryManager, queryInfoUrl, exchangeClient, dataProcessorExecutor, timeoutExecutor, blockEncodingSerde);
+
+        result.queryManager.addOutputInfoListener(result.getQueryId(), result::setQueryOutputInfo);
+
+        result.queryManager.addStateChangeListener(result.getQueryId(), state -> {
+            if (state.isDone()) {
+                QueryInfo queryInfo = queryManager.getFullQueryInfo(result.getQueryId());
+                result.closeExchangeClientIfNecessary(queryInfo);
+            }
+        });
+
+        return result;
+    }
+
+    private static StatementStats toStatementStats(QueryInfo queryInfo)
+    {
+        QueryStats queryStats = queryInfo.getQueryStats();
+        StageInfo outputStage = queryInfo.getOutputStage().orElse(null);
+
+        return StatementStats.builder()
+                .setState(queryInfo.getState().toString())
+                .setQueued(queryInfo.getState() == QueryState.QUEUED)
+                .setScheduled(queryInfo.isScheduled())
+                .setNodes(globalUniqueNodes(outputStage).size())
+                .setTotalSplits(queryStats.getTotalDrivers())
+                .setQueuedSplits(queryStats.getQueuedDrivers())
+                .setRunningSplits(queryStats.getRunningDrivers() + queryStats.getBlockedDrivers())
+                .setCompletedSplits(queryStats.getCompletedDrivers())
+                .setCpuTimeMillis(queryStats.getTotalCpuTime().toMillis())
+                .setWallTimeMillis(queryStats.getTotalScheduledTime().toMillis())
+                .setQueuedTimeMillis(queryStats.getQueuedTime().toMillis())
+                .setElapsedTimeMillis(queryStats.getElapsedTime().toMillis())
+                .setProcessedRows(queryStats.getRawInputPositions())
+                .setProcessedBytes(queryStats.getRawInputDataSize().toBytes())
+                .setPhysicalInputBytes(queryStats.getPhysicalInputDataSize().toBytes())
+                .setPeakMemoryBytes(queryStats.getPeakUserMemoryReservation().toBytes())
+                .setSpilledBytes(queryStats.getSpilledDataSize().toBytes())
+                .setRootStage(toStageStats(outputStage))
+                .build();
+    }
+
+    private static StageStats toStageStats(StageInfo stageInfo)
+    {
+        if (stageInfo == null) {
+            return null;
+        }
+
+        io.trino.execution.StageStats stageStats = stageInfo.getStageStats();
+
+        ImmutableList.Builder<StageStats> subStages = ImmutableList.builder();
+        for (StageInfo subStage : stageInfo.getSubStages()) {
+            subStages.add(toStageStats(subStage));
+        }
+
+        Set<String> uniqueNodes = new HashSet<>();
+        for (TaskInfo task : stageInfo.getTasks()) {
+            // todo add nodeId to TaskInfo
+            URI uri = task.getTaskStatus().getSelf();
+            uniqueNodes.add(uri.getHost() + ":" + uri.getPort());
+        }
+
+        return StageStats.builder()
+                .setStageId(String.valueOf(stageInfo.getStageId().getId()))
+                .setState(stageInfo.getState().toString())
+                .setDone(stageInfo.getState().isDone())
+                .setNodes(uniqueNodes.size())
+                .setTotalSplits(stageStats.getTotalDrivers())
+                .setQueuedSplits(stageStats.getQueuedDrivers())
+                .setRunningSplits(stageStats.getRunningDrivers() + stageStats.getBlockedDrivers())
+                .setCompletedSplits(stageStats.getCompletedDrivers())
+                .setCpuTimeMillis(stageStats.getTotalCpuTime().toMillis())
+                .setWallTimeMillis(stageStats.getTotalScheduledTime().toMillis())
+                .setProcessedRows(stageStats.getRawInputPositions())
+                .setProcessedBytes(stageStats.getRawInputDataSize().toBytes())
+                .setPhysicalInputBytes(stageStats.getPhysicalInputDataSize().toBytes())
+                .setSubStages(subStages.build())
+                .build();
+    }
+
+    private static Set<String> globalUniqueNodes(StageInfo stageInfo)
+    {
+        if (stageInfo == null) {
+            return ImmutableSet.of();
+        }
+        ImmutableSet.Builder<String> nodes = ImmutableSet.builder();
+        for (TaskInfo task : stageInfo.getTasks()) {
+            // todo add nodeId to TaskInfo
+            URI uri = task.getTaskStatus().getSelf();
+            nodes.add(uri.getHost() + ":" + uri.getPort());
+        }
+
+        for (StageInfo subStage : stageInfo.getSubStages()) {
+            nodes.addAll(globalUniqueNodes(subStage));
+        }
+        return nodes.build();
+    }
+
+    private static Optional<Integer> findCancelableLeafStage(QueryInfo queryInfo)
+    {
+        // if query is running, find the leaf-most running stage
+        return queryInfo.getOutputStage().flatMap(Query::findCancelableLeafStage);
+    }
+
+    private static Optional<Integer> findCancelableLeafStage(StageInfo stage)
+    {
+        // if this stage is already done, we can't cancel it
+        if (stage.getState().isDone()) {
+            return Optional.empty();
+        }
+
+        // attempt to find a cancelable sub stage
+        // check in reverse order since build side of a join will be later in the list
+        for (StageInfo subStage : Lists.reverse(stage.getSubStages())) {
+            Optional<Integer> leafStage = findCancelableLeafStage(subStage);
+            if (leafStage.isPresent()) {
+                return leafStage;
+            }
+        }
+
+        // no matching sub stage, so return this stage
+        return Optional.of(stage.getStageId().getId());
+    }
+
+    private static QueryError toQueryError(QueryInfo queryInfo, Optional<Throwable> exception)
+    {
+        QueryState state = queryInfo.getState();
+        if (state != FAILED && exception.isEmpty()) {
+            return null;
+        }
+
+        ExecutionFailureInfo executionFailure;
+        if (queryInfo.getFailureInfo() != null) {
+            executionFailure = queryInfo.getFailureInfo();
+        }
+        else if (exception.isPresent()) {
+            executionFailure = toFailure(exception.get());
+        }
+        else {
+            log.warn("Query %s in state %s has no failure info", queryInfo.getQueryId(), state);
+            executionFailure = toFailure(new RuntimeException(format("Query is %s (reason unknown)", state)));
+        }
+        FailureInfo failure = executionFailure.toFailureInfo();
+
+        ErrorCode errorCode;
+        if (queryInfo.getErrorCode() != null) {
+            errorCode = queryInfo.getErrorCode();
+        }
+        else if (exception.isPresent()) {
+            errorCode = SERIALIZATION_ERROR.toErrorCode();
+        }
+        else {
+            errorCode = GENERIC_INTERNAL_ERROR.toErrorCode();
+            log.warn("Failed query %s has no error code", queryInfo.getQueryId());
+        }
+        return new QueryError(
+                firstNonNull(failure.getMessage(), "Internal error"),
+                null,
+                errorCode.getCode(),
+                errorCode.getName(),
+                errorCode.getType().toString(),
+                failure.getErrorLocation(),
+                failure);
+    }
+
+    private static Warning toClientWarning(TrinoWarning warning)
+    {
+        WarningCode code = warning.getWarningCode();
+        return new Warning(new Warning.Code(code.getCode(), code.getName()), warning.getMessage());
     }
 
     public void cancel()
@@ -709,161 +865,5 @@ public class Query
                 // not expected here
         }
         throw new IllegalArgumentException("Unsupported kind: " + parameter.getKind());
-    }
-
-    private static StatementStats toStatementStats(QueryInfo queryInfo)
-    {
-        QueryStats queryStats = queryInfo.getQueryStats();
-        StageInfo outputStage = queryInfo.getOutputStage().orElse(null);
-
-        return StatementStats.builder()
-                .setState(queryInfo.getState().toString())
-                .setQueued(queryInfo.getState() == QueryState.QUEUED)
-                .setScheduled(queryInfo.isScheduled())
-                .setNodes(globalUniqueNodes(outputStage).size())
-                .setTotalSplits(queryStats.getTotalDrivers())
-                .setQueuedSplits(queryStats.getQueuedDrivers())
-                .setRunningSplits(queryStats.getRunningDrivers() + queryStats.getBlockedDrivers())
-                .setCompletedSplits(queryStats.getCompletedDrivers())
-                .setCpuTimeMillis(queryStats.getTotalCpuTime().toMillis())
-                .setWallTimeMillis(queryStats.getTotalScheduledTime().toMillis())
-                .setQueuedTimeMillis(queryStats.getQueuedTime().toMillis())
-                .setElapsedTimeMillis(queryStats.getElapsedTime().toMillis())
-                .setProcessedRows(queryStats.getRawInputPositions())
-                .setProcessedBytes(queryStats.getRawInputDataSize().toBytes())
-                .setPhysicalInputBytes(queryStats.getPhysicalInputDataSize().toBytes())
-                .setPeakMemoryBytes(queryStats.getPeakUserMemoryReservation().toBytes())
-                .setSpilledBytes(queryStats.getSpilledDataSize().toBytes())
-                .setRootStage(toStageStats(outputStage))
-                .build();
-    }
-
-    private static StageStats toStageStats(StageInfo stageInfo)
-    {
-        if (stageInfo == null) {
-            return null;
-        }
-
-        io.trino.execution.StageStats stageStats = stageInfo.getStageStats();
-
-        ImmutableList.Builder<StageStats> subStages = ImmutableList.builder();
-        for (StageInfo subStage : stageInfo.getSubStages()) {
-            subStages.add(toStageStats(subStage));
-        }
-
-        Set<String> uniqueNodes = new HashSet<>();
-        for (TaskInfo task : stageInfo.getTasks()) {
-            // todo add nodeId to TaskInfo
-            URI uri = task.getTaskStatus().getSelf();
-            uniqueNodes.add(uri.getHost() + ":" + uri.getPort());
-        }
-
-        return StageStats.builder()
-                .setStageId(String.valueOf(stageInfo.getStageId().getId()))
-                .setState(stageInfo.getState().toString())
-                .setDone(stageInfo.getState().isDone())
-                .setNodes(uniqueNodes.size())
-                .setTotalSplits(stageStats.getTotalDrivers())
-                .setQueuedSplits(stageStats.getQueuedDrivers())
-                .setRunningSplits(stageStats.getRunningDrivers() + stageStats.getBlockedDrivers())
-                .setCompletedSplits(stageStats.getCompletedDrivers())
-                .setCpuTimeMillis(stageStats.getTotalCpuTime().toMillis())
-                .setWallTimeMillis(stageStats.getTotalScheduledTime().toMillis())
-                .setProcessedRows(stageStats.getRawInputPositions())
-                .setProcessedBytes(stageStats.getRawInputDataSize().toBytes())
-                .setPhysicalInputBytes(stageStats.getPhysicalInputDataSize().toBytes())
-                .setSubStages(subStages.build())
-                .build();
-    }
-
-    private static Set<String> globalUniqueNodes(StageInfo stageInfo)
-    {
-        if (stageInfo == null) {
-            return ImmutableSet.of();
-        }
-        ImmutableSet.Builder<String> nodes = ImmutableSet.builder();
-        for (TaskInfo task : stageInfo.getTasks()) {
-            // todo add nodeId to TaskInfo
-            URI uri = task.getTaskStatus().getSelf();
-            nodes.add(uri.getHost() + ":" + uri.getPort());
-        }
-
-        for (StageInfo subStage : stageInfo.getSubStages()) {
-            nodes.addAll(globalUniqueNodes(subStage));
-        }
-        return nodes.build();
-    }
-
-    private static Optional<Integer> findCancelableLeafStage(QueryInfo queryInfo)
-    {
-        // if query is running, find the leaf-most running stage
-        return queryInfo.getOutputStage().flatMap(Query::findCancelableLeafStage);
-    }
-
-    private static Optional<Integer> findCancelableLeafStage(StageInfo stage)
-    {
-        // if this stage is already done, we can't cancel it
-        if (stage.getState().isDone()) {
-            return Optional.empty();
-        }
-
-        // attempt to find a cancelable sub stage
-        // check in reverse order since build side of a join will be later in the list
-        for (StageInfo subStage : Lists.reverse(stage.getSubStages())) {
-            Optional<Integer> leafStage = findCancelableLeafStage(subStage);
-            if (leafStage.isPresent()) {
-                return leafStage;
-            }
-        }
-
-        // no matching sub stage, so return this stage
-        return Optional.of(stage.getStageId().getId());
-    }
-
-    private static QueryError toQueryError(QueryInfo queryInfo, Optional<Throwable> exception)
-    {
-        QueryState state = queryInfo.getState();
-        if (state != FAILED && exception.isEmpty()) {
-            return null;
-        }
-
-        ExecutionFailureInfo executionFailure;
-        if (queryInfo.getFailureInfo() != null) {
-            executionFailure = queryInfo.getFailureInfo();
-        }
-        else if (exception.isPresent()) {
-            executionFailure = toFailure(exception.get());
-        }
-        else {
-            log.warn("Query %s in state %s has no failure info", queryInfo.getQueryId(), state);
-            executionFailure = toFailure(new RuntimeException(format("Query is %s (reason unknown)", state)));
-        }
-        FailureInfo failure = executionFailure.toFailureInfo();
-
-        ErrorCode errorCode;
-        if (queryInfo.getErrorCode() != null) {
-            errorCode = queryInfo.getErrorCode();
-        }
-        else if (exception.isPresent()) {
-            errorCode = SERIALIZATION_ERROR.toErrorCode();
-        }
-        else {
-            errorCode = GENERIC_INTERNAL_ERROR.toErrorCode();
-            log.warn("Failed query %s has no error code", queryInfo.getQueryId());
-        }
-        return new QueryError(
-                firstNonNull(failure.getMessage(), "Internal error"),
-                null,
-                errorCode.getCode(),
-                errorCode.getName(),
-                errorCode.getType().toString(),
-                failure.getErrorLocation(),
-                failure);
-    }
-
-    private static Warning toClientWarning(TrinoWarning warning)
-    {
-        WarningCode code = warning.getWarningCode();
-        return new Warning(new Warning.Code(code.getCode(), code.getName()), warning.getMessage());
     }
 }

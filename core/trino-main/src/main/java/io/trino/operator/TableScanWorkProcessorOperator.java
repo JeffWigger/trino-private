@@ -76,6 +76,11 @@ public class TableScanWorkProcessorOperator
         this.pages = splits.flatTransform(splitToPages);
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
     @Override
     public WorkProcessor<Page> getOutputPages()
     {
@@ -301,10 +306,5 @@ public class TableScanWorkProcessorOperator
 
             return ProcessState.ofResult(page);
         }
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 }

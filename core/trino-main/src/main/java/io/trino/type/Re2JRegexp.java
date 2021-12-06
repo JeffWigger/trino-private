@@ -71,6 +71,16 @@ public final class Re2JRegexp
         }
     }
 
+    private static void validateGroup(int group, int groupCount)
+    {
+        if (group < 0) {
+            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "Group cannot be negative");
+        }
+        if (group > groupCount) {
+            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, format("Pattern has %d groups. Cannot access group %d", groupCount, group));
+        }
+    }
+
     public String pattern()
     {
         return re2jPattern.pattern();
@@ -152,16 +162,6 @@ public final class Re2JRegexp
 
         VARCHAR.writeSlice(blockBuilder, source.slice(lastEnd, source.length() - lastEnd));
         return blockBuilder.build();
-    }
-
-    private static void validateGroup(int group, int groupCount)
-    {
-        if (group < 0) {
-            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "Group cannot be negative");
-        }
-        if (group > groupCount) {
-            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, format("Pattern has %d groups. Cannot access group %d", groupCount, group));
-        }
     }
 
     private class RE2JEventsListener

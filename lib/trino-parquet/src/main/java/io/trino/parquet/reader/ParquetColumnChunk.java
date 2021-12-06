@@ -43,9 +43,9 @@ public class ParquetColumnChunk
     private final Optional<String> fileCreatedBy;
     private final ColumnChunkDescriptor descriptor;
     private final List<Slice> slices;
+    private final OffsetIndex offsetIndex;
     private int sliceIndex;
     private BasicSliceInput input;
-    private final OffsetIndex offsetIndex;
 
     public ParquetColumnChunk(
             Optional<String> fileCreatedBy,

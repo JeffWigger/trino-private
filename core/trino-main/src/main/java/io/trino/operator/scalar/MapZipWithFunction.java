@@ -75,22 +75,6 @@ public final class MapZipWithFunction
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type inputValueType1 = functionBinding.getTypeVariable("V1");
-        Type inputValueType2 = functionBinding.getTypeVariable("V2");
-        Type outputMapType = functionBinding.getBoundSignature().getReturnType();
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL, FUNCTION),
-                ImmutableList.of(MapZipWithLambda.class),
-                METHOD_HANDLE.bindTo(keyType).bindTo(inputValueType1).bindTo(inputValueType2).bindTo(outputMapType),
-                Optional.of(STATE_FACTORY.bindTo(outputMapType)));
-    }
-
     public static Object createState(MapType mapType)
     {
         return new PageBuilder(ImmutableList.of(mapType));
@@ -174,6 +158,22 @@ public final class MapZipWithFunction
         mapBlockBuilder.closeEntry();
         pageBuilder.declarePosition();
         return outputMapType.getObject(mapBlockBuilder, mapBlockBuilder.getPositionCount() - 1);
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type inputValueType1 = functionBinding.getTypeVariable("V1");
+        Type inputValueType2 = functionBinding.getTypeVariable("V2");
+        Type outputMapType = functionBinding.getBoundSignature().getReturnType();
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL, FUNCTION),
+                ImmutableList.of(MapZipWithLambda.class),
+                METHOD_HANDLE.bindTo(keyType).bindTo(inputValueType1).bindTo(inputValueType2).bindTo(outputMapType),
+                Optional.of(STATE_FACTORY.bindTo(outputMapType)));
     }
 
     @FunctionalInterface

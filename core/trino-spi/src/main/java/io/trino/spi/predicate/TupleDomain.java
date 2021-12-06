@@ -175,19 +175,6 @@ public final class TupleDomain<T>
                 .collect(toLinkedMap(ColumnDomain::getColumn, ColumnDomain::getDomain)));
     }
 
-    /*
-     * This method is for JSON serialization only. Do not use.
-     * It's marked as @Deprecated to help avoid usage, and not because we plan to remove it.
-     */
-    @Deprecated
-    @JsonProperty
-    public Optional<List<ColumnDomain<T>>> getColumnDomains()
-    {
-        return domains.map(map -> map.entrySet().stream()
-                .map(entry -> new ColumnDomain<>(entry.getKey(), entry.getValue()))
-                .collect(toUnmodifiableList()));
-    }
-
     private static <T> boolean containsNoneDomain(Map<T, Domain> domains)
     {
         return domains.values().stream().anyMatch(Domain::isNone);
@@ -198,44 +185,6 @@ public final class TupleDomain<T>
         return domains.entrySet().stream()
                 .filter(entry -> !entry.getValue().isAll())
                 .collect(toLinkedMap(Map.Entry::getKey, Map.Entry::getValue));
-    }
-
-    /**
-     * Returns true if any tuples would satisfy this TupleDomain
-     */
-    public boolean isAll()
-    {
-        return domains.isPresent() && domains.get().isEmpty();
-    }
-
-    /**
-     * Returns true if no tuple could ever satisfy this TupleDomain
-     */
-    public boolean isNone()
-    {
-        return domains.isEmpty();
-    }
-
-    /**
-     * Gets the TupleDomain as a map of each column to its respective Domain.
-     * - Will return an Optional.empty() if this is a 'none' TupleDomain.
-     * - Unmentioned columns have an implicit value of Domain.all()
-     * - The column Domains can be thought of as AND'ed to together to form the whole predicate
-     */
-    @JsonIgnore
-    public Optional<Map<T, Domain>> getDomains()
-    {
-        return domains;
-    }
-
-    /**
-     * Returns the strict intersection of the TupleDomains.
-     * The resulting TupleDomain represents the set of tuples that would be valid
-     * in both TupleDomains.
-     */
-    public TupleDomain<T> intersect(TupleDomain<T> other)
-    {
-        return intersect(List.of(this, other));
     }
 
     public static <T> TupleDomain<T> intersect(List<TupleDomain<T>> domains)
@@ -414,6 +363,66 @@ public final class TupleDomain<T>
         return withColumnDomains(result);
     }
 
+    private static <T, K, U> Collector<T, ?, Map<K, U>> toLinkedMap(Function<? super T, ? extends K> keyMapper, Function<? super T, ? extends U> valueMapper)
+    {
+        return toMap(
+                keyMapper,
+                valueMapper,
+                (u, v) -> {throw new IllegalStateException(format("Duplicate values for a key: %s and %s", u, v));},
+                LinkedHashMap::new);
+    }
+
+    /*
+     * This method is for JSON serialization only. Do not use.
+     * It's marked as @Deprecated to help avoid usage, and not because we plan to remove it.
+     */
+    @Deprecated
+    @JsonProperty
+    public Optional<List<ColumnDomain<T>>> getColumnDomains()
+    {
+        return domains.map(map -> map.entrySet().stream()
+                .map(entry -> new ColumnDomain<>(entry.getKey(), entry.getValue()))
+                .collect(toUnmodifiableList()));
+    }
+
+    /**
+     * Returns true if any tuples would satisfy this TupleDomain
+     */
+    public boolean isAll()
+    {
+        return domains.isPresent() && domains.get().isEmpty();
+    }
+
+    /**
+     * Returns true if no tuple could ever satisfy this TupleDomain
+     */
+    public boolean isNone()
+    {
+        return domains.isEmpty();
+    }
+
+    /**
+     * Gets the TupleDomain as a map of each column to its respective Domain.
+     * - Will return an Optional.empty() if this is a 'none' TupleDomain.
+     * - Unmentioned columns have an implicit value of Domain.all()
+     * - The column Domains can be thought of as AND'ed to together to form the whole predicate
+     */
+    @JsonIgnore
+    public Optional<Map<T, Domain>> getDomains()
+    {
+        return domains;
+    }
+
+    /**
+     * Returns the strict intersection of the TupleDomains.
+     * The resulting TupleDomain represents the set of tuples that would be valid
+     * in both TupleDomains.
+     */
+    public TupleDomain<T> intersect(TupleDomain<T> other)
+    {
+        return intersect(List.of(this, other));
+    }
+
     /**
      * Returns true only if there exists a strict intersection between the TupleDomains.
      * i.e. there exists some potential tuple that would be allowable in both TupleDomains.
@@ -557,14 +566,5 @@ public final class TupleDomain<T>
         {
             return domain;
         }
-    }
-
-    private static <T, K, U> Collector<T, ?, Map<K, U>> toLinkedMap(Function<? super T, ? extends K> keyMapper, Function<? super T, ? extends U> valueMapper)
-    {
-        return toMap(
-                keyMapper,
-                valueMapper,
-                (u, v) -> { throw new IllegalStateException(format("Duplicate values for a key: %s and %s", u, v)); },
-                LinkedHashMap::new);
     }
 }

@@ -106,35 +106,6 @@ public class FieldSetFilteringRecordSet
             this.fieldSets = fieldSets;
         }
 
-        @Override
-        public long getCompletedBytes()
-        {
-            return delegate.getCompletedBytes();
-        }
-
-        @Override
-        public long getReadTimeNanos()
-        {
-            return delegate.getReadTimeNanos();
-        }
-
-        @Override
-        public Type getType(int field)
-        {
-            return delegate.getType(field);
-        }
-
-        @Override
-        public boolean advanceNextPosition()
-        {
-            while (delegate.advanceNextPosition()) {
-                if (fieldSetsEqual(delegate, fieldSets)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         private static boolean fieldSetsEqual(RecordCursor cursor, List<Set<Field>> fieldSets)
         {
             for (Set<Field> fieldSet : fieldSets) {
@@ -188,6 +159,35 @@ public class FieldSetFilteringRecordSet
                 throwIfUnchecked(t);
                 throw new RuntimeException(t);
             }
+        }
+
+        @Override
+        public long getCompletedBytes()
+        {
+            return delegate.getCompletedBytes();
+        }
+
+        @Override
+        public long getReadTimeNanos()
+        {
+            return delegate.getReadTimeNanos();
+        }
+
+        @Override
+        public Type getType(int field)
+        {
+            return delegate.getType(field);
+        }
+
+        @Override
+        public boolean advanceNextPosition()
+        {
+            while (delegate.advanceNextPosition()) {
+                if (fieldSetsEqual(delegate, fieldSets)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         @Override

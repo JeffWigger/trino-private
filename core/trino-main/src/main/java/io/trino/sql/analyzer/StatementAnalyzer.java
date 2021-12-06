@@ -329,6 +329,19 @@ class StatementAnalyzer
         this.correlationSupport = requireNonNull(correlationSupport, "correlationSupport is null");
     }
 
+    private static boolean hasScopeAsLocalParent(Scope root, Scope parent)
+    {
+        Scope scope = root;
+        while (scope.getLocalParent().isPresent()) {
+            scope = scope.getLocalParent().get();
+            if (scope.equals(parent)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public Scope analyze(Node node, Scope outerQueryScope)
     {
         return analyze(node, Optional.of(outerQueryScope));
@@ -344,6 +357,25 @@ class StatementAnalyzer
     {
         return new Visitor(outerQueryScope, warningCollector, Optional.of(updateKind))
                 .process(table, Optional.empty());
+    }
+
+    private Session createViewSession(Optional<String> catalog, Optional<String> schema, Identity identity, SqlPath path)
+    {
+        return Session.builder(metadata.getSessionPropertyManager())
+                .setQueryId(session.getQueryId())
+                .setTransactionId(session.getTransactionId().orElse(null))
+                .setIdentity(identity)
+                .setSource(session.getSource().orElse(null))
+                .setCatalog(catalog)
+                .setSchema(schema)
+                .setPath(path)
+                .setTimeZoneKey(session.getTimeZoneKey())
+                .setLocale(session.getLocale())
+                .setRemoteUserAddress(session.getRemoteUserAddress().orElse(null))
+                .setUserAgent(session.getUserAgent().orElse(null))
+                .setClientInfo(session.getClientInfo().orElse(null))
+                .setStart(session.getStart())
+                .build();
     }
 
     private enum UpdateKind
@@ -506,9 +538,9 @@ class StatementAnalyzer
                     targetTable,
                     Optional.empty(),
                     Optional.of(Streams.zip(
-                            columnStream,
-                            queryScope.getRelationType().getVisibleFields().stream(),
-                            (column, field) -> new OutputColumn(column, analysis.getSourceColumns(field)))
+                                    columnStream,
+                                    queryScope.getRelationType().getVisibleFields().stream(),
+                                    (column, field) -> new OutputColumn(column, analysis.getSourceColumns(field)))
                             .collect(toImmutableList())));
 
             return createAndAssignScope(insert, scope, Field.newUnqualified("rows", BIGINT));
@@ -594,9 +626,9 @@ class StatementAnalyzer
                     targetTable,
                     Optional.empty(),
                     Optional.of(Streams.zip(
-                            columns,
-                            queryScope.getRelationType().getVisibleFields().stream(),
-                            (column, field) -> new OutputColumn(column, analysis.getSourceColumns(field)))
+                                    columns,
+                                    queryScope.getRelationType().getVisibleFields().stream(),
+                                    (column, field) -> new OutputColumn(column, analysis.getSourceColumns(field)))
                             .collect(toImmutableList())));
 
             return createAndAssignScope(refreshMaterializedView, scope, Field.newUnqualified("rows", BIGINT));
@@ -1547,7 +1579,7 @@ class StatementAnalyzer
             analysis.unregisterTableForView();
 
             checkViewStaleness(columns, descriptor.getVisibleFields(), name, table)
-                    .ifPresent(explanation -> { throw semanticException(VIEW_IS_STALE, table, "View '%s' is stale or in invalid state: %s", name, explanation); });
+                    .ifPresent(explanation -> {throw semanticException(VIEW_IS_STALE, table, "View '%s' is stale or in invalid state: %s", name, explanation);});
 
             // Derive the type of the view from the stored definition, not from the analysis of the underlying query.
             // This is needed in case the underlying table(s) changed and the query in the view now produces types that
@@ -1890,16 +1922,16 @@ class StatementAnalyzer
             }
 
             Map<NodeRef<Expression>, Type> expressionTypes = ExpressionAnalyzer.analyzeExpressions(
-                    session,
-                    metadata,
-                    groupProvider,
-                    accessControl,
-                    sqlParser,
-                    TypeProvider.empty(),
-                    ImmutableList.of(samplePercentage),
-                    analysis.getParameters(),
-                    WarningCollector.NOOP,
-                    analysis.isDescribe())
+                            session,
+                            metadata,
+                            groupProvider,
+                            accessControl,
+                            sqlParser,
+                            TypeProvider.empty(),
+                            ImmutableList.of(samplePercentage),
+                            analysis.getParameters(),
+                            WarningCollector.NOOP,
+                            analysis.isDescribe())
                     .getExpressionTypes();
 
             Type samplePercentageType = expressionTypes.get(NodeRef.of(samplePercentage));
@@ -4047,37 +4079,5 @@ class StatementAnalyzer
         {
             return new OutputColumn(new Column(field.getName().orElseThrow(), field.getType().toString()), analysis.getSourceColumns(field));
         }
-    }
-
-    private Session createViewSession(Optional<String> catalog, Optional<String> schema, Identity identity, SqlPath path)
-    {
-        return Session.builder(metadata.getSessionPropertyManager())
-                .setQueryId(session.getQueryId())
-                .setTransactionId(session.getTransactionId().orElse(null))
-                .setIdentity(identity)
-                .setSource(session.getSource().orElse(null))
-                .setCatalog(catalog)
-                .setSchema(schema)
-                .setPath(path)
-                .setTimeZoneKey(session.getTimeZoneKey())
-                .setLocale(session.getLocale())
-                .setRemoteUserAddress(session.getRemoteUserAddress().orElse(null))
-                .setUserAgent(session.getUserAgent().orElse(null))
-                .setClientInfo(session.getClientInfo().orElse(null))
-                .setStart(session.getStart())
-                .build();
-    }
-
-    private static boolean hasScopeAsLocalParent(Scope root, Scope parent)
-    {
-        Scope scope = root;
-        while (scope.getLocalParent().isPresent()) {
-            scope = scope.getLocalParent().get();
-            if (scope.equals(parent)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

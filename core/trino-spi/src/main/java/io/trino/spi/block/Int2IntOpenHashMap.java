@@ -29,6 +29,14 @@ class Int2IntOpenHashMap
      */
     private static final float DEFAULT_LOAD_FACTOR = .75f;
     /**
+     * We never resize below this threshold, which is the construction-time {#n}.
+     */
+    protected final transient int minN;
+    /**
+     * The acceptable load factor.
+     */
+    protected final float f;
+    /**
      * The array of keys.
      */
     protected transient int[] key;
@@ -53,17 +61,9 @@ class Int2IntOpenHashMap
      */
     protected transient int maxFill;
     /**
-     * We never resize below this threshold, which is the construction-time {#n}.
-     */
-    protected final transient int minN;
-    /**
      * Number of entries in the set (including the key zero, if present).
      */
     protected int size;
-    /**
-     * The acceptable load factor.
-     */
-    protected final float f;
 
     public Int2IntOpenHashMap(final int expected)
     {
@@ -96,6 +96,42 @@ class Int2IntOpenHashMap
         maxFill = maxFill(n, f);
         key = new int[n + 1];
         value = new int[n + 1];
+    }
+
+    private static int mix(final int x)
+    {
+        final int h = x * INT_PHI;
+        return h ^ (h >>> 16);
+    }
+
+    private static int maxFill(final int n, final float f)
+    {
+        /* We must guarantee that there is always at least
+         * one free entry (even with pathological load factors). */
+        return Math.min((int) Math.ceil(n * f), n - 1);
+    }
+
+    private static int arraySize(final int expected, final float f)
+    {
+        final long s = Math.max(2, nextPowerOfTwo((long) Math.ceil(expected / f)));
+        if (s > (1 << 30)) {
+            throw new IllegalArgumentException("Too large (" + expected + " expected elements with load factor " + f + ")");
+        }
+        return (int) s;
+    }
+
+    private static long nextPowerOfTwo(long x)
+    {
+        if (x == 0) {
+            return 1;
+        }
+        x--;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        return (x | x >> 32) + 1;
     }
 
     public int putIfAbsent(final int k, final int v)
@@ -250,41 +286,5 @@ class Int2IntOpenHashMap
     private int realSize()
     {
         return containsNullKey ? size - 1 : size;
-    }
-
-    private static int mix(final int x)
-    {
-        final int h = x * INT_PHI;
-        return h ^ (h >>> 16);
-    }
-
-    private static int maxFill(final int n, final float f)
-    {
-        /* We must guarantee that there is always at least
-         * one free entry (even with pathological load factors). */
-        return Math.min((int) Math.ceil(n * f), n - 1);
-    }
-
-    private static int arraySize(final int expected, final float f)
-    {
-        final long s = Math.max(2, nextPowerOfTwo((long) Math.ceil(expected / f)));
-        if (s > (1 << 30)) {
-            throw new IllegalArgumentException("Too large (" + expected + " expected elements with load factor " + f + ")");
-        }
-        return (int) s;
-    }
-
-    private static long nextPowerOfTwo(long x)
-    {
-        if (x == 0) {
-            return 1;
-        }
-        x--;
-        x |= x >> 1;
-        x |= x >> 2;
-        x |= x >> 4;
-        x |= x >> 8;
-        x |= x >> 16;
-        return (x | x >> 32) + 1;
     }
 }

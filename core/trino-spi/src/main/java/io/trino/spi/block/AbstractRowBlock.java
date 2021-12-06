@@ -30,6 +30,14 @@ public abstract class AbstractRowBlock
 {
     protected final int numFields;
 
+    protected AbstractRowBlock(int numFields)
+    {
+        if (numFields <= 0) {
+            throw new IllegalArgumentException("Number of fields in RowBlock must be positive");
+        }
+        this.numFields = numFields;
+    }
+
     @Override
     public final List<Block> getChildren()
     {
@@ -52,14 +60,6 @@ public abstract class AbstractRowBlock
     protected int getFieldBlockOffset(int position)
     {
         return getFieldBlockOffsets()[position + getOffsetBase()];
-    }
-
-    protected AbstractRowBlock(int numFields)
-    {
-        if (numFields <= 0) {
-            throw new IllegalArgumentException("Number of fields in RowBlock must be positive");
-        }
-        this.numFields = numFields;
     }
 
     @Override

@@ -41,6 +41,12 @@ import javax.inject.Inject;
 public class SystemConnectorModule
         implements Module
 {
+    @ProvidesIntoSet
+    public static Procedure getKillQueryProcedure(KillQueryProcedure procedure)
+    {
+        return procedure.getProcedure();
+    }
+
     @Override
     public void configure(Binder binder)
     {
@@ -79,12 +85,6 @@ public class SystemConnectorModule
 
         binder.bind(GlobalSystemConnectorFactory.class).in(Scopes.SINGLETON);
         binder.bind(SystemConnectorRegistrar.class).asEagerSingleton();
-    }
-
-    @ProvidesIntoSet
-    public static Procedure getKillQueryProcedure(KillQueryProcedure procedure)
-    {
-        return procedure.getProcedure();
     }
 
     private static class SystemConnectorRegistrar

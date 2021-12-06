@@ -49,6 +49,11 @@ public class RowReferencePageManager
     private LoadCursor currentCursor;
     private long pageBytes;
 
+    private static boolean isCursorRowId(long rowId)
+    {
+        return rowId == RESERVED_ROW_ID_FOR_CURSOR;
+    }
+
     public LoadCursor add(Page page)
     {
         checkState(currentCursor == null, "Cursor still active");
@@ -114,11 +119,6 @@ public class RowReferencePageManager
         else {
             return rowIdBuffer.getPosition(rowId);
         }
-    }
-
-    private static boolean isCursorRowId(long rowId)
-    {
-        return rowId == RESERVED_ROW_ID_FOR_CURSOR;
     }
 
     public void compactIfNeeded()
@@ -227,6 +227,91 @@ public class RowReferencePageManager
         public void close()
         {
             closeCallback.run();
+        }
+    }
+
+    /**
+     * Buffer abstracting a mapping between row IDs and their associated page IDs and positions.
+     */
+    private static class RowIdBuffer
+    {
+        public static final long UNKNOWN_ID = -1;
+        private static final long INSTANCE_SIZE = ClassLayout.parseClass(RowIdBuffer.class).instanceSize();
+
+        /*
+         *  Memory layout:
+         *  [INT] pageId1, [INT] position1,
+         *  [INT] pageId2, [INT] position2,
+         *  ...
+         */
+        private final IntBigArray buffer = new IntBigArray();
+
+        private final LongBigArrayFIFOQueue emptySlots = new LongBigArrayFIFOQueue();
+
+        private long capacity;
+
+        /**
+         * Provides a new row ID referencing the provided page position.
+         *
+         * @return ID referencing the provided page position
+         */
+        public long allocateRowId(int pageId, int position)
+        {
+            long newRowId;
+            if (!emptySlots.isEmpty()) {
+                newRowId = emptySlots.dequeueLong();
+            }
+            else {
+                newRowId = capacity;
+                capacity++;
+                buffer.ensureCapacity(capacity * 2);
+            }
+
+            setPageId(newRowId, pageId);
+            setPosition(newRowId, position);
+
+            return newRowId;
+        }
+
+        public void deallocate(long rowId)
+        {
+            emptySlots.enqueue(rowId);
+        }
+
+        public int getPageId(long rowId)
+        {
+            return buffer.get(rowId * 2);
+        }
+
+        public void setPageId(long rowId, int pageId)
+        {
+            buffer.set(rowId * 2, pageId);
+        }
+
+        public int getPosition(long rowId)
+        {
+            return buffer.get(rowId * 2 + 1);
+        }
+
+        public void setPosition(long rowId, int position)
+        {
+            buffer.set(rowId * 2 + 1, position);
+        }
+
+        public long sizeOf()
+        {
+            return INSTANCE_SIZE + buffer.sizeOf() + emptySlots.sizeOf();
+        }
+    }
+
+    private static class IntHashSet
+            extends IntOpenHashSet
+    {
+        private static final long INSTANCE_SIZE = ClassLayout.parseClass(IntHashSet.class).instanceSize();
+
+        public long sizeOf()
+        {
+            return INSTANCE_SIZE + SizeOf.sizeOf(key);
         }
     }
 
@@ -356,91 +441,6 @@ public class RowReferencePageManager
             // Getting the size of a page forces a lazy page to be loaded, so only provide the size after an explicit decision to load
             long loadedPageSize = isPageLoaded ? page.getSizeInBytes() : 0;
             return PAGE_ACCOUNTING_INSTANCE_SIZE + loadedPageSize + SizeOf.sizeOf(rowIds);
-        }
-    }
-
-    /**
-     * Buffer abstracting a mapping between row IDs and their associated page IDs and positions.
-     */
-    private static class RowIdBuffer
-    {
-        public static final long UNKNOWN_ID = -1;
-        private static final long INSTANCE_SIZE = ClassLayout.parseClass(RowIdBuffer.class).instanceSize();
-
-        /*
-         *  Memory layout:
-         *  [INT] pageId1, [INT] position1,
-         *  [INT] pageId2, [INT] position2,
-         *  ...
-         */
-        private final IntBigArray buffer = new IntBigArray();
-
-        private final LongBigArrayFIFOQueue emptySlots = new LongBigArrayFIFOQueue();
-
-        private long capacity;
-
-        /**
-         * Provides a new row ID referencing the provided page position.
-         *
-         * @return ID referencing the provided page position
-         */
-        public long allocateRowId(int pageId, int position)
-        {
-            long newRowId;
-            if (!emptySlots.isEmpty()) {
-                newRowId = emptySlots.dequeueLong();
-            }
-            else {
-                newRowId = capacity;
-                capacity++;
-                buffer.ensureCapacity(capacity * 2);
-            }
-
-            setPageId(newRowId, pageId);
-            setPosition(newRowId, position);
-
-            return newRowId;
-        }
-
-        public void deallocate(long rowId)
-        {
-            emptySlots.enqueue(rowId);
-        }
-
-        public int getPageId(long rowId)
-        {
-            return buffer.get(rowId * 2);
-        }
-
-        public void setPageId(long rowId, int pageId)
-        {
-            buffer.set(rowId * 2, pageId);
-        }
-
-        public int getPosition(long rowId)
-        {
-            return buffer.get(rowId * 2 + 1);
-        }
-
-        public void setPosition(long rowId, int position)
-        {
-            buffer.set(rowId * 2 + 1, position);
-        }
-
-        public long sizeOf()
-        {
-            return INSTANCE_SIZE + buffer.sizeOf() + emptySlots.sizeOf();
-        }
-    }
-
-    private static class IntHashSet
-            extends IntOpenHashSet
-    {
-        private static final long INSTANCE_SIZE = ClassLayout.parseClass(IntHashSet.class).instanceSize();
-
-        public long sizeOf()
-        {
-            return INSTANCE_SIZE + SizeOf.sizeOf(key);
         }
     }
 }

@@ -17,16 +17,12 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.connector.CatalogName;
 import io.trino.execution.Lifespan;
-import io.trino.spi.HostAddress;
 import io.trino.spi.connector.ConnectorSplit;
 
-import java.util.List;
-
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static java.util.Objects.requireNonNull;
 
 public final class DeltaSplit
-    extends Split
+        extends Split
 {
     @JsonCreator
     public DeltaSplit(
@@ -57,7 +53,6 @@ public final class DeltaSplit
     {
         return super.getLifespan();
     }
-
 
     @Override
     public String toString()

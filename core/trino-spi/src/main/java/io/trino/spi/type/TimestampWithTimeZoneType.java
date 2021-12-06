@@ -32,34 +32,17 @@ public abstract class TimestampWithTimeZoneType
     public static final int DEFAULT_PRECISION = 3; // TODO: should be 6 per SQL spec
 
     private static final TimestampWithTimeZoneType[] TYPES = new TimestampWithTimeZoneType[MAX_PRECISION + 1];
-
-    static {
-        for (int precision = 0; precision <= MAX_PRECISION; precision++) {
-            TYPES[precision] = (precision <= MAX_SHORT_PRECISION) ? new ShortTimestampWithTimeZoneType(precision) : new LongTimestampWithTimeZoneType(precision);
-        }
-    }
-
     public static final TimestampWithTimeZoneType TIMESTAMP_TZ_SECONDS = createTimestampWithTimeZoneType(0);
     public static final TimestampWithTimeZoneType TIMESTAMP_TZ_MILLIS = createTimestampWithTimeZoneType(3);
-    public static final TimestampWithTimeZoneType TIMESTAMP_TZ_MICROS = createTimestampWithTimeZoneType(6);
-    public static final TimestampWithTimeZoneType TIMESTAMP_TZ_NANOS = createTimestampWithTimeZoneType(9);
-    public static final TimestampWithTimeZoneType TIMESTAMP_TZ_PICOS = createTimestampWithTimeZoneType(12);
-
     /**
      * @deprecated Use {@link #TIMESTAMP_TZ_MILLIS} instead
      */
     @Deprecated
     public static final TimestampWithTimeZoneType TIMESTAMP_WITH_TIME_ZONE = TIMESTAMP_TZ_MILLIS;
-
+    public static final TimestampWithTimeZoneType TIMESTAMP_TZ_MICROS = createTimestampWithTimeZoneType(6);
+    public static final TimestampWithTimeZoneType TIMESTAMP_TZ_NANOS = createTimestampWithTimeZoneType(9);
+    public static final TimestampWithTimeZoneType TIMESTAMP_TZ_PICOS = createTimestampWithTimeZoneType(12);
     private final int precision;
-
-    public static TimestampWithTimeZoneType createTimestampWithTimeZoneType(int precision)
-    {
-        if (precision < 0 || precision > MAX_PRECISION) {
-            throw new TrinoException(NUMERIC_VALUE_OUT_OF_RANGE, format("TIMESTAMP WITH TIME ZONE precision must be in range [0, %s]: %s", MAX_PRECISION, precision));
-        }
-        return TYPES[precision];
-    }
 
     TimestampWithTimeZoneType(int precision, Class<?> javaType)
     {
@@ -70,6 +53,14 @@ public abstract class TimestampWithTimeZoneType
         }
 
         this.precision = precision;
+    }
+
+    public static TimestampWithTimeZoneType createTimestampWithTimeZoneType(int precision)
+    {
+        if (precision < 0 || precision > MAX_PRECISION) {
+            throw new TrinoException(NUMERIC_VALUE_OUT_OF_RANGE, format("TIMESTAMP WITH TIME ZONE precision must be in range [0, %s]: %s", MAX_PRECISION, precision));
+        }
+        return TYPES[precision];
     }
 
     public final int getPrecision()
@@ -92,5 +83,11 @@ public abstract class TimestampWithTimeZoneType
     public final boolean isOrderable()
     {
         return true;
+    }
+
+    static {
+        for (int precision = 0; precision <= MAX_PRECISION; precision++) {
+            TYPES[precision] = (precision <= MAX_SHORT_PRECISION) ? new ShortTimestampWithTimeZoneType(precision) : new LongTimestampWithTimeZoneType(precision);
+        }
     }
 }

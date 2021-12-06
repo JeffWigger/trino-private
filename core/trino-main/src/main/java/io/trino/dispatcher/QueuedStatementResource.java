@@ -166,6 +166,55 @@ public class QueuedStatementResource
                 MILLISECONDS);
     }
 
+    private static URI getQueuedUri(QueryId queryId, Slug slug, long token, UriInfo uriInfo)
+    {
+        return uriInfo.getBaseUriBuilder()
+                .replacePath("/v1/statement/queued/")
+                .path(queryId.toString())
+                .path(slug.makeSlug(QUEUED_QUERY, token))
+                .path(String.valueOf(token))
+                .replaceQuery("")
+                .build();
+    }
+
+    private static QueryResults createQueryResults(
+            QueryId queryId,
+            URI nextUri,
+            Optional<QueryError> queryError,
+            UriInfo uriInfo,
+            Optional<URI> queryInfoUrl,
+            Duration elapsedTime,
+            Duration queuedTime)
+    {
+        QueryState state = queryError.map(error -> FAILED).orElse(QUEUED);
+        return new QueryResults(
+                queryId.toString(),
+                getQueryInfoUri(queryInfoUrl, queryId, uriInfo),
+                null,
+                nextUri,
+                null,
+                null,
+                StatementStats.builder()
+                        .setState(state.toString())
+                        .setQueued(state == QUEUED)
+                        .setElapsedTimeMillis(elapsedTime.toMillis())
+                        .setQueuedTimeMillis(queuedTime.toMillis())
+                        .build(),
+                queryError.orElse(null),
+                ImmutableList.of(),
+                null,
+                null);
+    }
+
+    private static WebApplicationException badRequest(Status status, String message)
+    {
+        throw new WebApplicationException(
+                Response.status(status)
+                        .type(TEXT_PLAIN_TYPE)
+                        .entity(message)
+                        .build());
+    }
+
     @PreDestroy
     public void stop()
     {
@@ -260,55 +309,6 @@ public class QueuedStatementResource
             builder.encoding("identity");
         }
         return builder.build();
-    }
-
-    private static URI getQueuedUri(QueryId queryId, Slug slug, long token, UriInfo uriInfo)
-    {
-        return uriInfo.getBaseUriBuilder()
-                .replacePath("/v1/statement/queued/")
-                .path(queryId.toString())
-                .path(slug.makeSlug(QUEUED_QUERY, token))
-                .path(String.valueOf(token))
-                .replaceQuery("")
-                .build();
-    }
-
-    private static QueryResults createQueryResults(
-            QueryId queryId,
-            URI nextUri,
-            Optional<QueryError> queryError,
-            UriInfo uriInfo,
-            Optional<URI> queryInfoUrl,
-            Duration elapsedTime,
-            Duration queuedTime)
-    {
-        QueryState state = queryError.map(error -> FAILED).orElse(QUEUED);
-        return new QueryResults(
-                queryId.toString(),
-                getQueryInfoUri(queryInfoUrl, queryId, uriInfo),
-                null,
-                nextUri,
-                null,
-                null,
-                StatementStats.builder()
-                        .setState(state.toString())
-                        .setQueued(state == QUEUED)
-                        .setElapsedTimeMillis(elapsedTime.toMillis())
-                        .setQueuedTimeMillis(queuedTime.toMillis())
-                        .build(),
-                queryError.orElse(null),
-                ImmutableList.of(),
-                null,
-                null);
-    }
-
-    private static WebApplicationException badRequest(Status status, String message)
-    {
-        throw new WebApplicationException(
-                Response.status(status)
-                        .type(TEXT_PLAIN_TYPE)
-                        .entity(message)
-                        .build());
     }
 
     private static final class Query

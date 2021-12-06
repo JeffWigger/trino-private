@@ -74,6 +74,18 @@ public class TaskInfo
         this.needsPlan = needsPlan;
     }
 
+    public static TaskInfo createInitialTask(TaskId taskId, URI location, String nodeId, List<BufferInfo> bufferStates, TaskStats taskStats)
+    {
+        return new TaskInfo(
+                initialTaskStatus(taskId, location, nodeId),
+                DateTime.now(),
+                new OutputBufferInfo("UNINITIALIZED", OPEN, true, true, 0, 0, 0, 0, bufferStates),
+                ImmutableSet.of(),
+                ImmutableSet.of(),
+                taskStats,
+                true);
+    }
+
     @JsonProperty
     public TaskStatus getTaskStatus()
     {
@@ -119,7 +131,7 @@ public class TaskInfo
     public TaskInfo summarize()
     {
         if (taskStatus.getState().isDone()) {
-            return new TaskInfo(taskStatus, lastHeartbeat, outputBuffers.summarize(), noMoreSplits, noMoreDeltaSplits,  stats.summarizeFinal(), needsPlan);
+            return new TaskInfo(taskStatus, lastHeartbeat, outputBuffers.summarize(), noMoreSplits, noMoreDeltaSplits, stats.summarizeFinal(), needsPlan);
         }
         return new TaskInfo(taskStatus, lastHeartbeat, outputBuffers.summarize(), noMoreSplits, noMoreDeltaSplits, stats.summarize(), needsPlan);
     }
@@ -131,18 +143,6 @@ public class TaskInfo
                 .add("taskId", taskStatus.getTaskId())
                 .add("state", taskStatus.getState())
                 .toString();
-    }
-
-    public static TaskInfo createInitialTask(TaskId taskId, URI location, String nodeId, List<BufferInfo> bufferStates, TaskStats taskStats)
-    {
-        return new TaskInfo(
-                initialTaskStatus(taskId, location, nodeId),
-                DateTime.now(),
-                new OutputBufferInfo("UNINITIALIZED", OPEN, true, true, 0, 0, 0, 0, bufferStates),
-                ImmutableSet.of(),
-                ImmutableSet.of(),
-                taskStats,
-                true);
     }
 
     public TaskInfo withTaskStatus(TaskStatus newTaskStatus)

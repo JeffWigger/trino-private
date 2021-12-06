@@ -190,12 +190,6 @@ public class OrcTester
     public static final DateTimeZone HIVE_STORAGE_TIME_ZONE = DateTimeZone.forID("America/Bahia_Banderas");
 
     private static final Metadata METADATA = createTestMetadataManager();
-
-    public enum Format
-    {
-        ORC_12, ORC_11
-    }
-
     private boolean structTestsEnabled;
     private boolean mapTestsEnabled;
     private boolean listTestsEnabled;
@@ -239,226 +233,6 @@ public class OrcTester
         orcTester.formats = ImmutableSet.copyOf(Format.values());
         orcTester.compressions = ImmutableSet.of(NONE, SNAPPY, ZLIB, LZ4, ZSTD);
         return orcTester;
-    }
-
-    public void testRoundTrip(Type type, List<?> readValues)
-            throws Exception
-    {
-        // just the values
-        testRoundTripType(type, readValues);
-
-        // all nulls
-        if (nullTestsEnabled) {
-            assertRoundTrip(
-                    type,
-                    readValues.stream()
-                            .map(value -> null)
-                            .collect(toList()));
-        }
-
-        // values wrapped in struct
-        if (structTestsEnabled) {
-            testStructRoundTrip(type, readValues);
-        }
-
-        // values wrapped in a struct wrapped in a struct
-        if (complexStructuralTestsEnabled) {
-            testStructRoundTrip(
-                    rowType(type, type, type),
-                    readValues.stream()
-                            .map(OrcTester::toHiveStruct)
-                            .collect(toList()));
-        }
-
-        // values wrapped in map
-        if (mapTestsEnabled && type.isComparable()) {
-            testMapRoundTrip(type, readValues);
-        }
-
-        // values wrapped in list
-        if (listTestsEnabled) {
-            testListRoundTrip(type, readValues);
-        }
-
-        // values wrapped in a list wrapped in a list
-        if (complexStructuralTestsEnabled) {
-            testListRoundTrip(
-                    arrayType(type),
-                    readValues.stream()
-                            .map(OrcTester::toHiveList)
-                            .collect(toList()));
-        }
-    }
-
-    private void testStructRoundTrip(Type type, List<?> values)
-            throws Exception
-    {
-        Type rowType = rowType(type, type, type);
-        // values in simple struct
-        testRoundTripType(
-                rowType,
-                values.stream()
-                        .map(OrcTester::toHiveStruct)
-                        .collect(toList()));
-
-        if (structuralNullTestsEnabled) {
-            // values and nulls in simple struct
-            testRoundTripType(
-                    rowType,
-                    insertNullEvery(5, values).stream()
-                            .map(OrcTester::toHiveStruct)
-                            .collect(toList()));
-
-            // all null values in simple struct
-            testRoundTripType(
-                    rowType,
-                    values.stream()
-                            .map(value -> toHiveStruct(null))
-                            .collect(toList()));
-        }
-
-        if (missingStructFieldsTestsEnabled) {
-            Type readType = rowType(type, type, type, type, type, type);
-            Type writeType = rowType(type, type, type);
-
-            List<?> writeValues = values.stream()
-                    .map(OrcTester::toHiveStruct)
-                    .collect(toList());
-
-            List<?> readValues = values.stream()
-                    .map(OrcTester::toHiveStructWithNull)
-                    .collect(toList());
-
-            assertRoundTrip(writeType, readType, writeValues, readValues);
-        }
-    }
-
-    private void testMapRoundTrip(Type type, List<?> readValues)
-            throws Exception
-    {
-        Type mapType = mapType(type, type);
-
-        // maps cannot have a null key, so select a value to use for the map key when the value is null
-        Object readNullKeyValue = Iterables.getLast(readValues);
-
-        // values in simple map
-        testRoundTripType(
-                mapType,
-                readValues.stream()
-                        .map(value -> toHiveMap(value, readNullKeyValue))
-                        .collect(toList()));
-
-        if (structuralNullTestsEnabled) {
-            // values and nulls in simple map
-            testRoundTripType(
-                    mapType,
-                    insertNullEvery(5, readValues).stream()
-                            .map(value -> toHiveMap(value, readNullKeyValue))
-                            .collect(toList()));
-
-            // all null values in simple map
-            testRoundTripType(
-                    mapType,
-                    readValues.stream()
-                            .map(value -> toHiveMap(null, readNullKeyValue))
-                            .collect(toList()));
-        }
-    }
-
-    private void testListRoundTrip(Type type, List<?> readValues)
-            throws Exception
-    {
-        Type arrayType = arrayType(type);
-        // values in simple list
-        testRoundTripType(
-                arrayType,
-                readValues.stream()
-                        .map(OrcTester::toHiveList)
-                        .collect(toList()));
-
-        if (structuralNullTestsEnabled) {
-            // values and nulls in simple list
-            testRoundTripType(
-                    arrayType,
-                    insertNullEvery(5, readValues).stream()
-                            .map(OrcTester::toHiveList)
-                            .collect(toList()));
-
-            // all null values in simple list
-            testRoundTripType(
-                    arrayType,
-                    readValues.stream()
-                            .map(value -> toHiveList(null))
-                            .collect(toList()));
-        }
-    }
-
-    private void testRoundTripType(Type type, List<?> readValues)
-            throws Exception
-    {
-        // forward order
-        assertRoundTrip(type, readValues);
-
-        // reverse order
-        if (reverseTestsEnabled) {
-            assertRoundTrip(type, reverse(readValues));
-        }
-
-        if (nullTestsEnabled) {
-            // forward order with nulls
-            assertRoundTrip(type, insertNullEvery(5, readValues));
-
-            // reverse order with nulls
-            if (reverseTestsEnabled) {
-                assertRoundTrip(type, insertNullEvery(5, reverse(readValues)));
-            }
-        }
-    }
-
-    private void assertRoundTrip(Type type, List<?> readValues)
-            throws Exception
-    {
-        assertRoundTrip(type, type, readValues, readValues);
-    }
-
-    private void assertRoundTrip(Type writeType, Type readType, List<?> writeValues, List<?> readValues)
-            throws Exception
-    {
-        OrcWriterStats stats = new OrcWriterStats();
-        for (CompressionKind compression : compressions) {
-            boolean hiveSupported = (compression != LZ4) && (compression != ZSTD) && !isTimestampTz(writeType) && !isTimestampTz(readType);
-
-            for (Format format : formats) {
-                // write Hive, read Trino
-                if (hiveSupported) {
-                    try (TempFile tempFile = new TempFile()) {
-                        writeOrcColumnHive(tempFile.getFile(), format, compression, writeType, writeValues.iterator());
-                        assertFileContentsTrino(readType, tempFile, readValues, false, false);
-                    }
-                }
-            }
-
-            // write Trino, read Hive and Trino
-            try (TempFile tempFile = new TempFile()) {
-                writeOrcColumnTrino(tempFile.getFile(), compression, writeType, writeValues.iterator(), stats);
-
-                if (hiveSupported) {
-                    assertFileContentsHive(readType, tempFile, readValues);
-                }
-
-                assertFileContentsTrino(readType, tempFile, readValues, false, false);
-
-                if (skipBatchTestsEnabled) {
-                    assertFileContentsTrino(readType, tempFile, readValues, true, false);
-                }
-
-                if (skipStripeTestsEnabled) {
-                    assertFileContentsTrino(readType, tempFile, readValues, false, true);
-                }
-            }
-        }
-
-        assertEquals(stats.getWriterSizeInBytes(), 0);
     }
 
     private static void assertFileContentsTrino(
@@ -1219,5 +993,230 @@ public class OrcTester
                     .anyMatch(OrcTester::isTimestampTz);
         }
         return false;
+    }
+
+    public void testRoundTrip(Type type, List<?> readValues)
+            throws Exception
+    {
+        // just the values
+        testRoundTripType(type, readValues);
+
+        // all nulls
+        if (nullTestsEnabled) {
+            assertRoundTrip(
+                    type,
+                    readValues.stream()
+                            .map(value -> null)
+                            .collect(toList()));
+        }
+
+        // values wrapped in struct
+        if (structTestsEnabled) {
+            testStructRoundTrip(type, readValues);
+        }
+
+        // values wrapped in a struct wrapped in a struct
+        if (complexStructuralTestsEnabled) {
+            testStructRoundTrip(
+                    rowType(type, type, type),
+                    readValues.stream()
+                            .map(OrcTester::toHiveStruct)
+                            .collect(toList()));
+        }
+
+        // values wrapped in map
+        if (mapTestsEnabled && type.isComparable()) {
+            testMapRoundTrip(type, readValues);
+        }
+
+        // values wrapped in list
+        if (listTestsEnabled) {
+            testListRoundTrip(type, readValues);
+        }
+
+        // values wrapped in a list wrapped in a list
+        if (complexStructuralTestsEnabled) {
+            testListRoundTrip(
+                    arrayType(type),
+                    readValues.stream()
+                            .map(OrcTester::toHiveList)
+                            .collect(toList()));
+        }
+    }
+
+    private void testStructRoundTrip(Type type, List<?> values)
+            throws Exception
+    {
+        Type rowType = rowType(type, type, type);
+        // values in simple struct
+        testRoundTripType(
+                rowType,
+                values.stream()
+                        .map(OrcTester::toHiveStruct)
+                        .collect(toList()));
+
+        if (structuralNullTestsEnabled) {
+            // values and nulls in simple struct
+            testRoundTripType(
+                    rowType,
+                    insertNullEvery(5, values).stream()
+                            .map(OrcTester::toHiveStruct)
+                            .collect(toList()));
+
+            // all null values in simple struct
+            testRoundTripType(
+                    rowType,
+                    values.stream()
+                            .map(value -> toHiveStruct(null))
+                            .collect(toList()));
+        }
+
+        if (missingStructFieldsTestsEnabled) {
+            Type readType = rowType(type, type, type, type, type, type);
+            Type writeType = rowType(type, type, type);
+
+            List<?> writeValues = values.stream()
+                    .map(OrcTester::toHiveStruct)
+                    .collect(toList());
+
+            List<?> readValues = values.stream()
+                    .map(OrcTester::toHiveStructWithNull)
+                    .collect(toList());
+
+            assertRoundTrip(writeType, readType, writeValues, readValues);
+        }
+    }
+
+    private void testMapRoundTrip(Type type, List<?> readValues)
+            throws Exception
+    {
+        Type mapType = mapType(type, type);
+
+        // maps cannot have a null key, so select a value to use for the map key when the value is null
+        Object readNullKeyValue = Iterables.getLast(readValues);
+
+        // values in simple map
+        testRoundTripType(
+                mapType,
+                readValues.stream()
+                        .map(value -> toHiveMap(value, readNullKeyValue))
+                        .collect(toList()));
+
+        if (structuralNullTestsEnabled) {
+            // values and nulls in simple map
+            testRoundTripType(
+                    mapType,
+                    insertNullEvery(5, readValues).stream()
+                            .map(value -> toHiveMap(value, readNullKeyValue))
+                            .collect(toList()));
+
+            // all null values in simple map
+            testRoundTripType(
+                    mapType,
+                    readValues.stream()
+                            .map(value -> toHiveMap(null, readNullKeyValue))
+                            .collect(toList()));
+        }
+    }
+
+    private void testListRoundTrip(Type type, List<?> readValues)
+            throws Exception
+    {
+        Type arrayType = arrayType(type);
+        // values in simple list
+        testRoundTripType(
+                arrayType,
+                readValues.stream()
+                        .map(OrcTester::toHiveList)
+                        .collect(toList()));
+
+        if (structuralNullTestsEnabled) {
+            // values and nulls in simple list
+            testRoundTripType(
+                    arrayType,
+                    insertNullEvery(5, readValues).stream()
+                            .map(OrcTester::toHiveList)
+                            .collect(toList()));
+
+            // all null values in simple list
+            testRoundTripType(
+                    arrayType,
+                    readValues.stream()
+                            .map(value -> toHiveList(null))
+                            .collect(toList()));
+        }
+    }
+
+    private void testRoundTripType(Type type, List<?> readValues)
+            throws Exception
+    {
+        // forward order
+        assertRoundTrip(type, readValues);
+
+        // reverse order
+        if (reverseTestsEnabled) {
+            assertRoundTrip(type, reverse(readValues));
+        }
+
+        if (nullTestsEnabled) {
+            // forward order with nulls
+            assertRoundTrip(type, insertNullEvery(5, readValues));
+
+            // reverse order with nulls
+            if (reverseTestsEnabled) {
+                assertRoundTrip(type, insertNullEvery(5, reverse(readValues)));
+            }
+        }
+    }
+
+    private void assertRoundTrip(Type type, List<?> readValues)
+            throws Exception
+    {
+        assertRoundTrip(type, type, readValues, readValues);
+    }
+
+    private void assertRoundTrip(Type writeType, Type readType, List<?> writeValues, List<?> readValues)
+            throws Exception
+    {
+        OrcWriterStats stats = new OrcWriterStats();
+        for (CompressionKind compression : compressions) {
+            boolean hiveSupported = (compression != LZ4) && (compression != ZSTD) && !isTimestampTz(writeType) && !isTimestampTz(readType);
+
+            for (Format format : formats) {
+                // write Hive, read Trino
+                if (hiveSupported) {
+                    try (TempFile tempFile = new TempFile()) {
+                        writeOrcColumnHive(tempFile.getFile(), format, compression, writeType, writeValues.iterator());
+                        assertFileContentsTrino(readType, tempFile, readValues, false, false);
+                    }
+                }
+            }
+
+            // write Trino, read Hive and Trino
+            try (TempFile tempFile = new TempFile()) {
+                writeOrcColumnTrino(tempFile.getFile(), compression, writeType, writeValues.iterator(), stats);
+
+                if (hiveSupported) {
+                    assertFileContentsHive(readType, tempFile, readValues);
+                }
+
+                assertFileContentsTrino(readType, tempFile, readValues, false, false);
+
+                if (skipBatchTestsEnabled) {
+                    assertFileContentsTrino(readType, tempFile, readValues, true, false);
+                }
+
+                if (skipStripeTestsEnabled) {
+                    assertFileContentsTrino(readType, tempFile, readValues, false, true);
+                }
+            }
+        }
+
+        assertEquals(stats.getWriterSizeInBytes(), 0);
+    }
+
+    public enum Format
+    {
+        ORC_12, ORC_11
     }
 }

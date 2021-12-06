@@ -115,6 +115,18 @@ final class DescribeInputRewrite
             this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
         }
 
+        private static Row createDescribeInputRow(Session session, Parameter parameter, Analysis queryAnalysis)
+        {
+            Type type = queryAnalysis.getCoercion(parameter);
+            if (type == null) {
+                type = UNKNOWN;
+            }
+
+            return row(
+                    new LongLiteral(Integer.toString(parameter.getPosition())),
+                    new StringLiteral(getDisplayLabel(type, isOmitDateTimeTypePrecision(session))));
+        }
+
         @Override
         protected Node visitDescribeInput(DescribeInput node, Void context)
         {
@@ -148,18 +160,6 @@ final class DescribeInputRewrite
                     Optional.of(ordering(ascending("Position"))),
                     Optional.empty(),
                     limit);
-        }
-
-        private static Row createDescribeInputRow(Session session, Parameter parameter, Analysis queryAnalysis)
-        {
-            Type type = queryAnalysis.getCoercion(parameter);
-            if (type == null) {
-                type = UNKNOWN;
-            }
-
-            return row(
-                    new LongLiteral(Integer.toString(parameter.getPosition())),
-                    new StringLiteral(getDisplayLabel(type, isOmitDateTimeTypePrecision(session))));
         }
 
         @Override

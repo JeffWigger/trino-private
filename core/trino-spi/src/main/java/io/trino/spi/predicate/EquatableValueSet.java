@@ -105,6 +105,47 @@ public class EquatableValueSet
                 .collect(toLinkedSet()));
     }
 
+    private static <T> Set<T> intersect(Set<T> set1, Set<T> set2)
+    {
+        if (set1.size() > set2.size()) {
+            return intersect(set2, set1);
+        }
+        return set1.stream()
+                .filter(set2::contains)
+                .collect(toLinkedSet());
+    }
+
+    private static <T> boolean setsOverlap(Set<T> set1, Set<T> set2)
+    {
+        if (set1.size() > set2.size()) {
+            return setsOverlap(set2, set1);
+        }
+        for (T element : set1) {
+            if (set2.contains(element)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static <T> Set<T> union(Set<T> set1, Set<T> set2)
+    {
+        return Stream.concat(set1.stream(), set2.stream())
+                .collect(toLinkedSet());
+    }
+
+    private static <T> Set<T> subtract(Set<T> set1, Set<T> set2)
+    {
+        return set1.stream()
+                .filter(value -> !set2.contains(value))
+                .collect(toLinkedSet());
+    }
+
+    private static <T> Collector<T, ?, Set<T>> toLinkedSet()
+    {
+        return toCollection(LinkedHashSet::new);
+    }
+
     @JsonProperty
     @Override
     public Type getType()
@@ -318,47 +359,11 @@ public class EquatableValueSet
     private String formatValues(ConnectorSession session, int limit)
     {
         return Stream.concat(
-                entries.stream()
-                        .map(entry -> type.getObjectValue(session, entry.getBlock(), 0).toString())
-                        .limit(limit),
-                limit < getValuesCount() ? Stream.of("...") : Stream.of())
+                        entries.stream()
+                                .map(entry -> type.getObjectValue(session, entry.getBlock(), 0).toString())
+                                .limit(limit),
+                        limit < getValuesCount() ? Stream.of("...") : Stream.of())
                 .collect(joining(", ", inclusive ? "{" : "EXCLUDES{", "}"));
-    }
-
-    private static <T> Set<T> intersect(Set<T> set1, Set<T> set2)
-    {
-        if (set1.size() > set2.size()) {
-            return intersect(set2, set1);
-        }
-        return set1.stream()
-                .filter(set2::contains)
-                .collect(toLinkedSet());
-    }
-
-    private static <T> boolean setsOverlap(Set<T> set1, Set<T> set2)
-    {
-        if (set1.size() > set2.size()) {
-            return setsOverlap(set2, set1);
-        }
-        for (T element : set1) {
-            if (set2.contains(element)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static <T> Set<T> union(Set<T> set1, Set<T> set2)
-    {
-        return Stream.concat(set1.stream(), set2.stream())
-                .collect(toLinkedSet());
-    }
-
-    private static <T> Set<T> subtract(Set<T> set1, Set<T> set2)
-    {
-        return set1.stream()
-                .filter(value -> !set2.contains(value))
-                .collect(toLinkedSet());
     }
 
     private EquatableValueSet checkCompatibility(ValueSet other)
@@ -471,10 +476,5 @@ public class EquatableValueSet
             }
             return Boolean.TRUE.equals(result);
         }
-    }
-
-    private static <T> Collector<T, ?, Set<T>> toLinkedSet()
-    {
-        return toCollection(LinkedHashSet::new);
     }
 }

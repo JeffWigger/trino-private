@@ -34,26 +34,23 @@ public abstract class TimestampType
     public static final int DEFAULT_PRECISION = 3; // TODO: should be 6 per SQL spec
 
     private static final TimestampType[] TYPES = new TimestampType[MAX_PRECISION + 1];
-
-    static {
-        for (int precision = 0; precision <= MAX_PRECISION; precision++) {
-            TYPES[precision] = (precision <= MAX_SHORT_PRECISION) ? new ShortTimestampType(precision) : new LongTimestampType(precision);
-        }
-    }
-
     public static final TimestampType TIMESTAMP_SECONDS = createTimestampType(0);
     public static final TimestampType TIMESTAMP_MILLIS = createTimestampType(3);
-    public static final TimestampType TIMESTAMP_MICROS = createTimestampType(6);
-    public static final TimestampType TIMESTAMP_NANOS = createTimestampType(9);
-    public static final TimestampType TIMESTAMP_PICOS = createTimestampType(12);
-
     /**
      * @deprecated Use {@link #TIMESTAMP_MILLIS} instead
      */
     @Deprecated
     public static final TimestampType TIMESTAMP = TIMESTAMP_MILLIS;
-
+    public static final TimestampType TIMESTAMP_MICROS = createTimestampType(6);
+    public static final TimestampType TIMESTAMP_NANOS = createTimestampType(9);
+    public static final TimestampType TIMESTAMP_PICOS = createTimestampType(12);
     private final int precision;
+
+    TimestampType(int precision, Class<?> javaType)
+    {
+        super(new TypeSignature(StandardTypes.TIMESTAMP, TypeSignatureParameter.numericParameter(precision)), javaType);
+        this.precision = precision;
+    }
 
     public static TimestampType createTimestampType(int precision)
     {
@@ -61,12 +58,6 @@ public abstract class TimestampType
             throw new TrinoException(NUMERIC_VALUE_OUT_OF_RANGE, format("TIMESTAMP precision must be in range [0, %s]: %s", MAX_PRECISION, precision));
         }
         return TYPES[precision];
-    }
-
-    TimestampType(int precision, Class<?> javaType)
-    {
-        super(new TypeSignature(StandardTypes.TIMESTAMP, TypeSignatureParameter.numericParameter(precision)), javaType);
-        this.precision = precision;
     }
 
     public int getPrecision()
@@ -89,5 +80,11 @@ public abstract class TimestampType
     public boolean isOrderable()
     {
         return true;
+    }
+
+    static {
+        for (int precision = 0; precision <= MAX_PRECISION; precision++) {
+            TYPES[precision] = (precision <= MAX_SHORT_PRECISION) ? new ShortTimestampType(precision) : new LongTimestampType(precision);
+        }
     }
 }

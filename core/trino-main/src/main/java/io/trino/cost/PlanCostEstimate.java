@@ -37,21 +37,6 @@ public final class PlanCostEstimate
     private final double networkCost;
     private final LocalCostEstimate rootNodeLocalCostEstimate;
 
-    public static PlanCostEstimate infinite()
-    {
-        return INFINITE;
-    }
-
-    public static PlanCostEstimate unknown()
-    {
-        return UNKNOWN;
-    }
-
-    public static PlanCostEstimate zero()
-    {
-        return ZERO;
-    }
-
     public PlanCostEstimate(
             double cpuCost,
             double maxMemory,
@@ -79,6 +64,21 @@ public final class PlanCostEstimate
         this.maxMemoryWhenOutputting = maxMemoryWhenOutputting;
         this.networkCost = networkCost;
         this.rootNodeLocalCostEstimate = requireNonNull(rootNodeLocalCostEstimate, "rootNodeLocalCostEstimate is null");
+    }
+
+    public static PlanCostEstimate infinite()
+    {
+        return INFINITE;
+    }
+
+    public static PlanCostEstimate unknown()
+    {
+        return UNKNOWN;
+    }
+
+    public static PlanCostEstimate zero()
+    {
+        return ZERO;
     }
 
     /**

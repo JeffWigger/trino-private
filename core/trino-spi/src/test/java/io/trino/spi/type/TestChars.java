@@ -28,6 +28,39 @@ import static org.testng.Assert.assertEquals;
 
 public class TestChars
 {
+    private static void assertByteCountWithoutTrailingSpaceFailure(String string, int offset, int maxLength)
+    {
+        assertThatThrownBy(() -> byteCountWithoutTrailingSpace(utf8Slice(string), offset, maxLength))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageMatching("invalid offset/length|length must be greater than or equal to zero");
+    }
+
+    private static void assertByteCountWithoutTrailingSpace(String actual, int offset, int length, String expected)
+    {
+        assertByteCountWithoutTrailingSpace(utf8Slice(actual).getBytes(), offset, length, utf8Slice(expected).getBytes());
+    }
+
+    private static void assertByteCountWithoutTrailingSpace(byte[] actual, int offset, int length, byte[] expected)
+    {
+        Slice slice = wrappedBuffer(actual);
+        int trimmedLength = byteCountWithoutTrailingSpace(slice, offset, length);
+        byte[] bytes = slice.getBytes(offset, trimmedLength);
+        assertEquals(bytes, expected);
+    }
+
+    private static void assertByteCountWithoutTrailingSpace(String actual, int offset, int length, int codePointCount, String expected)
+    {
+        assertByteCountWithoutTrailingSpace(utf8Slice(actual).getBytes(), offset, length, codePointCount, utf8Slice(expected).getBytes());
+    }
+
+    private static void assertByteCountWithoutTrailingSpace(byte[] actual, int offset, int length, int codePointCount, byte[] expected)
+    {
+        Slice slice = wrappedBuffer(actual);
+        int truncatedLength = byteCountWithoutTrailingSpace(slice, offset, length, codePointCount);
+        byte[] bytes = slice.getBytes(offset, truncatedLength);
+        assertEquals(bytes, expected);
+    }
+
     @Test
     public void testPadSpaces()
     {
@@ -116,38 +149,5 @@ public class TestChars
         assertByteCountWithoutTrailingSpace(new byte[] {(byte) 0x81, (byte) 0x81, (byte) ' ', (byte) 0x81}, 0, 3, 3, new byte[] {(byte) 0x81, (byte) 0x81});
         assertByteCountWithoutTrailingSpace(new byte[] {(byte) 0x81, (byte) 0x81, (byte) ' ', (byte) 0x81}, 0, 2, 3, new byte[] {(byte) 0x81, (byte) 0x81});
         assertByteCountWithoutTrailingSpace(new byte[] {(byte) 0x81, (byte) 0x81, (byte) ' ', (byte) 0x81}, 0, 0, 3, new byte[] {});
-    }
-
-    private static void assertByteCountWithoutTrailingSpaceFailure(String string, int offset, int maxLength)
-    {
-        assertThatThrownBy(() -> byteCountWithoutTrailingSpace(utf8Slice(string), offset, maxLength))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageMatching("invalid offset/length|length must be greater than or equal to zero");
-    }
-
-    private static void assertByteCountWithoutTrailingSpace(String actual, int offset, int length, String expected)
-    {
-        assertByteCountWithoutTrailingSpace(utf8Slice(actual).getBytes(), offset, length, utf8Slice(expected).getBytes());
-    }
-
-    private static void assertByteCountWithoutTrailingSpace(byte[] actual, int offset, int length, byte[] expected)
-    {
-        Slice slice = wrappedBuffer(actual);
-        int trimmedLength = byteCountWithoutTrailingSpace(slice, offset, length);
-        byte[] bytes = slice.getBytes(offset, trimmedLength);
-        assertEquals(bytes, expected);
-    }
-
-    private static void assertByteCountWithoutTrailingSpace(String actual, int offset, int length, int codePointCount, String expected)
-    {
-        assertByteCountWithoutTrailingSpace(utf8Slice(actual).getBytes(), offset, length, codePointCount, utf8Slice(expected).getBytes());
-    }
-
-    private static void assertByteCountWithoutTrailingSpace(byte[] actual, int offset, int length, int codePointCount, byte[] expected)
-    {
-        Slice slice = wrappedBuffer(actual);
-        int truncatedLength = byteCountWithoutTrailingSpace(slice, offset, length, codePointCount);
-        byte[] bytes = slice.getBytes(offset, truncatedLength);
-        assertEquals(bytes, expected);
     }
 }

@@ -90,36 +90,6 @@ public final class ArrayConstructor
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        ImmutableList.Builder<Class<?>> builder = ImmutableList.builder();
-        Type type = functionBinding.getTypeVariable("E");
-        for (int i = 0; i < functionBinding.getArity(); i++) {
-            if (type.getJavaType().isPrimitive()) {
-                builder.add(Primitives.wrap(type.getJavaType()));
-            }
-            else {
-                builder.add(type.getJavaType());
-            }
-        }
-        ImmutableList<Class<?>> stackTypes = builder.build();
-        Class<?> clazz = generateArrayConstructor(stackTypes, type);
-        MethodHandle methodHandle;
-        try {
-            Method method = clazz.getMethod("arrayConstructor", stackTypes.toArray(new Class<?>[stackTypes.size()]));
-            methodHandle = lookup().unreflect(method);
-        }
-        catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                nCopies(stackTypes.size(), BOXED_NULLABLE),
-                methodHandle);
-    }
-
     private static Class<?> generateArrayConstructor(List<Class<?>> stackTypes, Type elementType)
     {
         checkCondition(stackTypes.size() <= 254, NOT_SUPPORTED, "Too many arguments for array constructor");
@@ -165,5 +135,35 @@ public final class ArrayConstructor
         body.append(blockBuilderVariable.invoke("build", Block.class).ret());
 
         return defineClass(definition, Object.class, binder.getBindings(), new DynamicClassLoader(ArrayConstructor.class.getClassLoader()));
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        ImmutableList.Builder<Class<?>> builder = ImmutableList.builder();
+        Type type = functionBinding.getTypeVariable("E");
+        for (int i = 0; i < functionBinding.getArity(); i++) {
+            if (type.getJavaType().isPrimitive()) {
+                builder.add(Primitives.wrap(type.getJavaType()));
+            }
+            else {
+                builder.add(type.getJavaType());
+            }
+        }
+        ImmutableList<Class<?>> stackTypes = builder.build();
+        Class<?> clazz = generateArrayConstructor(stackTypes, type);
+        MethodHandle methodHandle;
+        try {
+            Method method = clazz.getMethod("arrayConstructor", stackTypes.toArray(new Class<?>[stackTypes.size()]));
+            methodHandle = lookup().unreflect(method);
+        }
+        catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                nCopies(stackTypes.size(), BOXED_NULLABLE),
+                methodHandle);
     }
 }

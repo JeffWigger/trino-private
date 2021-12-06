@@ -82,29 +82,6 @@ public class MaterializedRow
         return value;
     }
 
-    public int getPrecision()
-    {
-        return precision;
-    }
-
-    public int getFieldCount()
-    {
-        return values.size();
-    }
-
-    public List<Object> getFields()
-    {
-        return values.stream()
-                .map(MaterializedRow::processField)
-                .collect(toList());
-    }
-
-    public Object getField(int field)
-    {
-        checkElementIndex(field, values.size());
-        return processField(values.get(field));
-    }
-
     private static Object processField(Object value)
     {
         if (value instanceof ApproximateNumeric) {
@@ -127,6 +104,29 @@ public class MaterializedRow
         }
 
         return value;
+    }
+
+    public int getPrecision()
+    {
+        return precision;
+    }
+
+    public int getFieldCount()
+    {
+        return values.size();
+    }
+
+    public List<Object> getFields()
+    {
+        return values.stream()
+                .map(MaterializedRow::processField)
+                .collect(toList());
+    }
+
+    public Object getField(int field)
+    {
+        checkElementIndex(field, values.size());
+        return processField(values.get(field));
     }
 
     @Override

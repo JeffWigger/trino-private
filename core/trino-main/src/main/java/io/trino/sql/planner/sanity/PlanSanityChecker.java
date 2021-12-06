@@ -86,6 +86,11 @@ public final class PlanSanityChecker
         checkers.get(Stage.INTERMEDIATE).forEach(checker -> checker.validate(planNode, session, metadata, typeOperators, typeAnalyzer, types, warningCollector));
     }
 
+    private enum Stage
+    {
+        INTERMEDIATE, FINAL
+    }
+
     public interface Checker
     {
         void validate(PlanNode planNode,
@@ -95,10 +100,5 @@ public final class PlanSanityChecker
                 TypeAnalyzer typeAnalyzer,
                 TypeProvider types,
                 WarningCollector warningCollector);
-    }
-
-    private enum Stage
-    {
-        INTERMEDIATE, FINAL
     }
 }

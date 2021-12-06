@@ -131,50 +131,18 @@ public class SqlTaskExecution
     // guarded for update only
     @GuardedBy("this")
     private final ConcurrentMap<PlanNodeId, TaskSource> unpartitionedSources = new ConcurrentHashMap<>();
-
+    @GuardedBy("this")
+    private final SchedulingLifespanManager schedulingLifespanManager;
+    @GuardedBy("this")
+    private final Map<PlanNodeId, PendingSplitsForPlanNode> pendingSplitsByPlanNode;
+    private final Status status;
     @GuardedBy("this")
     private long maxAcknowledgedSplit = Long.MIN_VALUE;
     // deltasplits use their own squence id
     @GuardedBy("this")
     private long maxAcknowledgedDeltaSplit = Long.MIN_VALUE;
-
-    @GuardedBy("this")
-    private final SchedulingLifespanManager schedulingLifespanManager;
-
     @GuardedBy("this")
     private SchedulingLifespanManager schedulingLifespanManagerDelta;
-
-    @GuardedBy("this")
-    private final Map<PlanNodeId, PendingSplitsForPlanNode> pendingSplitsByPlanNode;
-
-    private final Status status;
-
-    static SqlTaskExecution createSqlTaskExecution(
-            TaskStateMachine taskStateMachine,
-            TaskContext taskContext,
-            OutputBuffer outputBuffer,
-            List<TaskSource> sources,
-            LocalExecutionPlan localExecutionPlan,
-            TaskExecutor taskExecutor,
-            Executor notificationExecutor,
-            SplitMonitor queryMonitor)
-    {
-        SqlTaskExecution task = new SqlTaskExecution(
-                taskStateMachine,
-                taskContext,
-                outputBuffer,
-                localExecutionPlan,
-                taskExecutor,
-                queryMonitor,
-                notificationExecutor);
-        try (SetThreadName ignored = new SetThreadName("Task-%s", task.getTaskId())) {
-            // The scheduleDriversForTaskLifeCycle method calls enqueueDriverSplitRunner, which registers a callback with access to this object.
-            // The call back is accessed from another thread, so this code cannot be placed in the constructor.
-            task.scheduleDriversForTaskLifeCycle();
-            task.addSources(sources);
-            return task;
-        }
-    }
 
     private SqlTaskExecution(
             TaskStateMachine taskStateMachine,
@@ -254,6 +222,33 @@ public class SqlTaskExecution
             }
 
             outputBuffer.addStateChangeListener(new CheckTaskCompletionOnBufferFinish(SqlTaskExecution.this));
+        }
+    }
+
+    static SqlTaskExecution createSqlTaskExecution(
+            TaskStateMachine taskStateMachine,
+            TaskContext taskContext,
+            OutputBuffer outputBuffer,
+            List<TaskSource> sources,
+            LocalExecutionPlan localExecutionPlan,
+            TaskExecutor taskExecutor,
+            Executor notificationExecutor,
+            SplitMonitor queryMonitor)
+    {
+        SqlTaskExecution task = new SqlTaskExecution(
+                taskStateMachine,
+                taskContext,
+                outputBuffer,
+                localExecutionPlan,
+                taskExecutor,
+                queryMonitor,
+                notificationExecutor);
+        try (SetThreadName ignored = new SetThreadName("Task-%s", task.getTaskId())) {
+            // The scheduleDriversForTaskLifeCycle method calls enqueueDriverSplitRunner, which registers a callback with access to this object.
+            // The call back is accessed from another thread, so this code cannot be placed in the constructor.
+            task.scheduleDriversForTaskLifeCycle();
+            task.addSources(sources);
+            return task;
         }
     }
 
@@ -523,7 +518,7 @@ public class SqlTaskExecution
 
         for (ScheduledSplit scheduledSplit : scheduledSplits) {
             Lifespan lifespan = scheduledSplit.getSplit().getLifespan();
-            if (schedulingLifespanManager.lifespans.containsKey(lifespan) || schedulingLifespanManager.completedLifespans.contains(lifespan)){
+            if (schedulingLifespanManager.lifespans.containsKey(lifespan) || schedulingLifespanManager.completedLifespans.contains(lifespan)) {
                 checkLifespan(partitionedDriverFactory.getPipelineExecutionStrategy(), lifespan);
                 pendingSplitsForPlanNode.getLifespan(lifespan).addDeltaSplit(scheduledSplit);
                 schedulingLifespanManagerDelta.addLifespanIfAbsent(lifespan);
@@ -728,7 +723,8 @@ public class SqlTaskExecution
 
             if (!madeProgress) {
                 break;
-            } else{
+            }
+            else {
                 System.out.println("WARNING: schedulePartitionedSourceDelta could not make progress, maybe it is blocked due to many normal splits");
             }
         }
@@ -969,11 +965,12 @@ public class SqlTaskExecution
         taskStateMachine.finished();
     }
 
-    public synchronized void finish(){
-        if (!status.getHadDelta()){
+    public synchronized void finish()
+    {
+        if (!status.getHadDelta()) {
             checkTaskCompletionOld();
         }
-        if (taskStateMachine.isCompleted()){
+        if (taskStateMachine.isCompleted()) {
             taskStateMachine.finished();
             /*for(WeakReference<Driver> d : drivers){
                 while(true){
@@ -990,10 +987,10 @@ public class SqlTaskExecution
                 }
 
             }*/
-        }else{
+        }
+        else {
             System.out.println("SqlTaskExecution::finish called without being in COMPLETED state!");
         }
-
     }
 
     @Override
@@ -1027,6 +1024,16 @@ public class SqlTaskExecution
         if (!Thread.holdsLock(this)) {
             throw new IllegalStateException(format("Thread must hold a lock on the %s", getClass().getSimpleName()));
         }
+    }
+
+    enum SplitsState
+    {
+        ADDING_SPLITS,
+        // All splits have been received from scheduler.
+        // No more splits will be added to the pendingSplits set.
+        NO_MORE_SPLITS,
+        // All splits have been turned into DriverSplitRunner.
+        FINISHED,
     }
 
     // Splits for a particular plan node (all driver groups)
@@ -1141,16 +1148,6 @@ public class SqlTaskExecution
         }
     }
 
-    enum SplitsState
-    {
-        ADDING_SPLITS,
-        // All splits have been received from scheduler.
-        // No more splits will be added to the pendingSplits set.
-        NO_MORE_SPLITS,
-        // All splits have been turned into DriverSplitRunner.
-        FINISHED,
-    }
-
     private static class SchedulingLifespanManager
     {
         // SchedulingLifespanManager only contains partitioned drivers.
@@ -1175,13 +1172,14 @@ public class SqlTaskExecution
             this.status = requireNonNull(status, "status is null");
         }
 
-        public SchedulingLifespanManager makeDelta(){
+        public SchedulingLifespanManager makeDelta()
+        {
             SchedulingLifespanManager schedulingLifespanManager = new SchedulingLifespanManager(this.sourceStartOrder, this.stageExecutionDescriptor, this.status);
             Set<Lifespan> newLifespans = Set.copyOf(this.lifespans.keySet());
             if (!completedLifespans.isEmpty()) {
                 newLifespans.addAll(completedLifespans);
             }
-            for (Lifespan l : newLifespans){
+            for (Lifespan l : newLifespans) {
                 schedulingLifespanManager.addLifespanIfAbsent(l);
             }
             return schedulingLifespanManager;
@@ -1318,198 +1316,16 @@ public class SqlTaskExecution
         }
     }
 
-    private class DriverSplitRunnerFactory
-    {
-        private final DriverFactory driverFactory;
-        private final PipelineContext pipelineContext;
-        private boolean closed;
-        private boolean closedDelta;
-
-        private DriverSplitRunnerFactory(DriverFactory driverFactory, boolean partitioned)
-        {
-            this.driverFactory = driverFactory;
-            this.pipelineContext = taskContext.addPipelineContext(driverFactory.getPipelineId(), driverFactory.isInputDriver(), driverFactory.isOutputDriver(), partitioned);
-        }
-
-        // TODO: split this method into two: createPartitionedDriverRunner and createUnpartitionedDriverRunner.
-        // The former will take two arguments, and the latter will take one. This will simplify the signature quite a bit.
-        public DriverSplitRunner createDriverRunner(@Nullable ScheduledSplit partitionedSplit, Lifespan lifespan)
-        {
-            checkLifespan(driverFactory.getPipelineExecutionStrategy(), lifespan);
-            status.incrementPendingCreation(pipelineContext.getPipelineId(), lifespan);
-            // create driver context immediately so the driver existence is recorded in the stats
-            // the number of drivers is used to balance work across nodes
-            DriverContext driverContext = pipelineContext.addDriverContext(lifespan);
-            return new DriverSplitRunner(this, driverContext, partitionedSplit, lifespan);
-        }
-
-        public DriverSplitRunner createDriverRunnerDelta(@Nullable ScheduledSplit partitionedSplit, Lifespan lifespan)
-        {
-            checkLifespan(driverFactory.getPipelineExecutionStrategy(), lifespan);
-            status.incrementPendingCreationDelta(pipelineContext.getPipelineId(), lifespan);
-            // create driver context immediately so the driver existence is recorded in the stats
-            // the number of drivers is used to balance work across nodes
-            DriverContext driverContext = pipelineContext.addDriverContext(lifespan);
-            return new DriverSplitRunner(this, driverContext, partitionedSplit, lifespan);
-        }
-
-        public Driver createDriver(DriverContext driverContext, @Nullable ScheduledSplit partitionedSplit)
-        {
-            Driver driver = driverFactory.createDriver(driverContext);
-
-            // record driver so other threads add unpartitioned sources can see the driver
-            // NOTE: this MUST be done before reading unpartitionedSources, so we see a consistent view of the unpartitioned sources
-            drivers.add(new WeakReference<>(driver));
-
-            if (partitionedSplit != null) {
-                // TableScanOperator requires partitioned split to be added before the first call to process
-                if (partitionedSplit.getSplit() instanceof DeltaSplit){
-                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true,  ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
-                }else{
-                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
-                }
-            }
-
-            // add unpartitioned sources
-            Optional<PlanNodeId> sourceId = driver.getSourceId();
-            if (sourceId.isPresent()) {
-                // todo: where are completed TaskSources removed??????????
-                TaskSource taskSource = unpartitionedSources.get(sourceId.get());
-                if (taskSource != null) {
-                    // TODO::make sure they can be delta / are only delta if delta
-                    driver.updateSource(taskSource);
-                }
-            }
-
-            status.decrementPendingCreation(pipelineContext.getPipelineId(), driverContext.getLifespan());
-            closeDriverFactoryIfFullyCreated();
-
-            return driver;
-        }
-
-        /**
-         * driver context must be the same as for the non delta version
-         */
-        public Driver createDriverDelta(DriverContext driverContext, @Nullable ScheduledSplit partitionedSplit)
-        {
-
-            Driver driver = driverFactory.createDriver(driverContext);
-
-            // record driver so other threads add unpartitioned sources can see the driver
-            // NOTE: this MUST be done before reading unpartitionedSources, so we see a consistent view of the unpartitioned sources
-            drivers.add(new WeakReference<>(driver));
-
-            if (partitionedSplit != null) {
-                // TableScanOperator requires partitioned split to be added before the first call to process
-                if (partitionedSplit.getSplit() instanceof DeltaSplit){
-                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true,  ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
-                }else{
-                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
-                }
-            }
-
-            // add unpartitioned sources
-            Optional<PlanNodeId> sourceId = driver.getSourceId();
-            if (sourceId.isPresent()) {
-                // todo: where are completed TaskSources removed??????????
-                TaskSource taskSource = unpartitionedSources.get(sourceId.get());
-                if (taskSource != null) {
-                    // TODO::make sure they can be delta / are only delta if delta
-                    driver.updateSource(taskSource);
-                }
-            }
-
-            status.decrementPendingCreationDelta(pipelineContext.getPipelineId(), driverContext.getLifespan());
-            closeDriverFactoryIfFullyCreatedDelta();
-
-            return driver;
-        }
-
-        public void noMoreDriverRunner(Iterable<Lifespan> lifespans)
-        {
-            for (Lifespan lifespan : lifespans) {
-                status.setNoMoreDriverRunner(pipelineContext.getPipelineId(), lifespan);
-            }
-            closeDriverFactoryIfFullyCreated();
-        }
-
-        public void noMoreDriverRunnerDelta(Iterable<Lifespan> lifespans)
-        {
-            for (Lifespan lifespan : lifespans) {
-                status.setNoMoreDriverRunnerDelta(pipelineContext.getPipelineId(), lifespan);
-            }
-            closeDriverFactoryIfFullyCreated();
-        }
-
-        public boolean isNoMoreDriverRunner()
-        {
-            return status.isNoMoreDriverRunners(pipelineContext.getPipelineId());
-        }
-
-        public boolean isNoMoreDriverRunnerDelta()
-        {
-            return status.isNoMoreDriverRunnersDelta(pipelineContext.getPipelineId());
-        }
-
-        public void closeDriverFactoryIfFullyCreated()
-        {
-            if (closed) {
-                return;
-            }
-            for (Lifespan lifespan : status.getAndAcknowledgeLifespansWithNoMoreDrivers(pipelineContext.getPipelineId())) {
-                driverFactory.noMoreDrivers(lifespan);
-            }
-            if (!isNoMoreDriverRunner() || status.getPendingCreation(pipelineContext.getPipelineId()) != 0) {
-                return;
-            }
-            driverFactory.noMoreDrivers();
-            closed = true;
-        }
-
-        public void closeDriverFactoryIfFullyCreatedDelta()
-        {
-            if (closedDelta) {
-                return;
-            }
-            for (Lifespan lifespan : status.getAndAcknowledgeLifespansWithNoMoreDriversDelta(pipelineContext.getPipelineId())) {
-                driverFactory.noMoreDrivers(lifespan);
-            }
-            if (!isNoMoreDriverRunner() || status.getPendingCreationDelta(pipelineContext.getPipelineId()) != 0) {
-                return;
-            }
-            driverFactory.noMoreDrivers();
-            closedDelta = true;
-        }
-
-        public PipelineExecutionStrategy getPipelineExecutionStrategy()
-        {
-            return driverFactory.getPipelineExecutionStrategy();
-        }
-
-        public OptionalInt getDriverInstances()
-        {
-            return driverFactory.getDriverInstances();
-        }
-
-        public void splitsAdded(int count)
-        {
-            pipelineContext.splitsAdded(count);
-        }
-    }
-
     private static class DriverSplitRunner
             implements SplitRunner
     {
         private final DriverSplitRunnerFactory driverSplitRunnerFactory;
         private final DriverContext driverContext;
         private final Lifespan lifespan;
-
-        @GuardedBy("this")
-        private boolean closed;
-
         @Nullable
         private final ScheduledSplit partitionedSplit;
-
+        @GuardedBy("this")
+        private boolean closed;
         @GuardedBy("this")
         private Driver driver;
 
@@ -1555,9 +1371,10 @@ public class SqlTaskExecution
                 }
 
                 if (this.driver == null) {
-                    if (partitionedSplit != null && partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit){
+                    if (partitionedSplit != null && partitionedSplit.getSplit() != null && partitionedSplit.getSplit() instanceof DeltaSplit) {
                         this.driver = driverSplitRunnerFactory.createDriverDelta(driverContext, partitionedSplit);
-                    }else {
+                    }
+                    else {
                         // if the split is null then either may be called
                         this.driver = driverSplitRunnerFactory.createDriver(driverContext, partitionedSplit);
                     }
@@ -1632,7 +1449,6 @@ public class SqlTaskExecution
         @GuardedBy("this")
         private final int pipelineWithDriverGroupLifeCycleCountDelta;
 
-
         // For these 3 perX fields, they are populated lazily. If enumeration operations on the
         // map can lead to side effects, no new entries can be created after such enumeration has
         // happened. Otherwise, the order of entry creation and the enumeration operation will
@@ -1643,7 +1459,6 @@ public class SqlTaskExecution
         private final Map<Integer, PerPipelineStatus> perPipeline;
         @GuardedBy("this")
         private final Map<Lifespan, PerLifespanStatus> perLifespan = new HashMap<>();
-
 
         @GuardedBy("this")
         private final Map<Integer, Map<Lifespan, PerPipelineAndLifespanStatus>> perPipelineAndLifespanDelta;
@@ -1700,11 +1515,13 @@ public class SqlTaskExecution
             this.perPipelineDelta = perPipeline.build();
         }
 
-        public synchronized boolean getHadDelta(){
+        public synchronized boolean getHadDelta()
+        {
             return hadDelta;
         }
 
-        public synchronized void setHadDelta(){
+        public synchronized void setHadDelta()
+        {
             hadDelta = true;
         }
 
@@ -1737,7 +1554,6 @@ public class SqlTaskExecution
             per(lifespan).pipelinesWithNoMoreDriverRunners++;
             checkLifespanCompletion(lifespan);
         }
-
 
         public synchronized void setNoMoreDriverRunnerDelta(int pipelineId, Lifespan lifespan)
         {
@@ -1956,7 +1772,6 @@ public class SqlTaskExecution
             return result;
         }
 
-
         private void checkLifespanCompletion(Lifespan lifespan)
         {
             if (lifespan.isTaskWide()) {
@@ -2035,10 +1850,9 @@ public class SqlTaskExecution
     private static class PerPipelineStatus
     {
         final PipelineExecutionStrategy executionStrategy;
-
+        final List<Lifespan> unacknowledgedLifespansWithNoMoreDrivers = new ArrayList<>();
         int pendingCreation;
         int lifespansWithNoMoreDriverRunners;
-        final List<Lifespan> unacknowledgedLifespansWithNoMoreDrivers = new ArrayList<>();
 
         public PerPipelineStatus(PipelineExecutionStrategy executionStrategy)
         {
@@ -2056,5 +1870,186 @@ public class SqlTaskExecution
     {
         int pendingCreation;
         boolean noMoreDriverRunner;
+    }
+
+    private class DriverSplitRunnerFactory
+    {
+        private final DriverFactory driverFactory;
+        private final PipelineContext pipelineContext;
+        private boolean closed;
+        private boolean closedDelta;
+
+        private DriverSplitRunnerFactory(DriverFactory driverFactory, boolean partitioned)
+        {
+            this.driverFactory = driverFactory;
+            this.pipelineContext = taskContext.addPipelineContext(driverFactory.getPipelineId(), driverFactory.isInputDriver(), driverFactory.isOutputDriver(), partitioned);
+        }
+
+        // TODO: split this method into two: createPartitionedDriverRunner and createUnpartitionedDriverRunner.
+        // The former will take two arguments, and the latter will take one. This will simplify the signature quite a bit.
+        public DriverSplitRunner createDriverRunner(@Nullable ScheduledSplit partitionedSplit, Lifespan lifespan)
+        {
+            checkLifespan(driverFactory.getPipelineExecutionStrategy(), lifespan);
+            status.incrementPendingCreation(pipelineContext.getPipelineId(), lifespan);
+            // create driver context immediately so the driver existence is recorded in the stats
+            // the number of drivers is used to balance work across nodes
+            DriverContext driverContext = pipelineContext.addDriverContext(lifespan);
+            return new DriverSplitRunner(this, driverContext, partitionedSplit, lifespan);
+        }
+
+        public DriverSplitRunner createDriverRunnerDelta(@Nullable ScheduledSplit partitionedSplit, Lifespan lifespan)
+        {
+            checkLifespan(driverFactory.getPipelineExecutionStrategy(), lifespan);
+            status.incrementPendingCreationDelta(pipelineContext.getPipelineId(), lifespan);
+            // create driver context immediately so the driver existence is recorded in the stats
+            // the number of drivers is used to balance work across nodes
+            DriverContext driverContext = pipelineContext.addDriverContext(lifespan);
+            return new DriverSplitRunner(this, driverContext, partitionedSplit, lifespan);
+        }
+
+        public Driver createDriver(DriverContext driverContext, @Nullable ScheduledSplit partitionedSplit)
+        {
+            Driver driver = driverFactory.createDriver(driverContext);
+
+            // record driver so other threads add unpartitioned sources can see the driver
+            // NOTE: this MUST be done before reading unpartitionedSources, so we see a consistent view of the unpartitioned sources
+            drivers.add(new WeakReference<>(driver));
+
+            if (partitionedSplit != null) {
+                // TableScanOperator requires partitioned split to be added before the first call to process
+                if (partitionedSplit.getSplit() instanceof DeltaSplit) {
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true, ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
+                }
+                else {
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
+                }
+            }
+
+            // add unpartitioned sources
+            Optional<PlanNodeId> sourceId = driver.getSourceId();
+            if (sourceId.isPresent()) {
+                // todo: where are completed TaskSources removed??????????
+                TaskSource taskSource = unpartitionedSources.get(sourceId.get());
+                if (taskSource != null) {
+                    // TODO::make sure they can be delta / are only delta if delta
+                    driver.updateSource(taskSource);
+                }
+            }
+
+            status.decrementPendingCreation(pipelineContext.getPipelineId(), driverContext.getLifespan());
+            closeDriverFactoryIfFullyCreated();
+
+            return driver;
+        }
+
+        /**
+         * driver context must be the same as for the non delta version
+         */
+        public Driver createDriverDelta(DriverContext driverContext, @Nullable ScheduledSplit partitionedSplit)
+        {
+
+            Driver driver = driverFactory.createDriver(driverContext);
+
+            // record driver so other threads add unpartitioned sources can see the driver
+            // NOTE: this MUST be done before reading unpartitionedSources, so we see a consistent view of the unpartitioned sources
+            drivers.add(new WeakReference<>(driver));
+
+            if (partitionedSplit != null) {
+                // TableScanOperator requires partitioned split to be added before the first call to process
+                if (partitionedSplit.getSplit() instanceof DeltaSplit) {
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(), ImmutableSet.of(), true, ImmutableSet.of(partitionedSplit), ImmutableSet.of(), true));
+                }
+                else {
+                    driver.updateSource(new TaskSource(partitionedSplit.getPlanNodeId(), ImmutableSet.of(partitionedSplit), true));
+                }
+            }
+
+            // add unpartitioned sources
+            Optional<PlanNodeId> sourceId = driver.getSourceId();
+            if (sourceId.isPresent()) {
+                // todo: where are completed TaskSources removed??????????
+                TaskSource taskSource = unpartitionedSources.get(sourceId.get());
+                if (taskSource != null) {
+                    // TODO::make sure they can be delta / are only delta if delta
+                    driver.updateSource(taskSource);
+                }
+            }
+
+            status.decrementPendingCreationDelta(pipelineContext.getPipelineId(), driverContext.getLifespan());
+            closeDriverFactoryIfFullyCreatedDelta();
+
+            return driver;
+        }
+
+        public void noMoreDriverRunner(Iterable<Lifespan> lifespans)
+        {
+            for (Lifespan lifespan : lifespans) {
+                status.setNoMoreDriverRunner(pipelineContext.getPipelineId(), lifespan);
+            }
+            closeDriverFactoryIfFullyCreated();
+        }
+
+        public void noMoreDriverRunnerDelta(Iterable<Lifespan> lifespans)
+        {
+            for (Lifespan lifespan : lifespans) {
+                status.setNoMoreDriverRunnerDelta(pipelineContext.getPipelineId(), lifespan);
+            }
+            closeDriverFactoryIfFullyCreated();
+        }
+
+        public boolean isNoMoreDriverRunner()
+        {
+            return status.isNoMoreDriverRunners(pipelineContext.getPipelineId());
+        }
+
+        public boolean isNoMoreDriverRunnerDelta()
+        {
+            return status.isNoMoreDriverRunnersDelta(pipelineContext.getPipelineId());
+        }
+
+        public void closeDriverFactoryIfFullyCreated()
+        {
+            if (closed) {
+                return;
+            }
+            for (Lifespan lifespan : status.getAndAcknowledgeLifespansWithNoMoreDrivers(pipelineContext.getPipelineId())) {
+                driverFactory.noMoreDrivers(lifespan);
+            }
+            if (!isNoMoreDriverRunner() || status.getPendingCreation(pipelineContext.getPipelineId()) != 0) {
+                return;
+            }
+            driverFactory.noMoreDrivers();
+            closed = true;
+        }
+
+        public void closeDriverFactoryIfFullyCreatedDelta()
+        {
+            if (closedDelta) {
+                return;
+            }
+            for (Lifespan lifespan : status.getAndAcknowledgeLifespansWithNoMoreDriversDelta(pipelineContext.getPipelineId())) {
+                driverFactory.noMoreDrivers(lifespan);
+            }
+            if (!isNoMoreDriverRunner() || status.getPendingCreationDelta(pipelineContext.getPipelineId()) != 0) {
+                return;
+            }
+            driverFactory.noMoreDrivers();
+            closedDelta = true;
+        }
+
+        public PipelineExecutionStrategy getPipelineExecutionStrategy()
+        {
+            return driverFactory.getPipelineExecutionStrategy();
+        }
+
+        public OptionalInt getDriverInstances()
+        {
+            return driverFactory.getDriverInstances();
+        }
+
+        public void splitsAdded(int count)
+        {
+            pipelineContext.splitsAdded(count);
+        }
     }
 }

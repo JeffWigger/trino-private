@@ -30,11 +30,6 @@ public class TableStatisticsMetadata
     private final Set<TableStatisticType> tableStatistics;
     private final List<String> groupingColumns;
 
-    public static TableStatisticsMetadata empty()
-    {
-        return EMPTY_STATISTICS_METADATA;
-    }
-
     public TableStatisticsMetadata(
             Set<ColumnStatisticMetadata> columnStatistics,
             Set<TableStatisticType> tableStatistics,
@@ -43,6 +38,11 @@ public class TableStatisticsMetadata
         this.columnStatistics = unmodifiableSet(new LinkedHashSet<>(requireNonNull(columnStatistics, "columnStatistics is null")));
         this.tableStatistics = unmodifiableSet(new LinkedHashSet<>(requireNonNull(tableStatistics, "tableStatistics is null")));
         this.groupingColumns = List.copyOf(requireNonNull(groupingColumns, "groupingColumns is null"));
+    }
+
+    public static TableStatisticsMetadata empty()
+    {
+        return EMPTY_STATISTICS_METADATA;
     }
 
     public Set<ColumnStatisticMetadata> getColumnStatistics()

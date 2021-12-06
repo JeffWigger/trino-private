@@ -52,27 +52,21 @@ public class BigintGroupByHash
 
     private final int hashChannel;
     private final boolean outputRawHash;
-
+    // reverse index from the groupId back to the value
+    private final LongBigArray valuesByGroupId;
+    // reserve enough memory before rehash
+    private final UpdateMemory updateMemory;
     private int hashCapacity;
     private int maxFill;
     private int mask;
-
     // the hash table from values to groupIds
     private LongBigArray values;
     private IntBigArray groupIds;
-
     // groupId for the null value
     private int nullGroupId = -1;
-
-    // reverse index from the groupId back to the value
-    private final LongBigArray valuesByGroupId;
-
     private int nextGroupId;
     private long hashCollisions;
     private double expectedHashCollisions;
-
-    // reserve enough memory before rehash
-    private final UpdateMemory updateMemory;
     private long preallocatedMemoryInBytes;
     private long currentPageSizeInBytes;
 
@@ -99,6 +93,22 @@ public class BigintGroupByHash
         // This interface is used for actively reserving memory (push model) for rehash.
         // The caller can also query memory usage on this object (pull model)
         this.updateMemory = requireNonNull(updateMemory, "updateMemory is null");
+    }
+
+    private static long getHashPosition(long rawHash, int mask)
+    {
+        return murmurHash3(rawHash) & mask;
+    }
+
+    private static int calculateMaxFill(int hashSize)
+    {
+        checkArgument(hashSize > 0, "hashSize must be greater than 0");
+        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
+        if (maxFill == hashSize) {
+            maxFill--;
+        }
+        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
+        return maxFill;
     }
 
     @Override
@@ -326,22 +336,6 @@ public class BigintGroupByHash
     private boolean needRehash()
     {
         return nextGroupId >= maxFill;
-    }
-
-    private static long getHashPosition(long rawHash, int mask)
-    {
-        return murmurHash3(rawHash) & mask;
-    }
-
-    private static int calculateMaxFill(int hashSize)
-    {
-        checkArgument(hashSize > 0, "hashSize must be greater than 0");
-        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
-        if (maxFill == hashSize) {
-            maxFill--;
-        }
-        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
-        return maxFill;
     }
 
     private class AddPageWork

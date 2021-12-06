@@ -28,6 +28,22 @@ public class BinaryStatisticsBuilder
     private long nonNullValueCount;
     private long sum;
 
+    public static Optional<BinaryStatistics> mergeBinaryStatistics(List<ColumnStatistics> stats)
+    {
+        BinaryStatisticsBuilder binaryStatisticsBuilder = new BinaryStatisticsBuilder();
+        for (ColumnStatistics columnStatistics : stats) {
+            BinaryStatistics partialStatistics = columnStatistics.getBinaryStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null) {
+                    // there are non null values but no statistics, so we cannot say anything about the data
+                    return Optional.empty();
+                }
+                binaryStatisticsBuilder.addBinaryStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return binaryStatisticsBuilder.buildBinaryStatistics();
+    }
+
     @Override
     public void addValue(Slice value)
     {
@@ -70,21 +86,5 @@ public class BinaryStatisticsBuilder
                 null,
                 binaryStatistics.orElse(null),
                 null);
-    }
-
-    public static Optional<BinaryStatistics> mergeBinaryStatistics(List<ColumnStatistics> stats)
-    {
-        BinaryStatisticsBuilder binaryStatisticsBuilder = new BinaryStatisticsBuilder();
-        for (ColumnStatistics columnStatistics : stats) {
-            BinaryStatistics partialStatistics = columnStatistics.getBinaryStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null) {
-                    // there are non null values but no statistics, so we cannot say anything about the data
-                    return Optional.empty();
-                }
-                binaryStatisticsBuilder.addBinaryStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return binaryStatisticsBuilder.buildBinaryStatistics();
     }
 }

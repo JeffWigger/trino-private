@@ -106,6 +106,18 @@ import static io.trino.util.StatementUtils.isDataDefinitionStatement;
 public class QueryExecutionFactoryModule
         implements Module
 {
+    private static <T extends Statement> void bindDataDefinitionTask(
+            Binder binder,
+            MapBinder<Class<? extends Statement>, QueryExecutionFactory<?>> executionBinder,
+            Class<T> statement,
+            Class<? extends DataDefinitionTask<T>> task)
+    {
+        checkArgument(isDataDefinitionStatement(statement));
+        var taskBinder = newMapBinder(binder, new TypeLiteral<Class<? extends Statement>>() {}, new TypeLiteral<DataDefinitionTask<?>>() {});
+        taskBinder.addBinding(statement).to(task).in(Scopes.SINGLETON);
+        executionBinder.addBinding(statement).to(DataDefinitionExecutionFactory.class).in(Scopes.SINGLETON);
+    }
+
     @Override
     public void configure(Binder binder)
     {
@@ -118,7 +130,6 @@ public class QueryExecutionFactoryModule
         //add my bindings here
         binder.bind(DeltaUpdateExecution.DeltaUpdateExecutionFactory.class).in(Scopes.SINGLETON);
         executionBinder.addBinding(DeltaUpdate.class).to(DeltaUpdateExecution.DeltaUpdateExecutionFactory.class).in(Scopes.SINGLETON);
-
 
         binder.bind(DataDefinitionExecutionFactory.class).in(Scopes.SINGLETON);
         bindDataDefinitionTask(binder, executionBinder, AddColumn.class, AddColumnTask.class);
@@ -157,17 +168,5 @@ public class QueryExecutionFactoryModule
         bindDataDefinitionTask(binder, executionBinder, SetViewAuthorization.class, SetViewAuthorizationTask.class);
         bindDataDefinitionTask(binder, executionBinder, StartTransaction.class, StartTransactionTask.class);
         bindDataDefinitionTask(binder, executionBinder, Use.class, UseTask.class);
-    }
-
-    private static <T extends Statement> void bindDataDefinitionTask(
-            Binder binder,
-            MapBinder<Class<? extends Statement>, QueryExecutionFactory<?>> executionBinder,
-            Class<T> statement,
-            Class<? extends DataDefinitionTask<T>> task)
-    {
-        checkArgument(isDataDefinitionStatement(statement));
-        var taskBinder = newMapBinder(binder, new TypeLiteral<Class<? extends Statement>>() {}, new TypeLiteral<DataDefinitionTask<?>>() {});
-        taskBinder.addBinding(statement).to(task).in(Scopes.SINGLETON);
-        executionBinder.addBinding(statement).to(DataDefinitionExecutionFactory.class).in(Scopes.SINGLETON);
     }
 }

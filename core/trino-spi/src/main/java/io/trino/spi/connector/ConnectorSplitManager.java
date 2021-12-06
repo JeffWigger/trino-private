@@ -55,8 +55,6 @@ public interface ConnectorSplitManager
         return null;
     }
 
-
-
     enum SplitSchedulingStrategy
     {
         UNGROUPED_SCHEDULING,

@@ -23,10 +23,6 @@ import io.trino.spi.type.Type;
 public interface BlockState
         extends AccumulatorState
 {
-    Block getBlock();
-
-    void setBlock(Block value);
-
     static void write(Type type, BlockState state, BlockBuilder out)
     {
         if (state.getBlock() == null) {
@@ -36,4 +32,8 @@ public interface BlockState
             type.writeObject(out, state.getBlock());
         }
     }
+
+    Block getBlock();
+
+    void setBlock(Block value);
 }

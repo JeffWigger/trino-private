@@ -28,11 +28,6 @@ public final class ColumnStatistics
     private final Estimate dataSize;
     private final Optional<DoubleRange> range;
 
-    public static ColumnStatistics empty()
-    {
-        return EMPTY;
-    }
-
     public ColumnStatistics(
             Estimate nullsFraction,
             Estimate distinctValuesCount,
@@ -54,6 +49,16 @@ public final class ColumnStatistics
             throw new IllegalArgumentException(format("dataSize must be greater than or equal to 0: %s", dataSize.getValue()));
         }
         this.range = requireNonNull(range, "range is null");
+    }
+
+    public static ColumnStatistics empty()
+    {
+        return EMPTY;
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
     }
 
     public Estimate getNullsFraction()
@@ -107,11 +112,6 @@ public final class ColumnStatistics
                 ", dataSize=" + dataSize +
                 ", range=" + range +
                 '}';
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
     }
 
     /**

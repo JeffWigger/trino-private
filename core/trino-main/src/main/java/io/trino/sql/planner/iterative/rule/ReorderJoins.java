@@ -196,6 +196,44 @@ public class ReorderJoins
             this.lookup = requireNonNull(context.getLookup(), "lookup is null");
         }
 
+        /**
+         * This method generates all the ways of dividing totalNodes into two sets
+         * each containing at least one node. It will generate one set for each
+         * possible partitioning. The other partition is implied in the absent values.
+         * In order not to generate the inverse of any set, we always include the 0th
+         * node in our sets.
+         *
+         * @return A set of sets each of which defines a partitioning of totalNodes
+         */
+        @VisibleForTesting
+        static Set<Set<Integer>> generatePartitions(int totalNodes)
+        {
+            checkArgument(totalNodes > 1, "totalNodes must be greater than 1");
+            Set<Integer> numbers = IntStream.range(0, totalNodes)
+                    .boxed()
+                    .collect(toImmutableSet());
+            return powerSet(numbers).stream()
+                    .filter(subSet -> subSet.contains(0))
+                    .filter(subSet -> subSet.size() < numbers.size())
+                    .collect(toImmutableSet());
+        }
+
+        private static boolean isJoinEqualityCondition(Expression expression)
+        {
+            return expression instanceof ComparisonExpression
+                    && ((ComparisonExpression) expression).getOperator() == EQUAL
+                    && ((ComparisonExpression) expression).getLeft() instanceof SymbolReference
+                    && ((ComparisonExpression) expression).getRight() instanceof SymbolReference;
+        }
+
+        private static EquiJoinClause toEquiJoinClause(ComparisonExpression equality, Set<Symbol> leftSymbols)
+        {
+            Symbol leftSymbol = Symbol.from(equality.getLeft());
+            Symbol rightSymbol = Symbol.from(equality.getRight());
+            EquiJoinClause equiJoinClause = new EquiJoinClause(leftSymbol, rightSymbol);
+            return leftSymbols.contains(leftSymbol) ? equiJoinClause : equiJoinClause.flip();
+        }
+
         private JoinEnumerationResult chooseJoinOrder(LinkedHashSet<PlanNode> sources, List<Symbol> outputSymbols)
         {
             context.checkTimeoutNotExhausted();
@@ -229,28 +267,6 @@ public class ReorderJoins
 
             bestResult.planNode.ifPresent((planNode) -> log.debug("Least cost join was: %s", planNode));
             return bestResult;
-        }
-
-        /**
-         * This method generates all the ways of dividing totalNodes into two sets
-         * each containing at least one node. It will generate one set for each
-         * possible partitioning. The other partition is implied in the absent values.
-         * In order not to generate the inverse of any set, we always include the 0th
-         * node in our sets.
-         *
-         * @return A set of sets each of which defines a partitioning of totalNodes
-         */
-        @VisibleForTesting
-        static Set<Set<Integer>> generatePartitions(int totalNodes)
-        {
-            checkArgument(totalNodes > 1, "totalNodes must be greater than 1");
-            Set<Integer> numbers = IntStream.range(0, totalNodes)
-                    .boxed()
-                    .collect(toImmutableSet());
-            return powerSet(numbers).stream()
-                    .filter(subSet -> subSet.contains(0))
-                    .filter(subSet -> subSet.size() < numbers.size())
-                    .collect(toImmutableSet());
         }
 
         @VisibleForTesting
@@ -389,22 +405,6 @@ public class ReorderJoins
             return chooseJoinOrder(nodes, outputSymbols);
         }
 
-        private static boolean isJoinEqualityCondition(Expression expression)
-        {
-            return expression instanceof ComparisonExpression
-                    && ((ComparisonExpression) expression).getOperator() == EQUAL
-                    && ((ComparisonExpression) expression).getLeft() instanceof SymbolReference
-                    && ((ComparisonExpression) expression).getRight() instanceof SymbolReference;
-        }
-
-        private static EquiJoinClause toEquiJoinClause(ComparisonExpression equality, Set<Symbol> leftSymbols)
-        {
-            Symbol leftSymbol = Symbol.from(equality.getLeft());
-            Symbol rightSymbol = Symbol.from(equality.getRight());
-            EquiJoinClause equiJoinClause = new EquiJoinClause(leftSymbol, rightSymbol);
-            return leftSymbols.contains(leftSymbol) ? equiJoinClause : equiJoinClause.flip();
-        }
-
         private JoinEnumerationResult setJoinNodeProperties(JoinNode joinNode)
         {
             if (isAtMostScalar(joinNode.getRight(), lookup)) {
@@ -504,49 +504,9 @@ public class ReorderJoins
             checkArgument(inputSymbols.containsAll(outputSymbols), "inputs do not contain all output symbols");
         }
 
-        public Expression getFilter()
-        {
-            return filter;
-        }
-
-        public LinkedHashSet<PlanNode> getSources()
-        {
-            return sources;
-        }
-
-        public List<Symbol> getOutputSymbols()
-        {
-            return outputSymbols;
-        }
-
-        public boolean isPushedProjectionThroughJoin()
-        {
-            return pushedProjectionThroughJoin;
-        }
-
         public static Builder builder()
         {
             return new Builder();
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return Objects.hash(sources, ImmutableSet.copyOf(extractConjuncts(filter)), outputSymbols, pushedProjectionThroughJoin);
-        }
-
-        @Override
-        public boolean equals(Object obj)
-        {
-            if (!(obj instanceof MultiJoinNode)) {
-                return false;
-            }
-
-            MultiJoinNode other = (MultiJoinNode) obj;
-            return this.sources.equals(other.sources)
-                    && ImmutableSet.copyOf(extractConjuncts(this.filter)).equals(ImmutableSet.copyOf(extractConjuncts(other.filter)))
-                    && this.outputSymbols.equals(other.outputSymbols)
-                    && this.pushedProjectionThroughJoin == other.pushedProjectionThroughJoin;
         }
 
         static MultiJoinNode toMultiJoinNode(Metadata metadata, JoinNode joinNode, Context context, boolean pushProjectionsThroughJoin, TypeAnalyzer typeAnalyzer)
@@ -577,6 +537,46 @@ public class ReorderJoins
             // the number of sources is the number of joins + 1
             return new JoinNodeFlattener(metadata, joinNode, lookup, planNodeIdAllocator, joinLimit + 1, pushProjectionsThroughJoin, session, typeAnalyzer, types)
                     .toMultiJoinNode();
+        }
+
+        public Expression getFilter()
+        {
+            return filter;
+        }
+
+        public LinkedHashSet<PlanNode> getSources()
+        {
+            return sources;
+        }
+
+        public List<Symbol> getOutputSymbols()
+        {
+            return outputSymbols;
+        }
+
+        public boolean isPushedProjectionThroughJoin()
+        {
+            return pushedProjectionThroughJoin;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return Objects.hash(sources, ImmutableSet.copyOf(extractConjuncts(filter)), outputSymbols, pushedProjectionThroughJoin);
+        }
+
+        @Override
+        public boolean equals(Object obj)
+        {
+            if (!(obj instanceof MultiJoinNode)) {
+                return false;
+            }
+
+            MultiJoinNode other = (MultiJoinNode) obj;
+            return this.sources.equals(other.sources)
+                    && ImmutableSet.copyOf(extractConjuncts(this.filter)).equals(ImmutableSet.copyOf(extractConjuncts(other.filter)))
+                    && this.outputSymbols.equals(other.outputSymbols)
+                    && this.pushedProjectionThroughJoin == other.pushedProjectionThroughJoin;
         }
 
         private static class JoinNodeFlattener
@@ -718,16 +718,6 @@ public class ReorderJoins
                     "planNode should be present if and only if cost is known");
         }
 
-        public Optional<PlanNode> getPlanNode()
-        {
-            return planNode;
-        }
-
-        public PlanCostEstimate getCost()
-        {
-            return cost;
-        }
-
         static JoinEnumerationResult createJoinEnumerationResult(Optional<PlanNode> planNode, PlanCostEstimate cost)
         {
             if (cost.hasUnknownComponents()) {
@@ -737,6 +727,16 @@ public class ReorderJoins
                 return INFINITE_COST_RESULT;
             }
             return new JoinEnumerationResult(planNode, cost);
+        }
+
+        public Optional<PlanNode> getPlanNode()
+        {
+            return planNode;
+        }
+
+        public PlanCostEstimate getCost()
+        {
+            return cost;
         }
     }
 }

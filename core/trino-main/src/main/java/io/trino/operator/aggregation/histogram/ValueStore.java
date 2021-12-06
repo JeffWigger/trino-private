@@ -47,12 +47,11 @@ public class ValueStore
     private final Type type;
     private final BlockPositionEqual equalOperator;
     private final BlockBuilder values;
+    private final LongBigArray valueHashes;
     private int rehashCount;
-
     private int mask;
     private int bucketCount;
     private IntBigArray buckets;
-    private final LongBigArray valueHashes;
     private int maxFill;
 
     @VisibleForTesting

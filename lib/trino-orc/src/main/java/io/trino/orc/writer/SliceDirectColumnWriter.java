@@ -85,6 +85,19 @@ public class SliceDirectColumnWriter
         statisticsBuilder = statisticsBuilderSupplier.get();
     }
 
+    private static List<Integer> createSliceColumnPositionList(
+            boolean compressed,
+            LongStreamCheckpoint lengthCheckpoint,
+            ByteArrayStreamCheckpoint dataCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(dataCheckpoint.toPositionList(compressed));
+        positionList.addAll(lengthCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public Map<OrcColumnId, ColumnEncoding> getColumnEncodings()
     {
@@ -175,19 +188,6 @@ public class SliceDirectColumnWriter
         Slice slice = metadataWriter.writeRowIndexes(rowGroupIndexes.build());
         Stream stream = new Stream(columnId, StreamKind.ROW_INDEX, slice.length(), false);
         return ImmutableList.of(new StreamDataOutput(slice, stream));
-    }
-
-    private static List<Integer> createSliceColumnPositionList(
-            boolean compressed,
-            LongStreamCheckpoint lengthCheckpoint,
-            ByteArrayStreamCheckpoint dataCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(dataCheckpoint.toPositionList(compressed));
-        positionList.addAll(lengthCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

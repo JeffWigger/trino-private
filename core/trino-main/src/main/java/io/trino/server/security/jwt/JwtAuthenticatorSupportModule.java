@@ -31,6 +31,11 @@ import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
 public class JwtAuthenticatorSupportModule
         extends AbstractConfigurationAwareModule
 {
+    private static boolean isHttp(JwtAuthenticatorConfig config)
+    {
+        return config.getKeyFile().startsWith("https://") || config.getKeyFile().startsWith("http://");
+    }
+
     @Override
     protected void setup(Binder binder)
     {
@@ -42,14 +47,17 @@ public class JwtAuthenticatorSupportModule
                 jwkBinder -> jwkBinder.bind(SigningKeyResolver.class).to(FileSigningKeyResolver.class).in(Scopes.SINGLETON)));
     }
 
-    private static boolean isHttp(JwtAuthenticatorConfig config)
-    {
-        return config.getKeyFile().startsWith("https://") || config.getKeyFile().startsWith("http://");
-    }
-
     private static class JwkModule
             implements Module
     {
+        @Provides
+        @Singleton
+        @ForJwk
+        public static URI createJwkAddress(JwtAuthenticatorConfig config)
+        {
+            return URI.create(config.getKeyFile());
+        }
+
         @Override
         public void configure(Binder binder)
         {
@@ -68,14 +76,6 @@ public class JwtAuthenticatorSupportModule
                             .setTrustStorePath(null)
                             .setTrustStorePassword(null)
                             .setAutomaticHttpsSharedSecret(null));
-        }
-
-        @Provides
-        @Singleton
-        @ForJwk
-        public static URI createJwkAddress(JwtAuthenticatorConfig config)
-        {
-            return URI.create(config.getKeyFile());
         }
 
         // this module can be added multiple times, and this prevents multiple processing by Guice

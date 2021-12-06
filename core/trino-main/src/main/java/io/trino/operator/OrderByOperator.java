@@ -45,122 +45,21 @@ import static java.util.Objects.requireNonNull;
 public class OrderByOperator
         implements Operator
 {
-    public static class OrderByOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final List<Type> sourceTypes;
-        private final List<Integer> outputChannels;
-        private final int expectedPositions;
-        private final List<Integer> sortChannels;
-        private final List<SortOrder> sortOrder;
-        private final PagesIndex.Factory pagesIndexFactory;
-        private final boolean spillEnabled;
-        private final Optional<SpillerFactory> spillerFactory;
-        private final OrderingCompiler orderingCompiler;
-
-        private boolean closed;
-
-        public OrderByOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> sourceTypes,
-                List<Integer> outputChannels,
-                int expectedPositions,
-                List<Integer> sortChannels,
-                List<SortOrder> sortOrder,
-                PagesIndex.Factory pagesIndexFactory,
-                boolean spillEnabled,
-                Optional<SpillerFactory> spillerFactory,
-                OrderingCompiler orderingCompiler)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
-            this.outputChannels = requireNonNull(outputChannels, "outputChannels is null");
-            this.expectedPositions = expectedPositions;
-            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels, "sortChannels is null"));
-            this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder, "sortOrder is null"));
-
-            this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
-            this.spillEnabled = spillEnabled;
-            this.spillerFactory = requireNonNull(spillerFactory, "spillerFactory is null");
-            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
-            checkArgument(!spillEnabled || spillerFactory.isPresent(), "Spiller Factory is not present when spill is enabled");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, OrderByOperator.class.getSimpleName());
-            return new OrderByOperator(
-                    operatorContext,
-                    sourceTypes,
-                    outputChannels,
-                    expectedPositions,
-                    sortChannels,
-                    sortOrder,
-                    pagesIndexFactory,
-                    spillEnabled,
-                    spillerFactory,
-                    orderingCompiler);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new OrderByOperatorFactory(
-                    operatorId,
-                    planNodeId,
-                    sourceTypes,
-                    outputChannels,
-                    expectedPositions,
-                    sortChannels,
-                    sortOrder,
-                    pagesIndexFactory,
-                    spillEnabled,
-                    spillerFactory,
-                    orderingCompiler);
-        }
-    }
-
-    private enum State
-    {
-        NEEDS_INPUT,
-        HAS_OUTPUT,
-        FINISHED
-    }
-
     private final OperatorContext operatorContext;
     private final List<Integer> sortChannels;
     private final List<SortOrder> sortOrder;
     private final int[] outputChannels;
     private final LocalMemoryContext revocableMemoryContext;
     private final LocalMemoryContext localUserMemoryContext;
-
     private final PagesIndex pageIndex;
-
     private final List<Type> sourceTypes;
-
     private final boolean spillEnabled;
     private final Optional<SpillerFactory> spillerFactory;
     private final OrderingCompiler orderingCompiler;
-
     private Optional<Spiller> spiller = Optional.empty();
     private ListenableFuture<Void> spillInProgress = immediateVoidFuture();
     private Runnable finishMemoryRevoke = () -> {};
-
     private Iterator<Optional<Page>> sortedPages;
-
     private State state = State.NEEDS_INPUT;
 
     public OrderByOperator(
@@ -385,5 +284,100 @@ public class OrderByOperator
         pageIndex.clear();
         sortedPages = null;
         spiller.ifPresent(Spiller::close);
+    }
+
+    private enum State
+    {
+        NEEDS_INPUT,
+        HAS_OUTPUT,
+        FINISHED
+    }
+
+    public static class OrderByOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final List<Type> sourceTypes;
+        private final List<Integer> outputChannels;
+        private final int expectedPositions;
+        private final List<Integer> sortChannels;
+        private final List<SortOrder> sortOrder;
+        private final PagesIndex.Factory pagesIndexFactory;
+        private final boolean spillEnabled;
+        private final Optional<SpillerFactory> spillerFactory;
+        private final OrderingCompiler orderingCompiler;
+
+        private boolean closed;
+
+        public OrderByOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> sourceTypes,
+                List<Integer> outputChannels,
+                int expectedPositions,
+                List<Integer> sortChannels,
+                List<SortOrder> sortOrder,
+                PagesIndex.Factory pagesIndexFactory,
+                boolean spillEnabled,
+                Optional<SpillerFactory> spillerFactory,
+                OrderingCompiler orderingCompiler)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
+            this.outputChannels = requireNonNull(outputChannels, "outputChannels is null");
+            this.expectedPositions = expectedPositions;
+            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels, "sortChannels is null"));
+            this.sortOrder = ImmutableList.copyOf(requireNonNull(sortOrder, "sortOrder is null"));
+
+            this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
+            this.spillEnabled = spillEnabled;
+            this.spillerFactory = requireNonNull(spillerFactory, "spillerFactory is null");
+            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
+            checkArgument(!spillEnabled || spillerFactory.isPresent(), "Spiller Factory is not present when spill is enabled");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, OrderByOperator.class.getSimpleName());
+            return new OrderByOperator(
+                    operatorContext,
+                    sourceTypes,
+                    outputChannels,
+                    expectedPositions,
+                    sortChannels,
+                    sortOrder,
+                    pagesIndexFactory,
+                    spillEnabled,
+                    spillerFactory,
+                    orderingCompiler);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new OrderByOperatorFactory(
+                    operatorId,
+                    planNodeId,
+                    sourceTypes,
+                    outputChannels,
+                    expectedPositions,
+                    sortChannels,
+                    sortOrder,
+                    pagesIndexFactory,
+                    spillEnabled,
+                    spillerFactory,
+                    orderingCompiler);
+        }
     }
 }

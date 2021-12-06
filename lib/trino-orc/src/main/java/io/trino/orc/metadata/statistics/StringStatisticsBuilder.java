@@ -30,12 +30,11 @@ public class StringStatisticsBuilder
         implements SliceColumnStatisticsBuilder
 {
     private final int stringStatisticsLimitInBytes;
-
+    private final BloomFilterBuilder bloomFilterBuilder;
     private long nonNullValueCount;
     private Slice minimum;
     private Slice maximum;
     private long sum;
-    private final BloomFilterBuilder bloomFilterBuilder;
 
     public StringStatisticsBuilder(int stringStatisticsLimitInBytes, BloomFilterBuilder bloomFilterBuilder)
     {
@@ -50,6 +49,23 @@ public class StringStatisticsBuilder
         this.maximum = maximum;
         this.sum = sum;
         this.bloomFilterBuilder = requireNonNull(bloomFilterBuilder, "bloomFilterBuilder");
+    }
+
+    public static Optional<StringStatistics> mergeStringStatistics(List<ColumnStatistics> stats)
+    {
+        // no need to set the stats limit for the builder given we assume the given stats are within the same limit
+        StringStatisticsBuilder stringStatisticsBuilder = new StringStatisticsBuilder(Integer.MAX_VALUE, new NoOpBloomFilterBuilder());
+        for (ColumnStatistics columnStatistics : stats) {
+            StringStatistics partialStatistics = columnStatistics.getStringStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null || (partialStatistics.getMin() == null && partialStatistics.getMax() == null)) {
+                    // there are non null values but no statistics, so we cannot say anything about the data
+                    return Optional.empty();
+                }
+                stringStatisticsBuilder.addStringStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return stringStatisticsBuilder.buildStringStatistics();
     }
 
     public long getNonNullValueCount()
@@ -139,23 +155,6 @@ public class StringStatisticsBuilder
                 null,
                 null,
                 bloomFilterBuilder.buildBloomFilter());
-    }
-
-    public static Optional<StringStatistics> mergeStringStatistics(List<ColumnStatistics> stats)
-    {
-        // no need to set the stats limit for the builder given we assume the given stats are within the same limit
-        StringStatisticsBuilder stringStatisticsBuilder = new StringStatisticsBuilder(Integer.MAX_VALUE, new NoOpBloomFilterBuilder());
-        for (ColumnStatistics columnStatistics : stats) {
-            StringStatistics partialStatistics = columnStatistics.getStringStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null || (partialStatistics.getMin() == null && partialStatistics.getMax() == null)) {
-                    // there are non null values but no statistics, so we cannot say anything about the data
-                    return Optional.empty();
-                }
-                stringStatisticsBuilder.addStringStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return stringStatisticsBuilder.buildStringStatistics();
     }
 
     private Slice dropStringMinMaxIfNecessary(Slice minOrMax)

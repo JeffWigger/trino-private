@@ -31,12 +31,6 @@ public class NameBasedFieldMapper
         this.nestedColumns = requireNonNull(nestedColumns, "nestedColumns is null");
     }
 
-    @Override
-    public OrcColumn get(String fieldName)
-    {
-        return nestedColumns.get(fieldName);
-    }
-
     public static FieldMapper create(OrcColumn column)
     {
         requireNonNull(column, "column is null");
@@ -45,5 +39,11 @@ public class NameBasedFieldMapper
                 field -> field.getColumnName().toLowerCase(Locale.ENGLISH));
 
         return new NameBasedFieldMapper(nestedColumns);
+    }
+
+    @Override
+    public OrcColumn get(String fieldName)
+    {
+        return nestedColumns.get(fieldName);
     }
 }

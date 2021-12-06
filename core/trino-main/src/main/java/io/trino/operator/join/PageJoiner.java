@@ -28,6 +28,10 @@ import java.util.Optional;
 public interface PageJoiner
         extends WorkProcessor.Transformation<Page, Page>, Closeable
 {
+    Map<Integer, SavedRow> getSpilledRows();
+
+    Optional<PartitioningSpiller> getSpiller();
+
     interface PageJoinerFactory
     {
         PageJoiner getPageJoiner(
@@ -35,8 +39,4 @@ public interface PageJoiner
                 Optional<PartitioningSpillerFactory> partitioningSpillerFactory,
                 Iterator<SavedRow> savedRows);
     }
-
-    Map<Integer, SavedRow> getSpilledRows();
-
-    Optional<PartitioningSpiller> getSpiller();
 }

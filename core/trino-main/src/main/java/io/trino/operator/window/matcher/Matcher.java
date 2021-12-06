@@ -27,60 +27,6 @@ public class Matcher
     private final Program program;
     private final ThreadEquivalence threadEquivalence;
 
-    private static class Runtime
-    {
-        private static final int INSTANCE_SIZE = ClassLayout.parseClass(Runtime.class).instanceSize();
-
-        // a helper structure for identifying equivalent threads
-        // program pointer (instruction) --> list of threads that have reached this instruction
-        private final IntMultimap threadsAtInstructions;
-
-        private final IntList threads;
-        private final IntStack freeThreadIds;
-        private int newThreadId;
-        private final int inputLength;
-        private final boolean matchingAtPartitionStart;
-        private final Captures captures;
-
-        public Runtime(Program program, int inputLength, boolean matchingAtPartitionStart)
-        {
-            int initialCapacity = 2 * program.size();
-            threads = new IntList(initialCapacity);
-            freeThreadIds = new IntStack(initialCapacity);
-            this.captures = new Captures(initialCapacity, program.getMinSlotCount(), program.getMinLabelCount());
-            this.inputLength = inputLength;
-            this.matchingAtPartitionStart = matchingAtPartitionStart;
-
-            this.threadsAtInstructions = new IntMultimap(program.size(), program.size());
-        }
-
-        private int forkThread(int parent)
-        {
-            int child = newThread();
-            captures.copy(parent, child);
-            return child;
-        }
-
-        private int newThread()
-        {
-            if (freeThreadIds.size() > 0) {
-                return freeThreadIds.pop();
-            }
-            return newThreadId++;
-        }
-
-        private void killThread(int threadId)
-        {
-            freeThreadIds.push(threadId);
-            captures.release(threadId);
-        }
-
-        private long getSizeInBytes()
-        {
-            return INSTANCE_SIZE + threadsAtInstructions.getSizeInBytes() + threads.getSizeInBytes() + freeThreadIds.getSizeInBytes() + captures.getSizeInBytes();
-        }
-    }
-
     public Matcher(Program program, List<List<PhysicalValuePointer>> valuePointers)
     {
         this.program = program;
@@ -221,6 +167,60 @@ public class Matcher
                 runtime.threads.set(threadId, pointer);
                 next.add(threadId);
                 break;
+        }
+    }
+
+    private static class Runtime
+    {
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(Runtime.class).instanceSize();
+
+        // a helper structure for identifying equivalent threads
+        // program pointer (instruction) --> list of threads that have reached this instruction
+        private final IntMultimap threadsAtInstructions;
+
+        private final IntList threads;
+        private final IntStack freeThreadIds;
+        private final int inputLength;
+        private final boolean matchingAtPartitionStart;
+        private final Captures captures;
+        private int newThreadId;
+
+        public Runtime(Program program, int inputLength, boolean matchingAtPartitionStart)
+        {
+            int initialCapacity = 2 * program.size();
+            threads = new IntList(initialCapacity);
+            freeThreadIds = new IntStack(initialCapacity);
+            this.captures = new Captures(initialCapacity, program.getMinSlotCount(), program.getMinLabelCount());
+            this.inputLength = inputLength;
+            this.matchingAtPartitionStart = matchingAtPartitionStart;
+
+            this.threadsAtInstructions = new IntMultimap(program.size(), program.size());
+        }
+
+        private int forkThread(int parent)
+        {
+            int child = newThread();
+            captures.copy(parent, child);
+            return child;
+        }
+
+        private int newThread()
+        {
+            if (freeThreadIds.size() > 0) {
+                return freeThreadIds.pop();
+            }
+            return newThreadId++;
+        }
+
+        private void killThread(int threadId)
+        {
+            freeThreadIds.push(threadId);
+            captures.release(threadId);
+        }
+
+        private long getSizeInBytes()
+        {
+            return INSTANCE_SIZE + threadsAtInstructions.getSizeInBytes() + threads.getSizeInBytes() + freeThreadIds.getSizeInBytes() + captures.getSizeInBytes();
         }
     }
 }

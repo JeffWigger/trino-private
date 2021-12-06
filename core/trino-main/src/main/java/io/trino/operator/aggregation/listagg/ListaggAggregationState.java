@@ -20,17 +20,17 @@ import io.trino.spi.function.AccumulatorState;
 public interface ListaggAggregationState
         extends AccumulatorState
 {
-    void setSeparator(Slice separator);
-
     Slice getSeparator();
 
-    void setOverflowFiller(Slice overflowFiller);
+    void setSeparator(Slice separator);
 
     Slice getOverflowFiller();
 
-    void setOverflowError(boolean overflowError);
+    void setOverflowFiller(Slice overflowFiller);
 
     boolean isOverflowError();
+
+    void setOverflowError(boolean overflowError);
 
     void setShowOverflowEntryCount(boolean showOverflowEntryCount);
 

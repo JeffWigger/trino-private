@@ -33,18 +33,10 @@ import static java.util.Objects.requireNonNull;
 public class TopNNode
         extends PlanNode
 {
-    public enum Step
-    {
-        SINGLE,
-        PARTIAL,
-        FINAL
-    }
-
     private final PlanNode source;
     private final long count;
     private final OrderingScheme orderingScheme;
     private final Step step;
-
     @JsonCreator
     public TopNNode(@JsonProperty("id") PlanNodeId id,
             @JsonProperty("source") PlanNode source,
@@ -111,5 +103,12 @@ public class TopNNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         return new TopNNode(getId(), Iterables.getOnlyElement(newChildren), count, orderingScheme, step);
+    }
+
+    public enum Step
+    {
+        SINGLE,
+        PARTIAL,
+        FINAL
     }
 }

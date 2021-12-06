@@ -67,8 +67,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -119,11 +117,11 @@ import static java.util.stream.Collectors.toCollection;
 
 public class SqlQueryScheduler
 {
-    private final QueryStateMachine queryStateMachine;
-    private final ExecutionPolicy executionPolicy;
     public final Map<StageId, SqlStageExecution> stages;
     @GuardedBy("this")
     public final List<SqlStageExecution> scheduledStages = new LinkedList<>(); // TODO are there any reference / GC implications of this
+    private final QueryStateMachine queryStateMachine;
+    private final ExecutionPolicy executionPolicy;
     private final ExecutorService executor;
     private final StageId rootStageId;
     private final Map<StageId, StageScheduler> stageSchedulers;
@@ -136,45 +134,6 @@ public class SqlQueryScheduler
     @GuardedBy("this")
     // ConcurrentHashMap does not work for streaming
     private final Map<StageId, Boolean> stageIsFinished = new HashMap<>();
-
-    public static SqlQueryScheduler createSqlQueryScheduler(
-            QueryStateMachine queryStateMachine,
-            StageExecutionPlan plan,
-            NodePartitioningManager nodePartitioningManager,
-            NodeScheduler nodeScheduler,
-            RemoteTaskFactory remoteTaskFactory,
-            Session session,
-            boolean summarizeTaskInfo,
-            int splitBatchSize,
-            ExecutorService queryExecutor,
-            ScheduledExecutorService schedulerExecutor,
-            FailureDetector failureDetector,
-            OutputBuffers rootOutputBuffers,
-            NodeTaskMap nodeTaskMap,
-            ExecutionPolicy executionPolicy,
-            SplitSchedulerStats schedulerStats,
-            DynamicFilterService dynamicFilterService)
-    {
-        SqlQueryScheduler sqlQueryScheduler = new SqlQueryScheduler(
-                queryStateMachine,
-                plan,
-                nodePartitioningManager,
-                nodeScheduler,
-                remoteTaskFactory,
-                session,
-                summarizeTaskInfo,
-                splitBatchSize,
-                queryExecutor,
-                schedulerExecutor,
-                failureDetector,
-                rootOutputBuffers,
-                nodeTaskMap,
-                executionPolicy,
-                schedulerStats,
-                dynamicFilterService);
-        sqlQueryScheduler.initialize();
-        return sqlQueryScheduler;
-    }
 
     private SqlQueryScheduler(
             QueryStateMachine queryStateMachine,
@@ -241,6 +200,73 @@ public class SqlQueryScheduler
         this.executor = queryExecutor;
     }
 
+    public static SqlQueryScheduler createSqlQueryScheduler(
+            QueryStateMachine queryStateMachine,
+            StageExecutionPlan plan,
+            NodePartitioningManager nodePartitioningManager,
+            NodeScheduler nodeScheduler,
+            RemoteTaskFactory remoteTaskFactory,
+            Session session,
+            boolean summarizeTaskInfo,
+            int splitBatchSize,
+            ExecutorService queryExecutor,
+            ScheduledExecutorService schedulerExecutor,
+            FailureDetector failureDetector,
+            OutputBuffers rootOutputBuffers,
+            NodeTaskMap nodeTaskMap,
+            ExecutionPolicy executionPolicy,
+            SplitSchedulerStats schedulerStats,
+            DynamicFilterService dynamicFilterService)
+    {
+        SqlQueryScheduler sqlQueryScheduler = new SqlQueryScheduler(
+                queryStateMachine,
+                plan,
+                nodePartitioningManager,
+                nodeScheduler,
+                remoteTaskFactory,
+                session,
+                summarizeTaskInfo,
+                splitBatchSize,
+                queryExecutor,
+                schedulerExecutor,
+                failureDetector,
+                rootOutputBuffers,
+                nodeTaskMap,
+                executionPolicy,
+                schedulerStats,
+                dynamicFilterService);
+        sqlQueryScheduler.initialize();
+        return sqlQueryScheduler;
+    }
+
+    private static void updateQueryOutputLocations(QueryStateMachine queryStateMachine, OutputBufferId rootBufferId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations)
+    {
+        Set<URI> bufferLocations = tasks.stream()
+                .map(task -> task.getTaskStatus().getSelf())
+                .map(location -> uriBuilderFrom(location).appendPath("results").appendPath(rootBufferId.toString()).build())
+                .collect(toImmutableSet());
+        queryStateMachine.updateOutputLocations(bufferLocations, noMoreExchangeLocations);
+    }
+
+    private static ListenableFuture<Void> whenAllStages(Collection<SqlStageExecution> stages, Predicate<StageState> predicate)
+    {
+        checkArgument(!stages.isEmpty(), "stages is empty");
+        Set<StageId> stageIds = stages.stream()
+                .map(SqlStageExecution::getStageId)
+                .collect(toCollection(Sets::newConcurrentHashSet));
+        SettableFuture<Void> future = SettableFuture.create();
+
+        for (SqlStageExecution stage : stages) {
+            stage.addStateChangeListener(state -> {
+                if (predicate.test(state) && stageIds.remove(stage.getStageId()) && stageIds.isEmpty()) {
+                    future.set(null);
+                }
+            });
+        }
+
+        return future;
+    }
+
     // this is a separate method to ensure that the `this` reference is not leaked during construction
     private void initialize()
     {
@@ -257,16 +283,17 @@ public class SqlQueryScheduler
 
         for (SqlStageExecution stage : stages.values()) {
             stage.addStateChangeListener(state -> {
-                if(state == COMPLETED || state == FINISHED || state == CANCELED){ // || state == FAILED || state == ABORTED ||
-                    synchronized (this){
+                if (state == COMPLETED || state == FINISHED || state == CANCELED) { // || state == FAILED || state == ABORTED ||
+                    synchronized (this) {
                         this.stageIsFinished.put(stage.getStageId(), Boolean.TRUE);
-                        if (this.stageIsFinished.values().stream().allMatch(s -> s == Boolean.TRUE)){
+                        if (this.stageIsFinished.values().stream().allMatch(s -> s == Boolean.TRUE)) {
                             // TODO: if delta updates comes simultaneously then other stages might be reset
                             // synchronized (DeltaFlagRequest.class) {
                             // Problem Delta update might technically still be ongoing
                             // TODO: must start from leaves as otherwise there is a run condition with the cancel code in createStages
                             for (SqlStageExecution stageInner : stages.values()) {
                                 if (state == COMPLETED) {
+                                    // stageInner.cancel(); // would have been called in createStages, this line makes the queries fail
                                     stageInner.stateMachine.transitionToFinished();
                                 }
                             }
@@ -274,7 +301,8 @@ public class SqlQueryScheduler
                             return;
                         }
                     }
-                }else{
+                }
+                else {
                     // In case the stage gets reset due to delta update
                     synchronized (this) {
                         this.stageIsFinished.put(stage.getStageId(), Boolean.FALSE);
@@ -308,15 +336,6 @@ public class SqlQueryScheduler
         for (SqlStageExecution stage : stages.values()) {
             stage.addFinalStageInfoListener(status -> queryStateMachine.updateQueryInfo(Optional.ofNullable(getStageInfo())));
         }
-    }
-
-    private static void updateQueryOutputLocations(QueryStateMachine queryStateMachine, OutputBufferId rootBufferId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations)
-    {
-        Set<URI> bufferLocations = tasks.stream()
-                .map(task -> task.getTaskStatus().getSelf())
-                .map(location -> uriBuilderFrom(location).appendPath("results").appendPath(rootBufferId.toString()).build())
-                .collect(toImmutableSet());
-        queryStateMachine.updateOutputLocations(bufferLocations, noMoreExchangeLocations);
     }
 
     private List<SqlStageExecution> createStages(
@@ -391,7 +410,7 @@ public class SqlQueryScheduler
             PlanNodeId planNodeId = entry.getKey();
             SplitSource splitSource = entry.getValue();
             SplitSource splitDeltaSource = null;
-            if(!plan.getSplitDeltaSources().isEmpty()) {
+            if (!plan.getSplitDeltaSources().isEmpty()) {
                 Entry<PlanNodeId, SplitSource> entry2 = Iterables.getOnlyElement(plan.getSplitDeltaSources().entrySet());
                 splitDeltaSource = entry.getValue(); // could be null
             }
@@ -403,7 +422,7 @@ public class SqlQueryScheduler
             checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution());
 
             childStages = createChildStages.apply(Optional.of(new int[1]));
-            if (splitDeltaSource == null){
+            if (splitDeltaSource == null) {
                 stageSchedulers.put(stageId, newSourcePartitionedSchedulerAsStageScheduler(
                         stage,
                         planNodeId,
@@ -412,7 +431,8 @@ public class SqlQueryScheduler
                         splitBatchSize,
                         dynamicFilterService,
                         () -> childStages.stream().anyMatch(SqlStageExecution::isAnyTaskBlocked)));
-            }else{
+            }
+            else {
                 stageSchedulers.put(stageId, newSourcePartitionedSchedulerAsStageSchedulerDelta(
                         stage,
                         planNodeId,
@@ -518,11 +538,11 @@ public class SqlQueryScheduler
             childStages = createChildStages.apply(bucketToPartition);
         }
 
-        stage.addStateChangeListener(newState -> {
+        /*stage.addStateChangeListener(newState -> {
             if (newState == FLUSHING || newState.isDone()) {
                 childStages.forEach(SqlStageExecution::cancel);
             }
-        });
+        });*/
 
         stageLinkages.put(stageId, new StageLinkage(plan.getFragment().getId(), parent, childStages));
         stageLinkagesDelta.put(stageId, new StageLinkage(plan.getFragment().getId(), parent, childStages));
@@ -608,11 +628,11 @@ public class SqlQueryScheduler
                 List<ListenableFuture<Void>> blockedStages = new ArrayList<>();
                 for (SqlStageExecution stage : executionSchedule.getStagesToSchedule()) {
                     DeltaFlagRequest.deltaFlagLock.readLock().lock();
-                        // do not make any progress during a delta update
+                    // do not make any progress during a delta update
                     boolean skip = DeltaFlagRequest.globalDeltaUpdateInProcess;
 
                     DeltaFlagRequest.deltaFlagLock.readLock().unlock();
-                    if (skip){
+                    if (skip) {
                         break;
                     }
                     stage.beginScheduling(); // just causes stateMachine to transition from Planning to scheduled
@@ -680,17 +700,17 @@ public class SqlQueryScheduler
                 boolean sleep = false;
 
                 DeltaFlagRequest.deltaFlagLock.readLock().lock();
-                if(DeltaFlagRequest.globalDeltaUpdateInProcess){
+                if (DeltaFlagRequest.globalDeltaUpdateInProcess) {
                     sleep = true;
                 }
                 DeltaFlagRequest.deltaFlagLock.readLock().unlock();
-                if(sleep){
-                    try{
+                if (sleep) {
+                    try {
                         Thread.sleep(100);
-                    } catch (InterruptedException e) {
+                    }
+                    catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-
                 }
             }
 
@@ -839,25 +859,6 @@ public class SqlQueryScheduler
         try (SetThreadName ignored = new SetThreadName("Query-%s", queryStateMachine.getQueryId())) {
             stages.values().forEach(SqlStageExecution::abort);
         }
-    }
-
-    private static ListenableFuture<Void> whenAllStages(Collection<SqlStageExecution> stages, Predicate<StageState> predicate)
-    {
-        checkArgument(!stages.isEmpty(), "stages is empty");
-        Set<StageId> stageIds = stages.stream()
-                .map(SqlStageExecution::getStageId)
-                .collect(toCollection(Sets::newConcurrentHashSet));
-        SettableFuture<Void> future = SettableFuture.create();
-
-        for (SqlStageExecution stage : stages) {
-            stage.addStateChangeListener(state -> {
-                if (predicate.test(state) && stageIds.remove(stage.getStageId()) && stageIds.isEmpty()) {
-                    future.set(null);
-                }
-            });
-        }
-
-        return future;
     }
 
     private interface ExchangeLocationsConsumer

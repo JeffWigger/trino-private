@@ -48,36 +48,12 @@ import static java.util.Objects.requireNonNull;
 
 public class RawColumnDecoder
 {
-    private enum FieldType
-    {
-        BYTE(Byte.SIZE),
-        SHORT(Short.SIZE),
-        INT(Integer.SIZE),
-        LONG(Long.SIZE),
-        FLOAT(Float.SIZE),
-        DOUBLE(Double.SIZE);
-
-        private final int size;
-
-        FieldType(int bitSize)
-        {
-            this.size = bitSize / 8;
-        }
-
-        public int getSize()
-        {
-            return size;
-        }
-    }
-
     private static final Pattern MAPPING_PATTERN = Pattern.compile("(\\d+)(?::(\\d+))?");
-
     private final String columnName;
     private final Type columnType;
     private final FieldType fieldType;
     private final int start;
     private final OptionalInt end;
-
     public RawColumnDecoder(DecoderColumnHandle columnHandle)
     {
         try {
@@ -203,6 +179,28 @@ public class RawColumnDecoder
                     value.length));
         }
         return new RawValueProvider(ByteBuffer.wrap(value, start, actualEnd - start), fieldType, columnName, columnType);
+    }
+
+    private enum FieldType
+    {
+        BYTE(Byte.SIZE),
+        SHORT(Short.SIZE),
+        INT(Integer.SIZE),
+        LONG(Long.SIZE),
+        FLOAT(Float.SIZE),
+        DOUBLE(Double.SIZE);
+
+        private final int size;
+
+        FieldType(int bitSize)
+        {
+            this.size = bitSize / 8;
+        }
+
+        public int getSize()
+        {
+            return size;
+        }
     }
 
     private static class RawValueProvider

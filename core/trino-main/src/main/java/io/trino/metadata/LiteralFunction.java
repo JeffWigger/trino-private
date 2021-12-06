@@ -66,6 +66,31 @@ public class LiteralFunction
         this.blockEncodingSerdeSupplier = blockEncodingSerdeSupplier;
     }
 
+    public static Type typeForMagicLiteral(Type type)
+    {
+        Class<?> clazz = type.getJavaType();
+        clazz = Primitives.unwrap(clazz);
+
+        if (clazz == long.class) {
+            return BIGINT;
+        }
+        if (clazz == double.class) {
+            return DOUBLE;
+        }
+        if (!clazz.isPrimitive()) {
+            if (type instanceof VarcharType) {
+                return type;
+            }
+            else {
+                return VARBINARY;
+            }
+        }
+        if (clazz == boolean.class) {
+            return BOOLEAN;
+        }
+        throw new IllegalArgumentException("Unhandled Java type: " + clazz.getName());
+    }
+
     @Override
     public ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -97,30 +122,5 @@ public class LiteralFunction
                 FAIL_ON_NULL,
                 ImmutableList.of(NEVER_NULL),
                 methodHandle);
-    }
-
-    public static Type typeForMagicLiteral(Type type)
-    {
-        Class<?> clazz = type.getJavaType();
-        clazz = Primitives.unwrap(clazz);
-
-        if (clazz == long.class) {
-            return BIGINT;
-        }
-        if (clazz == double.class) {
-            return DOUBLE;
-        }
-        if (!clazz.isPrimitive()) {
-            if (type instanceof VarcharType) {
-                return type;
-            }
-            else {
-                return VARBINARY;
-            }
-        }
-        if (clazz == boolean.class) {
-            return BOOLEAN;
-        }
-        throw new IllegalArgumentException("Unhandled Java type: " + clazz.getName());
     }
 }

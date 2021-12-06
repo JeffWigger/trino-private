@@ -53,12 +53,6 @@ public final class PatternRecognitionPartition
     private final List<WindowFunction> windowFunctions;
     private final PagesHashStrategy peerGroupHashStrategy;
     private final LocalMemoryContext matcherMemoryContext;
-
-    private int peerGroupStart;
-    private int peerGroupEnd;
-
-    private int currentPosition;
-
     // properties for row pattern recognition
     private final List<MeasureComputation> measures;
     private final Optional<RowsFraming> framing;
@@ -68,7 +62,9 @@ public final class PatternRecognitionPartition
     private final boolean initial;
     private final Matcher matcher;
     private final List<Evaluation> labelEvaluations;
-
+    private int peerGroupStart;
+    private int peerGroupEnd;
+    private int currentPosition;
     private int lastSkippedPosition;
     private int lastMatchedPosition;
     private long matchNumber;

@@ -110,10 +110,12 @@ public interface Operator
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
+
     default Page getOutputDelta()
     {
         throw new UnsupportedOperationException(getClass().getName());
     }
+
     default boolean isFinishedDelta()
     {
         throw new UnsupportedOperationException(getClass().getName());

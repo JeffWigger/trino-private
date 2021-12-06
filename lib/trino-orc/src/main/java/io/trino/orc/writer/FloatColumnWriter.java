@@ -81,6 +81,17 @@ public class FloatColumnWriter
         this.statisticsBuilder = statisticsBuilderSupplier.get();
     }
 
+    private static List<Integer> createFloatColumnPositionList(
+            boolean compressed,
+            FloatStreamCheckpoint dataCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(dataCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public Map<OrcColumnId, ColumnEncoding> getColumnEncodings()
     {
@@ -163,17 +174,6 @@ public class FloatColumnWriter
         Slice slice = metadataWriter.writeRowIndexes(rowGroupIndexes.build());
         Stream stream = new Stream(columnId, StreamKind.ROW_INDEX, slice.length(), false);
         return ImmutableList.of(new StreamDataOutput(slice, stream));
-    }
-
-    private static List<Integer> createFloatColumnPositionList(
-            boolean compressed,
-            FloatStreamCheckpoint dataCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(dataCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

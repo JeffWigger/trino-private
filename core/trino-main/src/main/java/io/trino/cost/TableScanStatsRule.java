@@ -50,6 +50,36 @@ public class TableScanStatsRule
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
+    private static SymbolStatsEstimate toSymbolStatistics(TableStatistics tableStatistics, ColumnStatistics columnStatistics, Type type)
+    {
+        requireNonNull(tableStatistics, "tableStatistics is null");
+        requireNonNull(columnStatistics, "columnStatistics is null");
+        requireNonNull(type, "type is null");
+
+        double nullsFraction = columnStatistics.getNullsFraction().getValue();
+        double nonNullRowsCount = tableStatistics.getRowCount().getValue() * (1.0 - nullsFraction);
+        double averageRowSize;
+        if (nonNullRowsCount == 0) {
+            averageRowSize = 0;
+        }
+        else if (type instanceof FixedWidthType) {
+            // For a fixed-width type, engine knows the row size.
+            averageRowSize = NaN;
+        }
+        else {
+            averageRowSize = columnStatistics.getDataSize().getValue() / nonNullRowsCount;
+        }
+        SymbolStatsEstimate.Builder result = SymbolStatsEstimate.builder();
+        result.setNullsFraction(nullsFraction);
+        result.setDistinctValuesCount(columnStatistics.getDistinctValuesCount().getValue());
+        result.setAverageRowSize(averageRowSize);
+        columnStatistics.getRange().ifPresent(range -> {
+            result.setLowValue(range.getMin());
+            result.setHighValue(range.getMax());
+        });
+        return result.build();
+    }
+
     @Override
     public Pattern<TableScanNode> getPattern()
     {
@@ -83,35 +113,5 @@ public class TableScanStatsRule
                 .setOutputRowCount(tableStatistics.getRowCount().getValue())
                 .addSymbolStatistics(outputSymbolStats)
                 .build());
-    }
-
-    private static SymbolStatsEstimate toSymbolStatistics(TableStatistics tableStatistics, ColumnStatistics columnStatistics, Type type)
-    {
-        requireNonNull(tableStatistics, "tableStatistics is null");
-        requireNonNull(columnStatistics, "columnStatistics is null");
-        requireNonNull(type, "type is null");
-
-        double nullsFraction = columnStatistics.getNullsFraction().getValue();
-        double nonNullRowsCount = tableStatistics.getRowCount().getValue() * (1.0 - nullsFraction);
-        double averageRowSize;
-        if (nonNullRowsCount == 0) {
-            averageRowSize = 0;
-        }
-        else if (type instanceof FixedWidthType) {
-            // For a fixed-width type, engine knows the row size.
-            averageRowSize = NaN;
-        }
-        else {
-            averageRowSize = columnStatistics.getDataSize().getValue() / nonNullRowsCount;
-        }
-        SymbolStatsEstimate.Builder result = SymbolStatsEstimate.builder();
-        result.setNullsFraction(nullsFraction);
-        result.setDistinctValuesCount(columnStatistics.getDistinctValuesCount().getValue());
-        result.setAverageRowSize(averageRowSize);
-        columnStatistics.getRange().ifPresent(range -> {
-            result.setLowValue(range.getMin());
-            result.setHighValue(range.getMax());
-        });
-        return result.build();
     }
 }

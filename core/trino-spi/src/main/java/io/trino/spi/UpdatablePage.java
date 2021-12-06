@@ -16,7 +16,6 @@ package io.trino.spi;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.DictionaryBlock;
-import io.trino.spi.block.DictionaryId;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.block.UpdatableByteArrayBlock;
@@ -26,32 +25,17 @@ import io.trino.spi.block.VariableWidthBlock;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-import static io.airlift.slice.SizeOf.sizeOf;
-import static io.trino.spi.block.DictionaryId.randomDictionaryId;
-import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class UpdatablePage
-    extends Page
+        extends Page
 {
     public static final int INSTANCE_SIZE = ClassLayout.parseClass(UpdatablePage.class).instanceSize();
-    private static final int DIFFERENCE_SIZE = INSTANCE_SIZE -  Page.INSTANCE_SIZE;
+    private static final int DIFFERENCE_SIZE = INSTANCE_SIZE - Page.INSTANCE_SIZE;
     private static final UpdatableBlock[] EMPTY_BLOCKS = new UpdatableBlock[0];
-
-    /**
-     * Visible to give trusted classes like {@link PageBuilder} access to a constructor that doesn't
-     * defensively copy the blocks
-     */
-    static UpdatablePage wrapBlocksWithoutCopy(int positionCount, UpdatableBlock[] blocks)
-    {
-        return new UpdatablePage(false, positionCount, blocks);
-    }
 
     public UpdatablePage(Block... blocks)
     {
@@ -71,6 +55,34 @@ public class UpdatablePage
     public UpdatablePage(boolean blocksCopyRequired, int positionCount, UpdatableBlock[] blocks)
     {
         super(blocksCopyRequired, positionCount, blocks);
+    }
+
+    /**
+     * Visible to give trusted classes like {@link PageBuilder} access to a constructor that doesn't
+     * defensively copy the blocks
+     */
+    static UpdatablePage wrapBlocksWithoutCopy(int positionCount, UpdatableBlock[] blocks)
+    {
+        return new UpdatablePage(false, positionCount, blocks);
+    }
+
+    public static int determinePositionCount(Block... blocks)
+    {
+        requireNonNull(blocks, "blocks is null");
+        if (blocks.length == 0) {
+            throw new IllegalArgumentException("blocks is empty");
+        }
+
+        return blocks[0].getPositionCount();
+    }
+
+    public static UpdatableBlock[] makeUpdatable(Block[] blocks)
+    {
+        UpdatableBlock[] uBlocks = new UpdatableBlock[blocks.length];
+        for (int i = 0; i < blocks.length; i++) {
+            uBlocks[i] = blocks[i].makeUpdatable();
+        }
+        return uBlocks;
     }
 
     @Override
@@ -105,7 +117,7 @@ public class UpdatablePage
         }
 
         UpdatableBlock[] newBlocks = new UpdatableBlock[blocks.length + 1];
-        for (int i = 0; i < blocks.length; i++){
+        for (int i = 0; i < blocks.length; i++) {
             newBlocks[i] = (UpdatableBlock) blocks[i];
         }
         newBlocks[blocks.length] = block;
@@ -135,7 +147,7 @@ public class UpdatablePage
     @Override
     public UpdatablePage getLoadedPage(int column)
     {
-        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[]{(UpdatableBlock) super.blocks[column].getLoadedBlock()});
+        return wrapBlocksWithoutCopy(positionCount, new UpdatableBlock[] {(UpdatableBlock) super.blocks[column].getLoadedBlock()});
     }
 
     @Override
@@ -161,23 +173,15 @@ public class UpdatablePage
         return builder.toString();
     }
 
-    public static int determinePositionCount(Block... blocks)
-    {
-        requireNonNull(blocks, "blocks is null");
-        if (blocks.length == 0) {
-            throw new IllegalArgumentException("blocks is empty");
-        }
-
-        return blocks[0].getPositionCount();
-    }
-
     @Override
-    public Page getRegion(int positionOffset, int length){
+    public Page getRegion(int positionOffset, int length)
+    {
         // updatable blocks do not have getRegion, use getEntriesFrom instead.
         throw new UnsupportedOperationException(this.getClass().getName());
     }
 
-    public Page getEntriesFrom(int positionOffset, int length){
+    public Page getEntriesFrom(int positionOffset, int length)
+    {
         if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
             throw new IndexOutOfBoundsException(format("Invalid position %s and length %s in page with %s positions", positionOffset, length, positionCount));
         }
@@ -221,6 +225,57 @@ public class UpdatablePage
         return wrapBlocksWithoutCopy(positionCount, result);
     }
 
+    public void updateRow(Page row, int position)
+    {
+        int cols = getChannelCount();
+        for (int c = 0; c < cols; c++) {
+            updateBlock(this.getBlock(c), row.getBlock(c), position);
+        }
+    }
+
+    public void deleteRow(int position)
+    {
+        int cols = getChannelCount();
+        for (int c = 0; c < cols; c++) {
+            deleteBlock(this.getBlock(c), position);
+        }
+    }
+
+    private void updateBlock(UpdatableBlock target, Block sourceRow, int position)
+    {
+        // target and source should only differ in being updatable and not
+        // TODO: expand here
+        if (target instanceof UpdatableLongArrayBlock) {
+            target.updateLong(((LongArrayBlock) sourceRow).getLong(0, 0), position, 0);
+        }
+        else if (target instanceof UpdatableByteArrayBlock) {
+            target.updateByte((int) ((ByteArrayBlock) sourceRow).getByte(0, 0), position, 0);
+        }
+        else if (target instanceof UpdatableVariableWidthBlock) {
+            VariableWidthBlock variableWidthBlock = (VariableWidthBlock) sourceRow;
+            int length = variableWidthBlock.getSliceLength(0);
+            target.updateBytes(variableWidthBlock.getSlice(0, 0, length), 0, length, position, 0);
+        }
+    }
+
+    private void deleteBlock(UpdatableBlock target, int position)
+    {
+        if (target instanceof UpdatableLongArrayBlock) {
+            target.deleteLong(position, 0);
+        }
+        else if (target instanceof UpdatableByteArrayBlock) {
+            target.deleteByte(position, 0);
+        }
+        else if (target instanceof UpdatableVariableWidthBlock) {
+            target.deleteBytes(position, 0, 0); // length does nothing
+        }
+    }
+
+    public Page wrapBlocksWithoutCopyToPage()
+    {
+        return Page.wrapBlocksWithoutCopy(getPositionCount(), blocks);
+    }
+
     public static class DictionaryBlockIndexes
     {
         private final List<DictionaryBlock> blocks = new ArrayList<>();
@@ -241,55 +296,5 @@ public class UpdatablePage
         {
             return indexes;
         }
-    }
-
-    public static UpdatableBlock[]  makeUpdatable(Block[] blocks){
-        UpdatableBlock[] uBlocks = new UpdatableBlock[blocks.length];
-        for (int i = 0; i < blocks.length; i++){
-            uBlocks[i] = blocks[i].makeUpdatable();
-        }
-        return uBlocks;
-    }
-
-    public void updateRow(Page row, int position){
-        int cols = getChannelCount();
-        for (int c = 0; c < cols; c++) {
-            updateBlock(this.getBlock(c), row.getBlock(c), position);
-        }
-    }
-
-    public void deleteRow(int position){
-        int cols = getChannelCount();
-        for (int c = 0; c < cols; c++) {
-            deleteBlock(this.getBlock(c), position);
-        }
-    }
-
-    private void updateBlock(UpdatableBlock target, Block sourceRow, int position){
-        // target and source should only differ in being updatable and not
-        // TODO: expand here
-        if (target instanceof UpdatableLongArrayBlock){
-            target.updateLong(((LongArrayBlock) sourceRow).getLong(0, 0), position, 0);
-        } else if (target instanceof UpdatableByteArrayBlock){
-            target.updateByte((int)((ByteArrayBlock) sourceRow).getByte(0, 0), position, 0);
-        } else if (target instanceof UpdatableVariableWidthBlock){
-            VariableWidthBlock variableWidthBlock = (VariableWidthBlock) sourceRow;
-            int length = variableWidthBlock.getSliceLength(0);
-            target.updateBytes(variableWidthBlock.getSlice(0, 0,length ), 0, length, position, 0);
-        }
-    }
-
-    private void deleteBlock(UpdatableBlock target, int position){
-        if (target instanceof UpdatableLongArrayBlock){
-            target.deleteLong(position, 0);
-        }else if (target instanceof UpdatableByteArrayBlock){
-            target.deleteByte(position, 0);
-        } else if (target instanceof UpdatableVariableWidthBlock){
-            target.deleteBytes(position, 0, 0); // length does nothing
-        }
-    }
-
-    public Page wrapBlocksWithoutCopyToPage(){
-        return Page.wrapBlocksWithoutCopy(getPositionCount(), blocks);
     }
 }

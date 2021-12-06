@@ -70,6 +70,13 @@ public class ExpressionEquivalence
         this.canonicalizationVisitor = new CanonicalizationVisitor();
     }
 
+    private static <T> List<T> swapPair(List<T> pair)
+    {
+        requireNonNull(pair, "pair is null");
+        checkArgument(pair.size() == 2, "Expected pair to have two elements");
+        return ImmutableList.of(pair.get(1), pair.get(0));
+    }
+
     public boolean areExpressionsEquivalent(Session session, Expression leftExpression, Expression rightExpression, TypeProvider types)
     {
         Map<Symbol, Integer> symbolInput = new HashMap<>();
@@ -106,6 +113,22 @@ public class ExpressionEquivalence
     {
         public CanonicalizationVisitor()
         {
+        }
+
+        public static List<RowExpression> flattenNestedCallArgs(SpecialForm specialForm)
+        {
+            Form form = specialForm.getForm();
+            ImmutableList.Builder<RowExpression> newArguments = ImmutableList.builder();
+            for (RowExpression argument : specialForm.getArguments()) {
+                if (argument instanceof SpecialForm && form == ((SpecialForm) argument).getForm()) {
+                    // same special form type, so flatten the args
+                    newArguments.addAll(flattenNestedCallArgs((SpecialForm) argument));
+                }
+                else {
+                    newArguments.add(argument);
+                }
+            }
+            return newArguments.build();
         }
 
         @Override
@@ -157,22 +180,6 @@ public class ExpressionEquivalence
             }
 
             return specialForm;
-        }
-
-        public static List<RowExpression> flattenNestedCallArgs(SpecialForm specialForm)
-        {
-            Form form = specialForm.getForm();
-            ImmutableList.Builder<RowExpression> newArguments = ImmutableList.builder();
-            for (RowExpression argument : specialForm.getArguments()) {
-                if (argument instanceof SpecialForm && form == ((SpecialForm) argument).getForm()) {
-                    // same special form type, so flatten the args
-                    newArguments.addAll(flattenNestedCallArgs((SpecialForm) argument));
-                }
-                else {
-                    newArguments.add(argument);
-                }
-            }
-            return newArguments.build();
         }
 
         @Override
@@ -335,12 +342,5 @@ public class ExpressionEquivalence
             }
             return Integer.compare(left.size(), right.size());
         }
-    }
-
-    private static <T> List<T> swapPair(List<T> pair)
-    {
-        requireNonNull(pair, "pair is null");
-        checkArgument(pair.size() == 2, "Expected pair to have two elements");
-        return ImmutableList.of(pair.get(1), pair.get(0));
     }
 }

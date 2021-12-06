@@ -35,6 +35,11 @@ public final class AllFunctionsResolved
 {
     private static final Visitor VISITOR = new Visitor();
 
+    private static void validate(Expression expression)
+    {
+        VISITOR.process(expression, null);
+    }
+
     @Override
     public void validate(
             PlanNode planNode,
@@ -46,11 +51,6 @@ public final class AllFunctionsResolved
             WarningCollector warningCollector)
     {
         ExpressionExtractor.forEachExpression(planNode, AllFunctionsResolved::validate);
-    }
-
-    private static void validate(Expression expression)
-    {
-        VISITOR.process(expression, null);
     }
 
     private static class Visitor

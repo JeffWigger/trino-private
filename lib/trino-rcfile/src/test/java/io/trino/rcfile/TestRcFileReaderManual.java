@@ -42,35 +42,6 @@ public class TestRcFileReaderManual
     private static final long syncFirst = 0x1234_5678_9012_3456L;
     private static final long syncSecond = 0x7890_1234_5678_9012L;
 
-    @Test
-    public void testNoStartSync()
-            throws Exception
-    {
-        SliceOutput output = new DynamicSliceOutput(10 * 1024);
-
-        List<Segment> segments = ImmutableList.of(
-                writeSegment(output, ImmutableList.of(ImmutableList.of(0, 2, 3, 4), ImmutableList.of(10, 12, 13))),
-                writeSegment(output, ImmutableList.of(ImmutableList.of(20, 22), ImmutableList.of(30, 33), ImmutableList.of(40, 44))),
-                writeSegment(output, ImmutableList.of(ImmutableList.of(100, 101, 102))));
-
-        assertFileSegments(output.slice(), segments);
-    }
-
-    @Test
-    public void testStartSync()
-            throws Exception
-    {
-        SliceOutput output = new DynamicSliceOutput(10 * 1024);
-
-        List<Segment> segments = ImmutableList.of(
-                writeSegment(output, ImmutableList.of()),
-                writeSegment(output, ImmutableList.of(ImmutableList.of(0, 2, 3, 4), ImmutableList.of(10, 12, 13))),
-                writeSegment(output, ImmutableList.of(ImmutableList.of(20, 22), ImmutableList.of(30, 33), ImmutableList.of(40, 44))),
-                writeSegment(output, ImmutableList.of(ImmutableList.of(100, 101, 102))));
-
-        assertFileSegments(output.slice(), segments);
-    }
-
     private static void assertFileSegments(Slice file, List<Segment> segments)
             throws IOException
     {
@@ -253,6 +224,35 @@ public class TestRcFileReaderManual
         }
 
         return values.build();
+    }
+
+    @Test
+    public void testNoStartSync()
+            throws Exception
+    {
+        SliceOutput output = new DynamicSliceOutput(10 * 1024);
+
+        List<Segment> segments = ImmutableList.of(
+                writeSegment(output, ImmutableList.of(ImmutableList.of(0, 2, 3, 4), ImmutableList.of(10, 12, 13))),
+                writeSegment(output, ImmutableList.of(ImmutableList.of(20, 22), ImmutableList.of(30, 33), ImmutableList.of(40, 44))),
+                writeSegment(output, ImmutableList.of(ImmutableList.of(100, 101, 102))));
+
+        assertFileSegments(output.slice(), segments);
+    }
+
+    @Test
+    public void testStartSync()
+            throws Exception
+    {
+        SliceOutput output = new DynamicSliceOutput(10 * 1024);
+
+        List<Segment> segments = ImmutableList.of(
+                writeSegment(output, ImmutableList.of()),
+                writeSegment(output, ImmutableList.of(ImmutableList.of(0, 2, 3, 4), ImmutableList.of(10, 12, 13))),
+                writeSegment(output, ImmutableList.of(ImmutableList.of(20, 22), ImmutableList.of(30, 33), ImmutableList.of(40, 44))),
+                writeSegment(output, ImmutableList.of(ImmutableList.of(100, 101, 102))));
+
+        assertFileSegments(output.slice(), segments);
     }
 
     private static class Segment

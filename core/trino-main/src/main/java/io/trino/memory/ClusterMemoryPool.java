@@ -36,34 +36,25 @@ import static java.util.Objects.requireNonNull;
 public class ClusterMemoryPool
 {
     private final MemoryPoolId id;
-
-    @GuardedBy("this")
-    private long totalDistributedBytes;
-
-    @GuardedBy("this")
-    private long reservedDistributedBytes;
-
-    @GuardedBy("this")
-    private long reservedRevocableDistributedBytes;
-
-    @GuardedBy("this")
-    private int nodes;
-
-    @GuardedBy("this")
-    private int blockedNodes;
-
-    @GuardedBy("this")
-    private int assignedQueries;
-
     // Does not include queries with zero memory usage
     @GuardedBy("this")
     private final Map<QueryId, Long> queryMemoryReservations = new HashMap<>();
-
     @GuardedBy("this")
     private final Map<QueryId, List<MemoryAllocation>> queryMemoryAllocations = new HashMap<>();
-
     @GuardedBy("this")
     private final Map<QueryId, Long> queryMemoryRevocableReservations = new HashMap<>();
+    @GuardedBy("this")
+    private long totalDistributedBytes;
+    @GuardedBy("this")
+    private long reservedDistributedBytes;
+    @GuardedBy("this")
+    private long reservedRevocableDistributedBytes;
+    @GuardedBy("this")
+    private int nodes;
+    @GuardedBy("this")
+    private int blockedNodes;
+    @GuardedBy("this")
+    private int assignedQueries;
 
     public ClusterMemoryPool(MemoryPoolId id)
     {

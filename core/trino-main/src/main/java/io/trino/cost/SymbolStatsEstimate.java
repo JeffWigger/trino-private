@@ -40,16 +40,6 @@ public class SymbolStatsEstimate
     private final double averageRowSize;
     private final double distinctValuesCount;
 
-    public static SymbolStatsEstimate unknown()
-    {
-        return UNKNOWN;
-    }
-
-    public static SymbolStatsEstimate zero()
-    {
-        return ZERO;
-    }
-
     @JsonCreator
     public SymbolStatsEstimate(
             @JsonProperty("lowValue") double lowValue,
@@ -79,6 +69,31 @@ public class SymbolStatsEstimate
         checkArgument(distinctValuesCount >= 0 || isNaN(distinctValuesCount), "Distinct values count should be non-negative, got: %s", distinctValuesCount);
         // TODO normalize distinctValuesCount for an empty range (or validate it is already normalized)
         this.distinctValuesCount = distinctValuesCount;
+    }
+
+    public static SymbolStatsEstimate unknown()
+    {
+        return UNKNOWN;
+    }
+
+    public static SymbolStatsEstimate zero()
+    {
+        return ZERO;
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static Builder buildFrom(SymbolStatsEstimate other)
+    {
+        return builder()
+                .setLowValue(other.getLowValue())
+                .setHighValue(other.getHighValue())
+                .setNullsFraction(other.getNullsFraction())
+                .setAverageRowSize(other.getAverageRowSize())
+                .setDistinctValuesCount(other.getDistinctValuesCount());
     }
 
     @JsonProperty
@@ -175,21 +190,6 @@ public class SymbolStatsEstimate
                 .add("ndv", distinctValuesCount)
                 .add("rowSize", averageRowSize)
                 .toString();
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
-    public static Builder buildFrom(SymbolStatsEstimate other)
-    {
-        return builder()
-                .setLowValue(other.getLowValue())
-                .setHighValue(other.getHighValue())
-                .setNullsFraction(other.getNullsFraction())
-                .setAverageRowSize(other.getAverageRowSize())
-                .setDistinctValuesCount(other.getDistinctValuesCount());
     }
 
     public static final class Builder

@@ -25,11 +25,6 @@ import static java.util.Objects.requireNonNull;
 
 public class TopologyAwareNodeSelectorConfig
 {
-    public enum TopologyType
-    {
-        FLAT, FILE, SUBNET
-    }
-
     private TopologyType type = TopologyType.FLAT;
     private List<String> locationSegmentNames = ImmutableList.of("machine");
 
@@ -66,5 +61,10 @@ public class TopologyAwareNodeSelectorConfig
                 .omitEmptyStrings()
                 .splitToList(locationSegmentNames);
         return this;
+    }
+
+    public enum TopologyType
+    {
+        FLAT, FILE, SUBNET
     }
 }

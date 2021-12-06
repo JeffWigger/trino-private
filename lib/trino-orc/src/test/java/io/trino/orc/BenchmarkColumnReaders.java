@@ -84,12 +84,37 @@ import static org.openjdk.jmh.annotations.Scope.Thread;
 @OperationsPerInvocation(BenchmarkColumnReaders.ROWS)
 public class BenchmarkColumnReaders
 {
+    public static final int ROWS = 10_000_000;
     private static final DecimalType SHORT_DECIMAL_TYPE = createDecimalType(10, 5);
     private static final DecimalType LONG_DECIMAL_TYPE = createDecimalType(30, 5);
-    public static final int ROWS = 10_000_000;
     private static final int DICTIONARY = 22;
     private static final int MAX_STRING = 19;
     private static final Collection<?> NULL_VALUES = Collections.nCopies(ROWS, null);
+
+    private static List<String> createDictionary(Random random)
+    {
+        List<String> dictionary = new ArrayList<>();
+        for (int dictionaryIndex = 0; dictionaryIndex < DICTIONARY; dictionaryIndex++) {
+            dictionary.add(randomAsciiString(random));
+        }
+        return dictionary;
+    }
+
+    // this is not appropriate for benchmarking with compression
+    private static String randomAsciiString(Random random)
+    {
+        char[] value = new char[random.nextInt(MAX_STRING)];
+        for (int i = 0; i < value.length; i++) {
+            value[i] = (char) random.nextInt(Byte.MAX_VALUE);
+        }
+        return new String(value);
+    }
+
+    public static void main(String[] args)
+            throws Exception
+    {
+        benchmark(BenchmarkColumnReaders.class).run();
+    }
 
     @Benchmark
     public Object readBooleanNoNull(BooleanNoNullBenchmarkData data)
@@ -996,25 +1021,6 @@ public class BenchmarkColumnReaders
         }
     }
 
-    private static List<String> createDictionary(Random random)
-    {
-        List<String> dictionary = new ArrayList<>();
-        for (int dictionaryIndex = 0; dictionaryIndex < DICTIONARY; dictionaryIndex++) {
-            dictionary.add(randomAsciiString(random));
-        }
-        return dictionary;
-    }
-
-    // this is not appropriate for benchmarking with compression
-    private static String randomAsciiString(Random random)
-    {
-        char[] value = new char[random.nextInt(MAX_STRING)];
-        for (int i = 0; i < value.length; i++) {
-            value[i] = (char) random.nextInt(Byte.MAX_VALUE);
-        }
-        return new String(value);
-    }
-
     @State(Thread)
     public static class TimestampNoNullBenchmarkData
             extends BenchmarkData
@@ -1090,11 +1096,5 @@ public class BenchmarkColumnReaders
         catch (Throwable throwable) {
             throw new RuntimeException(throwable);
         }
-    }
-
-    public static void main(String[] args)
-            throws Exception
-    {
-        benchmark(BenchmarkColumnReaders.class).run();
     }
 }

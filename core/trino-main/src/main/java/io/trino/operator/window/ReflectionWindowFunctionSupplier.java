@@ -32,16 +32,8 @@ import static java.util.Objects.requireNonNull;
 public class ReflectionWindowFunctionSupplier<T extends WindowFunction>
         extends AbstractWindowFunctionSupplier
 {
-    private enum ConstructorType
-    {
-        NO_INPUTS,
-        INPUTS,
-        INPUTS_IGNORE_NULLS
-    }
-
     private final Constructor<T> constructor;
     private final ConstructorType constructorType;
-
     public ReflectionWindowFunctionSupplier(String name, Type returnType, List<? extends Type> argumentTypes, Class<T> type)
     {
         this(new Signature(name, returnType.getTypeSignature(), Lists.transform(argumentTypes, Type::getTypeSignature)), type);
@@ -82,6 +74,12 @@ public class ReflectionWindowFunctionSupplier<T extends WindowFunction>
         }
     }
 
+    private static String getDescription(AnnotatedElement annotatedElement)
+    {
+        Description description = annotatedElement.getAnnotation(Description.class);
+        return (description == null) ? null : description.value();
+    }
+
     @Override
     protected T newWindowFunction(List<Integer> inputs, boolean ignoreNulls, List<LambdaProvider> lambdaProviders)
     {
@@ -101,9 +99,10 @@ public class ReflectionWindowFunctionSupplier<T extends WindowFunction>
         }
     }
 
-    private static String getDescription(AnnotatedElement annotatedElement)
+    private enum ConstructorType
     {
-        Description description = annotatedElement.getAnnotation(Description.class);
-        return (description == null) ? null : description.value();
+        NO_INPUTS,
+        INPUTS,
+        INPUTS_IGNORE_NULLS
     }
 }

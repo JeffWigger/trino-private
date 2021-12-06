@@ -84,7 +84,17 @@ public class InternalResourceGroup
     private final ResourceGroupId id;
     private final BiConsumer<InternalResourceGroup, Boolean> jmxExportListener;
     private final Executor executor;
-
+    // Live data structures
+    // ====================
+    @GuardedBy("root")
+    private final Map<String, InternalResourceGroup> subGroups = new HashMap<>();
+    // Sub groups whose memory usage may be out of date. Most likely because they have a running query.
+    @GuardedBy("root")
+    private final Set<InternalResourceGroup> dirtySubGroups = new HashSet<>();
+    @GuardedBy("root")
+    private final Map<ManagedQueryExecution, ResourceUsage> runningQueries = new HashMap<>();
+    @GuardedBy("root")
+    private final CounterStat timeBetweenStartsSec = new CounterStat();
     // Configuration
     // =============
     @GuardedBy("root")
@@ -107,22 +117,12 @@ public class InternalResourceGroup
     private SchedulingPolicy schedulingPolicy = FAIR;
     @GuardedBy("root")
     private boolean jmxExport;
-
-    // Live data structures
-    // ====================
-    @GuardedBy("root")
-    private final Map<String, InternalResourceGroup> subGroups = new HashMap<>();
     // Sub groups with queued queries, that have capacity to run them
     // That is, they must return true when internalStartNext() is called on them
     @GuardedBy("root")
     private Queue<InternalResourceGroup> eligibleSubGroups = new FifoQueue<>();
-    // Sub groups whose memory usage may be out of date. Most likely because they have a running query.
-    @GuardedBy("root")
-    private final Set<InternalResourceGroup> dirtySubGroups = new HashSet<>();
     @GuardedBy("root")
     private UpdateablePriorityQueue<ManagedQueryExecution> queuedQueries = new FifoQueue<>();
-    @GuardedBy("root")
-    private final Map<ManagedQueryExecution, ResourceUsage> runningQueries = new HashMap<>();
     @GuardedBy("root")
     private int descendantRunningQueries;
     @GuardedBy("root")
@@ -132,8 +132,6 @@ public class InternalResourceGroup
     private ResourceUsage cachedResourceUsage = new ResourceUsage(0, 0);
     @GuardedBy("root")
     private long lastStartMillis;
-    @GuardedBy("root")
-    private final CounterStat timeBetweenStartsSec = new CounterStat();
 
     public InternalResourceGroup(String name, BiConsumer<InternalResourceGroup, Boolean> jmxExportListener, Executor executor)
     {
@@ -153,6 +151,16 @@ public class InternalResourceGroup
         else {
             id = new ResourceGroupId(name);
             root = this;
+        }
+    }
+
+    private static long getSubGroupSchedulingPriority(SchedulingPolicy policy, InternalResourceGroup group)
+    {
+        if (policy == QUERY_PRIORITY) {
+            return group.getHighestQueryPriority();
+        }
+        else {
+            return group.computeSchedulingWeight();
         }
     }
 
@@ -870,16 +878,6 @@ public class InternalResourceGroup
     private void addOrUpdateSubGroup(InternalResourceGroup group)
     {
         addOrUpdateSubGroup(eligibleSubGroups, group);
-    }
-
-    private static long getSubGroupSchedulingPriority(SchedulingPolicy policy, InternalResourceGroup group)
-    {
-        if (policy == QUERY_PRIORITY) {
-            return group.getHighestQueryPriority();
-        }
-        else {
-            return group.computeSchedulingWeight();
-        }
     }
 
     private long computeSchedulingWeight()

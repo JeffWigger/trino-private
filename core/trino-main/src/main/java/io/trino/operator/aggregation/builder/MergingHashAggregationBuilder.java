@@ -44,13 +44,13 @@ public class MergingHashAggregationBuilder
     private final Optional<Integer> hashChannel;
     private final OperatorContext operatorContext;
     private final WorkProcessor<Page> sortedPages;
-    private InMemoryHashAggregationBuilder hashAggregationBuilder;
     private final List<Type> groupByTypes;
     private final LocalMemoryContext memoryContext;
     private final long memoryLimitForMerge;
     private final int overwriteIntermediateChannelOffset;
     private final JoinCompiler joinCompiler;
     private final BlockTypeOperators blockTypeOperators;
+    private InMemoryHashAggregationBuilder hashAggregationBuilder;
 
     public MergingHashAggregationBuilder(
             List<AccumulatorFactory> accumulatorFactories,

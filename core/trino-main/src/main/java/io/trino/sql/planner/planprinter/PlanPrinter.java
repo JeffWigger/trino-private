@@ -204,16 +204,6 @@ public class PlanPrinter
         planRoot.accept(visitor, null);
     }
 
-    private String toText(boolean verbose, int level)
-    {
-        return new TextRenderer(verbose, level).render(representation);
-    }
-
-    private String toJson()
-    {
-        return new JsonRenderer().render(representation);
-    }
-
     public static String jsonFragmentPlan(PlanNode root, Map<Symbol, Type> symbols, Metadata metadata, Session session)
     {
         TypeProvider typeProvider = TypeProvider.copyOf(symbols.entrySet().stream()
@@ -372,15 +362,15 @@ public class PlanPrinter
                 .distinct()
                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue)));
         builder.append(
-                new PlanPrinter(
-                        fragment.getRoot(),
-                        typeProvider,
-                        Optional.of(fragment.getStageExecutionDescriptor()),
-                        tableInfoSupplier,
-                        dynamicFilterDomainStats,
-                        valuePrinter,
-                        fragment.getStatsAndCosts(),
-                        planNodeStats).toText(verbose, 1))
+                        new PlanPrinter(
+                                fragment.getRoot(),
+                                typeProvider,
+                                Optional.of(fragment.getStageExecutionDescriptor()),
+                                tableInfoSupplier,
+                                dynamicFilterDomainStats,
+                                valuePrinter,
+                                fragment.getStatsAndCosts(),
+                                planNodeStats).toText(verbose, 1))
                 .append("\n");
 
         return builder.toString();
@@ -405,6 +395,101 @@ public class PlanPrinter
     public static String graphvizDistributedPlan(SubPlan plan)
     {
         return GraphvizPrinter.printDistributed(plan);
+    }
+
+    private static String formatFrame(WindowNode.Frame frame)
+    {
+        StringBuilder builder = new StringBuilder(frame.getType().toString());
+
+        frame.getOriginalStartValue().ifPresent(value -> builder.append(" ").append(value));
+        builder.append(" ").append(frame.getStartType());
+
+        frame.getOriginalEndValue().ifPresent(value -> builder.append(" ").append(value));
+        builder.append(" ").append(frame.getEndType());
+
+        return builder.toString();
+    }
+
+    @SafeVarargs
+    private static String formatHash(Optional<Symbol>... hashes)
+    {
+        List<Symbol> symbols = stream(hashes)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(toList());
+
+        if (symbols.isEmpty()) {
+            return "";
+        }
+
+        return "[" + Joiner.on(", ").join(symbols) + "]";
+    }
+
+    private static String formatOutputs(TypeProvider types, Iterable<Symbol> outputs)
+    {
+        return Streams.stream(outputs)
+                .map(input -> input + ":" + types.get(input).getDisplayName())
+                .collect(Collectors.joining(", "));
+    }
+
+    public static String formatAggregation(Aggregation aggregation)
+    {
+        StringBuilder builder = new StringBuilder();
+
+        String arguments = Joiner.on(", ").join(aggregation.getArguments());
+        if (aggregation.getArguments().isEmpty() && "count".equalsIgnoreCase(aggregation.getResolvedFunction().getSignature().getName())) {
+            arguments = "*";
+        }
+        if (aggregation.isDistinct()) {
+            arguments = "DISTINCT " + arguments;
+        }
+
+        builder.append(aggregation.getResolvedFunction().getSignature().getName())
+                .append('(').append(arguments);
+
+        aggregation.getOrderingScheme().ifPresent(orderingScheme -> builder.append(' ').append(orderingScheme.getOrderBy().stream()
+                .map(input -> input + " " + orderingScheme.getOrdering(input))
+                .collect(joining(", "))));
+
+        builder.append(')');
+
+        aggregation.getFilter().ifPresent(expression -> builder.append(" FILTER (WHERE ").append(expression).append(")"));
+
+        aggregation.getMask().ifPresent(symbol -> builder.append(" (mask = ").append(symbol).append(")"));
+        return builder.toString();
+    }
+
+    private static Expression unresolveFunctions(Expression expression)
+    {
+        return ExpressionTreeRewriter.rewriteWith(new ExpressionRewriter<>()
+        {
+            @Override
+            public Expression rewriteFunctionCall(FunctionCall node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
+            {
+                FunctionCall rewritten = treeRewriter.defaultRewrite(node, context);
+
+                return new FunctionCall(
+                        rewritten.getLocation(),
+                        QualifiedName.of(extractFunctionName(node.getName())),
+                        rewritten.getWindow(),
+                        rewritten.getFilter(),
+                        rewritten.getOrderBy(),
+                        rewritten.isDistinct(),
+                        rewritten.getNullTreatment(),
+                        rewritten.getProcessingMode(),
+                        rewritten.getArguments());
+            }
+        }, expression);
+    }
+
+    private String toText(boolean verbose, int level)
+    {
+        return new TextRenderer(verbose, level).render(representation);
+    }
+
+    private String toJson()
+    {
+        return new JsonRenderer().render(representation);
     }
 
     private class Visitor
@@ -651,12 +736,12 @@ public class PlanPrinter
             if (node.getOrderingScheme().isPresent()) {
                 OrderingScheme orderingScheme = node.getOrderingScheme().get();
                 args.add(format("order by (%s)", Stream.concat(
-                        orderingScheme.getOrderBy().stream()
-                                .limit(node.getPreSortedOrderPrefix())
-                                .map(symbol -> "<" + symbol + " " + orderingScheme.getOrdering(symbol) + ">"),
-                        orderingScheme.getOrderBy().stream()
-                                .skip(node.getPreSortedOrderPrefix())
-                                .map(symbol -> symbol + " " + orderingScheme.getOrdering(symbol)))
+                                orderingScheme.getOrderBy().stream()
+                                        .limit(node.getPreSortedOrderPrefix())
+                                        .map(symbol -> "<" + symbol + " " + orderingScheme.getOrdering(symbol) + ">"),
+                                orderingScheme.getOrderBy().stream()
+                                        .skip(node.getPreSortedOrderPrefix())
+                                        .map(symbol -> symbol + " " + orderingScheme.getOrdering(symbol)))
                         .collect(Collectors.joining(", "))));
             }
 
@@ -710,12 +795,12 @@ public class PlanPrinter
             if (node.getOrderingScheme().isPresent()) {
                 OrderingScheme orderingScheme = node.getOrderingScheme().get();
                 args.add(format("order by (%s)", Stream.concat(
-                        orderingScheme.getOrderBy().stream()
-                                .limit(node.getPreSortedOrderPrefix())
-                                .map(symbol -> "<" + symbol + " " + orderingScheme.getOrdering(symbol) + ">"),
-                        orderingScheme.getOrderBy().stream()
-                                .skip(node.getPreSortedOrderPrefix())
-                                .map(symbol -> symbol + " " + orderingScheme.getOrdering(symbol)))
+                                orderingScheme.getOrderBy().stream()
+                                        .limit(node.getPreSortedOrderPrefix())
+                                        .map(symbol -> "<" + symbol + " " + orderingScheme.getOrdering(symbol) + ">"),
+                                orderingScheme.getOrderBy().stream()
+                                        .skip(node.getPreSortedOrderPrefix())
+                                        .map(symbol -> symbol + " " + orderingScheme.getOrdering(symbol)))
                         .collect(Collectors.joining(", "))));
             }
 
@@ -1545,90 +1630,5 @@ public class PlanPrinter
             representation.addNode(nodeOutput);
             return nodeOutput;
         }
-    }
-
-    private static String formatFrame(WindowNode.Frame frame)
-    {
-        StringBuilder builder = new StringBuilder(frame.getType().toString());
-
-        frame.getOriginalStartValue().ifPresent(value -> builder.append(" ").append(value));
-        builder.append(" ").append(frame.getStartType());
-
-        frame.getOriginalEndValue().ifPresent(value -> builder.append(" ").append(value));
-        builder.append(" ").append(frame.getEndType());
-
-        return builder.toString();
-    }
-
-    @SafeVarargs
-    private static String formatHash(Optional<Symbol>... hashes)
-    {
-        List<Symbol> symbols = stream(hashes)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(toList());
-
-        if (symbols.isEmpty()) {
-            return "";
-        }
-
-        return "[" + Joiner.on(", ").join(symbols) + "]";
-    }
-
-    private static String formatOutputs(TypeProvider types, Iterable<Symbol> outputs)
-    {
-        return Streams.stream(outputs)
-                .map(input -> input + ":" + types.get(input).getDisplayName())
-                .collect(Collectors.joining(", "));
-    }
-
-    public static String formatAggregation(Aggregation aggregation)
-    {
-        StringBuilder builder = new StringBuilder();
-
-        String arguments = Joiner.on(", ").join(aggregation.getArguments());
-        if (aggregation.getArguments().isEmpty() && "count".equalsIgnoreCase(aggregation.getResolvedFunction().getSignature().getName())) {
-            arguments = "*";
-        }
-        if (aggregation.isDistinct()) {
-            arguments = "DISTINCT " + arguments;
-        }
-
-        builder.append(aggregation.getResolvedFunction().getSignature().getName())
-                .append('(').append(arguments);
-
-        aggregation.getOrderingScheme().ifPresent(orderingScheme -> builder.append(' ').append(orderingScheme.getOrderBy().stream()
-                .map(input -> input + " " + orderingScheme.getOrdering(input))
-                .collect(joining(", "))));
-
-        builder.append(')');
-
-        aggregation.getFilter().ifPresent(expression -> builder.append(" FILTER (WHERE ").append(expression).append(")"));
-
-        aggregation.getMask().ifPresent(symbol -> builder.append(" (mask = ").append(symbol).append(")"));
-        return builder.toString();
-    }
-
-    private static Expression unresolveFunctions(Expression expression)
-    {
-        return ExpressionTreeRewriter.rewriteWith(new ExpressionRewriter<>()
-        {
-            @Override
-            public Expression rewriteFunctionCall(FunctionCall node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
-            {
-                FunctionCall rewritten = treeRewriter.defaultRewrite(node, context);
-
-                return new FunctionCall(
-                        rewritten.getLocation(),
-                        QualifiedName.of(extractFunctionName(node.getName())),
-                        rewritten.getWindow(),
-                        rewritten.getFilter(),
-                        rewritten.getOrderBy(),
-                        rewritten.isDistinct(),
-                        rewritten.getNullTreatment(),
-                        rewritten.getProcessingMode(),
-                        rewritten.getArguments());
-            }
-        }, expression);
     }
 }

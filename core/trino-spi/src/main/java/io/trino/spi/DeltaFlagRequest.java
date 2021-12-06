@@ -16,21 +16,17 @@ package io.trino.spi;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-
 import javax.annotation.concurrent.GuardedBy;
 
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DeltaFlagRequest
 {
-    private final boolean deltaUpdateInProcess;
-
     public static final ReentrantReadWriteLock deltaFlagLock = new ReentrantReadWriteLock(true);
-
     // use synchronized(DeltaFlagRequest.class)
     @GuardedBy("deltaFlagLock")
     public static boolean globalDeltaUpdateInProcess = false;
-
+    private final boolean deltaUpdateInProcess;
 
     @JsonCreator
     public DeltaFlagRequest(
@@ -46,15 +42,14 @@ public class DeltaFlagRequest
         return deltaUpdateInProcess;
     }
 
-
     @Override
     public String toString()
     {
-        if (deltaUpdateInProcess){
+        if (deltaUpdateInProcess) {
             return "deltaUpdateInProcess::true";
-        }else{
+        }
+        else {
             return "deltaUpdateInProcess::false";
         }
-
     }
 }

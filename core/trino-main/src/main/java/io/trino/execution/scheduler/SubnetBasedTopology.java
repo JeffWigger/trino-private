@@ -57,6 +57,19 @@ public class SubnetBasedTopology
                 .collect(toImmutableList());
     }
 
+    private static void validateHierarchy(List<Integer> lengths, AddressProtocol protocol)
+    {
+        if (!Ordering.natural().isStrictlyOrdered(lengths)) {
+            throw new IllegalArgumentException("Subnet hierarchy should be listed in the order of increasing prefix lengths");
+        }
+
+        if (!lengths.isEmpty()) {
+            if (lengths.get(0) <= 0 || Iterables.getLast(lengths) >= protocol.getTotalBitCount()) {
+                throw new IllegalArgumentException("Subnet mask prefix lengths are invalid");
+            }
+        }
+    }
+
     @Override
     public NetworkLocation locate(HostAddress address)
     {
@@ -91,19 +104,6 @@ public class SubnetBasedTopology
             subnet[i] = (byte) (addressBytes[i] & subnetMask[i]);
         }
         return subnet;
-    }
-
-    private static void validateHierarchy(List<Integer> lengths, AddressProtocol protocol)
-    {
-        if (!Ordering.natural().isStrictlyOrdered(lengths)) {
-            throw new IllegalArgumentException("Subnet hierarchy should be listed in the order of increasing prefix lengths");
-        }
-
-        if (!lengths.isEmpty()) {
-            if (lengths.get(0) <= 0 || Iterables.getLast(lengths) >= protocol.getTotalBitCount()) {
-                throw new IllegalArgumentException("Subnet mask prefix lengths are invalid");
-            }
-        }
     }
 
     public enum AddressProtocol

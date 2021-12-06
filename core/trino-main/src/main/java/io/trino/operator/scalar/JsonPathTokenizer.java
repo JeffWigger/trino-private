@@ -48,6 +48,16 @@ public class JsonPathTokenizer
         match('$');
     }
 
+    private static boolean isUnquotedPathCharacter(char c)
+    {
+        return c == ':' || isUnquotedSubscriptCharacter(c);
+    }
+
+    private static boolean isUnquotedSubscriptCharacter(char c)
+    {
+        return c == '_' || isLetterOrDigit(c);
+    }
+
     @Override
     protected String computeNext()
     {
@@ -88,11 +98,6 @@ public class JsonPathTokenizer
         return token;
     }
 
-    private static boolean isUnquotedPathCharacter(char c)
-    {
-        return c == ':' || isUnquotedSubscriptCharacter(c);
-    }
-
     private String matchUnquotedSubscript()
     {
         // seek until we see a special character or whitespace
@@ -110,11 +115,6 @@ public class JsonPathTokenizer
         }
 
         return token;
-    }
-
-    private static boolean isUnquotedSubscriptCharacter(char c)
-    {
-        return c == '_' || isLetterOrDigit(c);
     }
 
     private String matchQuotedSubscript()

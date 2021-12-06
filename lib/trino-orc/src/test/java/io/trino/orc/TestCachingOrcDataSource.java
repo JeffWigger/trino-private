@@ -70,6 +70,36 @@ public class TestCachingOrcDataSource
 
     private TempFile tempFile;
 
+    private static <T, U extends T> void assertNotInstanceOf(T actual, Class<U> expectedType)
+    {
+        assertNotNull(actual, "actual is null");
+        assertNotNull(expectedType, "expectedType is null");
+        if (expectedType.isInstance(actual)) {
+            fail(format("expected:<%s> to not be an instance of <%s>", actual, expectedType.getName()));
+        }
+    }
+
+    private static FileSinkOperator.RecordWriter createOrcRecordWriter(File outputFile, Format format, CompressionKind compression, ObjectInspector columnObjectInspector)
+            throws IOException
+    {
+        JobConf jobConf = new JobConf();
+        OrcConf.WRITE_FORMAT.setString(jobConf, format == ORC_12 ? "0.12" : "0.11");
+        OrcConf.COMPRESS.setString(jobConf, compression.name());
+
+        Properties tableProperties = new Properties();
+        tableProperties.setProperty(IOConstants.COLUMNS, "test");
+        tableProperties.setProperty(IOConstants.COLUMNS_TYPES, columnObjectInspector.getTypeName());
+        tableProperties.setProperty(OrcConf.STRIPE_SIZE.getAttribute(), "120000");
+
+        return new OrcOutputFormat().getHiveRecordWriter(
+                jobConf,
+                new Path(outputFile.toURI()),
+                Text.class,
+                compression != NONE,
+                tableProperties,
+                () -> {});
+    }
+
     @BeforeClass
     public void setUp()
             throws Exception
@@ -228,36 +258,6 @@ public class TestCachingOrcDataSource
             positionCount += block.getPositionCount();
         }
         assertEquals(positionCount, POSITION_COUNT);
-    }
-
-    private static <T, U extends T> void assertNotInstanceOf(T actual, Class<U> expectedType)
-    {
-        assertNotNull(actual, "actual is null");
-        assertNotNull(expectedType, "expectedType is null");
-        if (expectedType.isInstance(actual)) {
-            fail(format("expected:<%s> to not be an instance of <%s>", actual, expectedType.getName()));
-        }
-    }
-
-    private static FileSinkOperator.RecordWriter createOrcRecordWriter(File outputFile, Format format, CompressionKind compression, ObjectInspector columnObjectInspector)
-            throws IOException
-    {
-        JobConf jobConf = new JobConf();
-        OrcConf.WRITE_FORMAT.setString(jobConf, format == ORC_12 ? "0.12" : "0.11");
-        OrcConf.COMPRESS.setString(jobConf, compression.name());
-
-        Properties tableProperties = new Properties();
-        tableProperties.setProperty(IOConstants.COLUMNS, "test");
-        tableProperties.setProperty(IOConstants.COLUMNS_TYPES, columnObjectInspector.getTypeName());
-        tableProperties.setProperty(OrcConf.STRIPE_SIZE.getAttribute(), "120000");
-
-        return new OrcOutputFormat().getHiveRecordWriter(
-                jobConf,
-                new Path(outputFile.toURI()),
-                Text.class,
-                compression != NONE,
-                tableProperties,
-                () -> {});
     }
 
     private static class FakeOrcDataSource

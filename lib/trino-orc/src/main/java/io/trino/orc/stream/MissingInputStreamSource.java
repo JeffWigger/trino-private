@@ -20,14 +20,14 @@ public class MissingInputStreamSource<S extends ValueInputStream<?>>
 {
     private final Class<S> streamType;
 
-    public static <S extends ValueInputStream<?>> InputStreamSource<S> missingStreamSource(Class<S> streamType)
-    {
-        return new MissingInputStreamSource<>(streamType);
-    }
-
     private MissingInputStreamSource(Class<S> streamType)
     {
         this.streamType = streamType;
+    }
+
+    public static <S extends ValueInputStream<?>> InputStreamSource<S> missingStreamSource(Class<S> streamType)
+    {
+        return new MissingInputStreamSource<>(streamType);
     }
 
     @Override

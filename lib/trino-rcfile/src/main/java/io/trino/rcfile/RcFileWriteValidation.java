@@ -113,12 +113,11 @@ public class RcFileWriteValidation
     public static class WriteChecksumBuilder
     {
         private final List<ValidationHash> validationHashes;
-        private long totalRowCount;
         private final List<XxHash64> columnHashes;
         private final XxHash64 rowGroupHash = new XxHash64();
-
         private final byte[] longBuffer = new byte[Long.BYTES];
         private final Slice longSlice = Slices.wrappedBuffer(longBuffer);
+        private long totalRowCount;
 
         private WriteChecksumBuilder(List<Type> types)
         {
@@ -188,12 +187,12 @@ public class RcFileWriteValidation
 
     public static class RcFileWriteValidationBuilder
     {
-        private byte version;
         private final Map<String, String> metadata = new HashMap<>();
+        private final WriteChecksumBuilder checksum;
+        private byte version;
         private Optional<String> codecClassName;
         private long syncFirst;
         private long syncSecond;
-        private final WriteChecksumBuilder checksum;
 
         public RcFileWriteValidationBuilder(List<Type> types)
         {

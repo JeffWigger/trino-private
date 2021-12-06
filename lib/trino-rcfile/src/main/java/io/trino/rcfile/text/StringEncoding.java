@@ -38,6 +38,36 @@ public class StringEncoding
         this.escapeByte = escapeChar;
     }
 
+    @SuppressWarnings("AssignmentToForLoopParameter")
+    private static ColumnData unescape(ColumnData columnData, byte escapeByte)
+    {
+        Slice slice = columnData.getSlice();
+        // does slice contain escape byte
+        if (slice.indexOfByte(escapeByte) < 0) {
+            return columnData;
+        }
+
+        Slice newSlice = Slices.allocate(slice.length());
+        SliceOutput output = newSlice.getOutput();
+        int[] newOffsets = new int[columnData.rowCount() + 1];
+        for (int row = 0; row < columnData.rowCount(); row++) {
+            int offset = columnData.getOffset(row);
+            int length = columnData.getLength(row);
+
+            for (int i = 0; i < length; i++) {
+                byte value = slice.getByte(offset + i);
+                if (value == escapeByte && i + 1 < length) {
+                    // read byte after escape
+                    i++;
+                    value = slice.getByte(offset + i);
+                }
+                output.write(value);
+            }
+            newOffsets[row + 1] = output.size();
+        }
+        return new ColumnData(newOffsets, output.slice());
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -89,36 +119,6 @@ public class StringEncoding
             }
         }
         return builder.build();
-    }
-
-    @SuppressWarnings("AssignmentToForLoopParameter")
-    private static ColumnData unescape(ColumnData columnData, byte escapeByte)
-    {
-        Slice slice = columnData.getSlice();
-        // does slice contain escape byte
-        if (slice.indexOfByte(escapeByte) < 0) {
-            return columnData;
-        }
-
-        Slice newSlice = Slices.allocate(slice.length());
-        SliceOutput output = newSlice.getOutput();
-        int[] newOffsets = new int[columnData.rowCount() + 1];
-        for (int row = 0; row < columnData.rowCount(); row++) {
-            int offset = columnData.getOffset(row);
-            int length = columnData.getLength(row);
-
-            for (int i = 0; i < length; i++) {
-                byte value = slice.getByte(offset + i);
-                if (value == escapeByte && i + 1 < length) {
-                    // read byte after escape
-                    i++;
-                    value = slice.getByte(offset + i);
-                }
-                output.write(value);
-            }
-            newOffsets[row + 1] = output.size();
-        }
-        return new ColumnData(newOffsets, output.slice());
     }
 
     @Override

@@ -59,20 +59,18 @@ import static java.util.Objects.requireNonNull;
 public class PushPartialAggregationThroughExchange
         implements Rule<AggregationNode>
 {
+    private static final Capture<ExchangeNode> EXCHANGE_NODE = Capture.newCapture();
+    private static final Pattern<AggregationNode> PATTERN = aggregation()
+            .with(source().matching(
+                    exchange()
+                            .matching(node -> node.getOrderingScheme().isEmpty())
+                            .capturedAs(EXCHANGE_NODE)));
     private final Metadata metadata;
 
     public PushPartialAggregationThroughExchange(Metadata metadata)
     {
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
-
-    private static final Capture<ExchangeNode> EXCHANGE_NODE = Capture.newCapture();
-
-    private static final Pattern<AggregationNode> PATTERN = aggregation()
-            .with(source().matching(
-                    exchange()
-                            .matching(node -> node.getOrderingScheme().isEmpty())
-                            .capturedAs(EXCHANGE_NODE)));
 
     @Override
     public Pattern<AggregationNode> getPattern()

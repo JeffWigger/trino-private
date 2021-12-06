@@ -67,24 +67,6 @@ public class AllAtOnceExecutionSchedule
         schedulingStages = new LinkedHashSet<>(ordering.sortedCopy(stages));
     }
 
-    @Override
-    public Set<SqlStageExecution> getStagesToSchedule()
-    {
-        for (Iterator<SqlStageExecution> iterator = schedulingStages.iterator(); iterator.hasNext(); ) {
-            StageState state = iterator.next().getState();
-            if (state == SCHEDULED || state == RUNNING || state == FLUSHING || state.isDone()) {
-                iterator.remove();
-            }
-        }
-        return schedulingStages;
-    }
-
-    @Override
-    public boolean isFinished()
-    {
-        return schedulingStages.isEmpty();
-    }
-
     @VisibleForTesting
     static List<PlanFragmentId> getPreferredScheduleOrder(Collection<PlanFragment> fragments)
     {
@@ -105,6 +87,24 @@ public class AllAtOnceExecutionSchedule
         visitor.processFragment(getOnlyElement(rootFragments).getId());
 
         return visitor.getSchedulerOrder();
+    }
+
+    @Override
+    public Set<SqlStageExecution> getStagesToSchedule()
+    {
+        for (Iterator<SqlStageExecution> iterator = schedulingStages.iterator(); iterator.hasNext(); ) {
+            StageState state = iterator.next().getState();
+            if (state == SCHEDULED || state == RUNNING || state == FLUSHING || state.isDone()) {
+                iterator.remove();
+            }
+        }
+        return schedulingStages;
+    }
+
+    @Override
+    public boolean isFinished()
+    {
+        return schedulingStages.isEmpty();
     }
 
     private static class Visitor

@@ -81,13 +81,12 @@ public abstract class PrimitiveColumnReader
     private long currentRow;
     private long targetRow;
 
-    protected abstract void readValue(BlockBuilder blockBuilder, Type type);
-
-    protected abstract void skipValue();
-
-    protected boolean isValueNull()
+    public PrimitiveColumnReader(RichColumnDescriptor columnDescriptor)
     {
-        return ParquetTypeUtils.isValueNull(columnDescriptor.isRequired(), definitionLevel, columnDescriptor.getMaxDefinitionLevel());
+        this.columnDescriptor = requireNonNull(columnDescriptor, "columnDescriptor");
+        pageReader = null;
+        this.targetRow = 0;
+        this.indexIterator = null;
     }
 
     public static PrimitiveColumnReader createReader(RichColumnDescriptor descriptor, DateTimeZone timeZone)
@@ -158,12 +157,13 @@ public abstract class PrimitiveColumnReader
                 .map(decimalType -> DecimalColumnReaderFactory.createReader(descriptor, decimalType));
     }
 
-    public PrimitiveColumnReader(RichColumnDescriptor columnDescriptor)
+    protected abstract void readValue(BlockBuilder blockBuilder, Type type);
+
+    protected abstract void skipValue();
+
+    protected boolean isValueNull()
     {
-        this.columnDescriptor = requireNonNull(columnDescriptor, "columnDescriptor");
-        pageReader = null;
-        this.targetRow = 0;
-        this.indexIterator = null;
+        return ParquetTypeUtils.isValueNull(columnDescriptor.isRequired(), definitionLevel, columnDescriptor.getMaxDefinitionLevel());
     }
 
     public PageReader getPageReader()
@@ -260,7 +260,7 @@ public abstract class PrimitiveColumnReader
      * 100  │  p5  │      │      │
      *      └──────┴──────┴──────┘
      * </pre>
-     *
+     * <p>
      * The pages 1, 2, 3 in col1 are skipped so we have to skip the rows [20, 79]. Because page 1 in col2 contains values
      * only for the rows [40, 79] we skip this entire page as well. To synchronize the row reading we have to skip the
      * values (and the related rl and dl) for the rows [20, 39] in the end of the page 0 for col2. Similarly, we have to

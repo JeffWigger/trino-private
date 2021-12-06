@@ -107,22 +107,6 @@ public final class MapTransformValuesFunction
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V1");
-        Type transformedValueType = functionBinding.getTypeVariable("V2");
-        Type resultMapType = functionBinding.getBoundSignature().getReturnType();
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, FUNCTION),
-                ImmutableList.of(BinaryFunctionInterface.class),
-                generateTransform(keyType, valueType, transformedValueType, resultMapType),
-                Optional.of(STATE_FACTORY.bindTo(resultMapType)));
-    }
-
     @UsedByGeneratedCode
     public static Object createState(MapType mapType)
     {
@@ -259,5 +243,21 @@ public final class MapTransformValuesFunction
 
         Class<?> generatedClass = defineClass(definition, Object.class, binder.getBindings(), MapTransformValuesFunction.class.getClassLoader());
         return methodHandle(generatedClass, "transform", Object.class, Block.class, BinaryFunctionInterface.class);
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V1");
+        Type transformedValueType = functionBinding.getTypeVariable("V2");
+        Type resultMapType = functionBinding.getBoundSignature().getReturnType();
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, FUNCTION),
+                ImmutableList.of(BinaryFunctionInterface.class),
+                generateTransform(keyType, valueType, transformedValueType, resultMapType),
+                Optional.of(STATE_FACTORY.bindTo(resultMapType)));
     }
 }

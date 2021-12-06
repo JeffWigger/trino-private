@@ -96,25 +96,6 @@ public class MapAggregationFunction
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        MapType outputType = (MapType) functionBinding.getBoundSignature().getReturnType();
-        return ImmutableList.of(outputType.getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
-        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
-
-        Type valueType = functionBinding.getTypeVariable("V");
-        MapType outputType = (MapType) functionBinding.getBoundSignature().getReturnType();
-        return generateAggregation(keyType, keyEqual, keyHashCode, valueType, outputType);
-    }
-
     private static InternalAggregationFunction generateAggregation(Type keyType, BlockPositionEqual keyEqual, BlockPositionHashCode keyHashCode, Type valueType, MapType outputType)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(MapAggregationFunction.class.getClassLoader());
@@ -194,5 +175,24 @@ public class MapAggregationFunction
         else {
             pairs.serialize(out);
         }
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        MapType outputType = (MapType) functionBinding.getBoundSignature().getReturnType();
+        return ImmutableList.of(outputType.getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
+        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
+
+        Type valueType = functionBinding.getTypeVariable("V");
+        MapType outputType = (MapType) functionBinding.getBoundSignature().getReturnType();
+        return generateAggregation(keyType, keyEqual, keyHashCode, valueType, outputType);
     }
 }

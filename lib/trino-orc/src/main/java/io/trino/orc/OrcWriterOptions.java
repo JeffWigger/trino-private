@@ -27,24 +27,6 @@ import static java.util.Objects.requireNonNull;
 
 public class OrcWriterOptions
 {
-    public enum WriterIdentification
-    {
-        /**
-         * Write ORC files with a writer identification and version number that is readable by Hive 2.0.0 to 2.2.0
-         */
-        LEGACY_HIVE_COMPATIBLE,
-
-        /**
-         * Write ORC files with the legacy writer identification of PrestoSQL
-         */
-        PRESTO,
-
-        /**
-         * Write ORC files with Trino writer identification.
-         */
-        TRINO,
-    }
-
     @VisibleForTesting
     static final DataSize DEFAULT_MAX_STRING_STATISTICS_LIMIT = DataSize.ofBytes(64);
     @VisibleForTesting
@@ -55,7 +37,6 @@ public class OrcWriterOptions
     private static final int DEFAULT_STRIPE_MAX_ROW_COUNT = 10_000_000;
     private static final int DEFAULT_ROW_GROUP_MAX_ROW_COUNT = 10_000;
     private static final DataSize DEFAULT_DICTIONARY_MAX_MEMORY = DataSize.of(16, MEGABYTE);
-
     private final WriterIdentification writerIdentification;
     private final DataSize stripeMinSize;
     private final DataSize stripeMaxSize;
@@ -66,7 +47,6 @@ public class OrcWriterOptions
     private final DataSize maxCompressionBufferSize;
     private final Set<String> bloomFilterColumns;
     private final double bloomFilterFpp;
-
     public OrcWriterOptions()
     {
         this(
@@ -114,6 +94,16 @@ public class OrcWriterOptions
         this.maxCompressionBufferSize = maxCompressionBufferSize;
         this.bloomFilterColumns = ImmutableSet.copyOf(bloomFilterColumns);
         this.bloomFilterFpp = bloomFilterFpp;
+    }
+
+    public static Builder builder()
+    {
+        return builderFrom(new OrcWriterOptions());
+    }
+
+    public static Builder builderFrom(OrcWriterOptions options)
+    {
+        return new Builder(options);
     }
 
     public WriterIdentification getWriterIdentification()
@@ -252,14 +242,22 @@ public class OrcWriterOptions
                 .toString();
     }
 
-    public static Builder builder()
+    public enum WriterIdentification
     {
-        return builderFrom(new OrcWriterOptions());
-    }
+        /**
+         * Write ORC files with a writer identification and version number that is readable by Hive 2.0.0 to 2.2.0
+         */
+        LEGACY_HIVE_COMPATIBLE,
 
-    public static Builder builderFrom(OrcWriterOptions options)
-    {
-        return new Builder(options);
+        /**
+         * Write ORC files with the legacy writer identification of PrestoSQL
+         */
+        PRESTO,
+
+        /**
+         * Write ORC files with Trino writer identification.
+         */
+        TRINO,
     }
 
     public static final class Builder

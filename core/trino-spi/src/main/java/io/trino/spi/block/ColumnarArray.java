@@ -22,6 +22,14 @@ public class ColumnarArray
     private final int[] offsets;
     private final Block elementsBlock;
 
+    private ColumnarArray(Block nullCheckBlock, int offsetsOffset, int[] offsets, Block elementsBlock)
+    {
+        this.nullCheckBlock = nullCheckBlock;
+        this.offsetsOffset = offsetsOffset;
+        this.offsets = offsets;
+        this.elementsBlock = elementsBlock;
+    }
+
     public static ColumnarArray toColumnarArray(Block block)
     {
         requireNonNull(block, "block is null");
@@ -113,14 +121,6 @@ public class ColumnarArray
                 0,
                 offsets,
                 new DictionaryBlock(dictionaryIds.length, columnarArray.getElementsBlock(), dictionaryIds));
-    }
-
-    private ColumnarArray(Block nullCheckBlock, int offsetsOffset, int[] offsets, Block elementsBlock)
-    {
-        this.nullCheckBlock = nullCheckBlock;
-        this.offsetsOffset = offsetsOffset;
-        this.offsets = offsets;
-        this.elementsBlock = elementsBlock;
     }
 
     public int getPositionCount()

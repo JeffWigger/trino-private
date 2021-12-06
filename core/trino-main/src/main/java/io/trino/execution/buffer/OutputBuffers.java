@@ -38,6 +38,23 @@ import static java.util.Objects.requireNonNull;
 public final class OutputBuffers
 {
     public static final int BROADCAST_PARTITION_ID = 0;
+    private final BufferType type;
+    private final long version;
+    private final boolean noMoreBufferIds;
+    private final Map<OutputBufferId, Integer> buffers;
+    // Visible only for Jackson... Use the "with" methods instead
+    @JsonCreator
+    public OutputBuffers(
+            @JsonProperty("type") BufferType type,
+            @JsonProperty("version") long version,
+            @JsonProperty("noMoreBufferIds") boolean noMoreBufferIds,
+            @JsonProperty("buffers") Map<OutputBufferId, Integer> buffers)
+    {
+        this.type = type;
+        this.version = version;
+        this.buffers = ImmutableMap.copyOf(requireNonNull(buffers, "buffers is null"));
+        this.noMoreBufferIds = noMoreBufferIds;
+    }
 
     public static OutputBuffers createInitialEmptyOutputBuffers(BufferType type)
     {
@@ -57,32 +74,6 @@ public final class OutputBuffers
             type = PARTITIONED;
         }
         return new OutputBuffers(type, 0, false, ImmutableMap.of());
-    }
-
-    public enum BufferType
-    {
-        PARTITIONED,
-        BROADCAST,
-        ARBITRARY,
-    }
-
-    private final BufferType type;
-    private final long version;
-    private final boolean noMoreBufferIds;
-    private final Map<OutputBufferId, Integer> buffers;
-
-    // Visible only for Jackson... Use the "with" methods instead
-    @JsonCreator
-    public OutputBuffers(
-            @JsonProperty("type") BufferType type,
-            @JsonProperty("version") long version,
-            @JsonProperty("noMoreBufferIds") boolean noMoreBufferIds,
-            @JsonProperty("buffers") Map<OutputBufferId, Integer> buffers)
-    {
-        this.type = type;
-        this.version = version;
-        this.buffers = ImmutableMap.copyOf(requireNonNull(buffers, "buffers is null"));
-        this.noMoreBufferIds = noMoreBufferIds;
     }
 
     @JsonProperty
@@ -240,14 +231,15 @@ public final class OutputBuffers
                 partition);
     }
 
+    public enum BufferType
+    {
+        PARTITIONED,
+        BROADCAST,
+        ARBITRARY,
+    }
+
     public static class OutputBufferId
     {
-        // this is needed by JAX-RS
-        public static OutputBufferId fromString(String id)
-        {
-            return new OutputBufferId(parseInt(id));
-        }
-
         private final int id;
 
         @JsonCreator
@@ -255,6 +247,12 @@ public final class OutputBuffers
         {
             checkArgument(id >= 0, "id is negative");
             this.id = id;
+        }
+
+        // this is needed by JAX-RS
+        public static OutputBufferId fromString(String id)
+        {
+            return new OutputBufferId(parseInt(id));
         }
 
         @Override

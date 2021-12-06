@@ -73,25 +73,6 @@ public class TypesJdbcTable
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
-    @Override
-    public ConnectorTableMetadata getTableMetadata()
-    {
-        return METADATA;
-    }
-
-    @Override
-    public RecordCursor cursor(ConnectorTransactionHandle transactionHandle, ConnectorSession connectorSession, TupleDomain<Integer> constraint)
-    {
-        Builder table = InMemoryRecordSet.builder(METADATA);
-        for (Type type : metadata.getTypes()) {
-            addTypeRow(table, type);
-        }
-        for (ParametricType type : metadata.getParametricTypes()) {
-            addTypeRow(table, type);
-        }
-        return table.build().cursor();
-    }
-
     private static void addTypeRow(Builder builder, Type type)
     {
         builder.addRow(
@@ -137,5 +118,24 @@ public class TypesJdbcTable
                 null,
                 null,
                 null);
+    }
+
+    @Override
+    public ConnectorTableMetadata getTableMetadata()
+    {
+        return METADATA;
+    }
+
+    @Override
+    public RecordCursor cursor(ConnectorTransactionHandle transactionHandle, ConnectorSession connectorSession, TupleDomain<Integer> constraint)
+    {
+        Builder table = InMemoryRecordSet.builder(METADATA);
+        for (Type type : metadata.getTypes()) {
+            addTypeRow(table, type);
+        }
+        for (ParametricType type : metadata.getParametricTypes()) {
+            addTypeRow(table, type);
+        }
+        return table.build().cursor();
     }
 }

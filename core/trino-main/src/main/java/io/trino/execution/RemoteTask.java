@@ -38,20 +38,23 @@ public interface RemoteTask
 
     void noMoreSplits(PlanNodeId sourceId, Lifespan lifespan);
 
-
-    default void addDeltaSplits(Multimap<PlanNodeId, Split> splits){
+    default void addDeltaSplits(Multimap<PlanNodeId, Split> splits)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 
-    default void noMoreDeltaSplits(PlanNodeId sourceId){
+    default void noMoreDeltaSplits(PlanNodeId sourceId)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 
-    default void noMoreDeltaSplits(PlanNodeId sourceId, Lifespan lifespan){
+    default void noMoreDeltaSplits(PlanNodeId sourceId, Lifespan lifespan)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 
-    default void resetStateDelta(){
+    default void resetStateDelta()
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 

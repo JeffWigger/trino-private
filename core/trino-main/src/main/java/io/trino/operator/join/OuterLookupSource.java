@@ -31,18 +31,17 @@ import static java.util.Objects.requireNonNull;
 public final class OuterLookupSource
         implements LookupSource
 {
-    public static TrackingLookupSourceSupplier createOuterLookupSourceSupplier(Supplier<LookupSource> lookupSourceSupplier)
-    {
-        return new OuterLookupSourceSupplier(lookupSourceSupplier);
-    }
-
     private final LookupSource lookupSource;
     private final OuterPositionTracker outerPositionTracker;
-
     private OuterLookupSource(LookupSource lookupSource, OuterPositionTracker outerPositionTracker)
     {
         this.lookupSource = requireNonNull(lookupSource, "lookupSource is null");
         this.outerPositionTracker = requireNonNull(outerPositionTracker, "outerPositionTracker is null");
+    }
+
+    public static TrackingLookupSourceSupplier createOuterLookupSourceSupplier(Supplier<LookupSource> lookupSourceSupplier)
+    {
+        return new OuterLookupSourceSupplier(lookupSourceSupplier);
     }
 
     @Override

@@ -31,51 +31,10 @@ import static java.util.Objects.requireNonNull;
 public class NestedLoopBuildOperator
         implements Operator
 {
-    public static class NestedLoopBuildOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final JoinBridgeManager<NestedLoopJoinBridge> nestedLoopJoinBridgeManager;
-
-        private boolean closed;
-
-        public NestedLoopBuildOperatorFactory(int operatorId, PlanNodeId planNodeId, JoinBridgeManager<NestedLoopJoinBridge> nestedLoopJoinBridgeManager)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.nestedLoopJoinBridgeManager = requireNonNull(nestedLoopJoinBridgeManager, "nestedLoopJoinBridgeManager is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, NestedLoopBuildOperator.class.getSimpleName());
-            return new NestedLoopBuildOperator(operatorContext, nestedLoopJoinBridgeManager.getJoinBridge(driverContext.getLifespan()));
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            if (closed) {
-                return;
-            }
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new NestedLoopBuildOperatorFactory(operatorId, planNodeId, nestedLoopJoinBridgeManager);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final NestedLoopJoinBridge nestedLoopJoinBridge;
     private final NestedLoopJoinPagesBuilder nestedLoopJoinPagesBuilder;
     private final LocalMemoryContext localUserMemoryContext;
-
     // Initially, probeDoneWithPages is not present.
     // Once finish is called, probeDoneWithPages will be set to a future that completes when the pages are no longer needed by the probe side.
     // When the pages are no longer needed, the isFinished method on this operator will return true.
@@ -147,5 +106,45 @@ public class NestedLoopBuildOperator
     public Page getOutput()
     {
         return null;
+    }
+
+    public static class NestedLoopBuildOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final JoinBridgeManager<NestedLoopJoinBridge> nestedLoopJoinBridgeManager;
+
+        private boolean closed;
+
+        public NestedLoopBuildOperatorFactory(int operatorId, PlanNodeId planNodeId, JoinBridgeManager<NestedLoopJoinBridge> nestedLoopJoinBridgeManager)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.nestedLoopJoinBridgeManager = requireNonNull(nestedLoopJoinBridgeManager, "nestedLoopJoinBridgeManager is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, NestedLoopBuildOperator.class.getSimpleName());
+            return new NestedLoopBuildOperator(operatorContext, nestedLoopJoinBridgeManager.getJoinBridge(driverContext.getLifespan()));
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            if (closed) {
+                return;
+            }
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new NestedLoopBuildOperatorFactory(operatorId, planNodeId, nestedLoopJoinBridgeManager);
+        }
     }
 }

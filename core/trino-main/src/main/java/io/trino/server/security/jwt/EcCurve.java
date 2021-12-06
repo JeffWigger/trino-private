@@ -29,6 +29,23 @@ final class EcCurve
 
     private EcCurve() {}
 
+    public static Optional<ECParameterSpec> tryGet(String name)
+    {
+        if ("P-256".equals(name)) {
+            return Optional.of(P_256);
+        }
+        if ("secp256k1".equals(name)) {
+            return Optional.of(SECP256K1);
+        }
+        if ("P-384".equals(name)) {
+            return Optional.of(P_384);
+        }
+        if ("P-521".equals(name)) {
+            return Optional.of(P_521);
+        }
+        return Optional.empty();
+    }
+
     static {
         // Values obtained from org.bouncycastle.jce.ECNamedCurveTable (via Jose)
 
@@ -81,22 +98,5 @@ final class EcCurve
                 new BigInteger(
                         "6864797660130609714981900799081393217269435300143305409394463459185543183397655394245057746333217197532963996371363321113864768612440380340372808892707005449"),
                 1);
-    }
-
-    public static Optional<ECParameterSpec> tryGet(String name)
-    {
-        if ("P-256".equals(name)) {
-            return Optional.of(P_256);
-        }
-        if ("secp256k1".equals(name)) {
-            return Optional.of(SECP256K1);
-        }
-        if ("P-384".equals(name)) {
-            return Optional.of(P_384);
-        }
-        if ("P-521".equals(name)) {
-            return Optional.of(P_521);
-        }
-        return Optional.empty();
     }
 }

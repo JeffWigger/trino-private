@@ -144,18 +144,6 @@ public class ScribeHttpClient
     private static class ConvertingResponseHandler
             implements ResponseHandler<Response, RuntimeException>
     {
-        @Override
-        public Response handleException(Request request, Exception exception)
-        {
-            throw propagate(request, exception);
-        }
-
-        @Override
-        public Response handle(Request request, io.airlift.http.client.Response response)
-        {
-            return convertResponse(response);
-        }
-
         private static Response convertResponse(io.airlift.http.client.Response response)
         {
             int code = response.getStatusCode();
@@ -175,6 +163,18 @@ public class ScribeHttpClient
             catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+        }
+
+        @Override
+        public Response handleException(Request request, Exception exception)
+        {
+            throw propagate(request, exception);
+        }
+
+        @Override
+        public Response handle(Request request, io.airlift.http.client.Response response)
+        {
+            return convertResponse(response);
         }
     }
 }

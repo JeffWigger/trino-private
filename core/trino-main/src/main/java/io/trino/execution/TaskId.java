@@ -25,12 +25,6 @@ import static java.lang.Integer.parseInt;
 
 public class TaskId
 {
-    @JsonCreator
-    public static TaskId valueOf(String taskId)
-    {
-        return new TaskId(taskId);
-    }
-
     private final String fullId;
 
     public TaskId(String queryId, int stageId, int id)
@@ -48,6 +42,12 @@ public class TaskId
     public TaskId(String fullId)
     {
         this.fullId = fullId;
+    }
+
+    @JsonCreator
+    public static TaskId valueOf(String taskId)
+    {
+        return new TaskId(taskId);
     }
 
     public QueryId getQueryId()

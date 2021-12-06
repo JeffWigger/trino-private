@@ -42,6 +42,13 @@ public class TestLongDecimalStatisticsBuilder
         super(DECIMAL, LongDecimalStatisticsBuilder::new, LongDecimalStatisticsBuilder::addValue);
     }
 
+    private static List<BigDecimal> toBigDecimalList(BigDecimal minValue, BigDecimal maxValue, List<Long> values)
+    {
+        return values.stream()
+                .flatMap(value -> Stream.of(maxValue.subtract(BigDecimal.valueOf(value)), minValue.add(BigDecimal.valueOf(value))))
+                .collect(toImmutableList());
+    }
+
     @Test
     public void testMinMaxValues()
     {
@@ -70,12 +77,5 @@ public class TestLongDecimalStatisticsBuilder
         assertMinAverageValueBytes(longDecimalBytes, ImmutableList.of(LARGE_POSITIVE_VALUE));
         assertMinAverageValueBytes(longDecimalBytes, ImmutableList.of(LARGE_NEGATIVE_VALUE));
         assertMinAverageValueBytes(longDecimalBytes, ImmutableList.of(LARGE_POSITIVE_VALUE, LARGE_POSITIVE_VALUE, LARGE_POSITIVE_VALUE, LARGE_NEGATIVE_VALUE));
-    }
-
-    private static List<BigDecimal> toBigDecimalList(BigDecimal minValue, BigDecimal maxValue, List<Long> values)
-    {
-        return values.stream()
-                .flatMap(value -> Stream.of(maxValue.subtract(BigDecimal.valueOf(value)), minValue.add(BigDecimal.valueOf(value))))
-                .collect(toImmutableList());
     }
 }

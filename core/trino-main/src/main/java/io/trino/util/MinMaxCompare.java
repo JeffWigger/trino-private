@@ -32,11 +32,10 @@ import static java.lang.invoke.MethodHandles.filterReturnValue;
 
 public final class MinMaxCompare
 {
-    private static final MethodHandle MIN_FUNCTION = methodHandle(MinMaxCompare.class, "min", long.class);
-    private static final MethodHandle MAX_FUNCTION = methodHandle(MinMaxCompare.class, "max", long.class);
-
     public static final MethodHandle MAX_REAL_FUNCTION = methodHandle(MinMaxCompare.class, "maxReal", long.class, long.class);
     public static final MethodHandle MAX_DOUBLE_FUNCTION = methodHandle(MinMaxCompare.class, "maxDouble", double.class, double.class);
+    private static final MethodHandle MIN_FUNCTION = methodHandle(MinMaxCompare.class, "min", long.class);
+    private static final MethodHandle MAX_FUNCTION = methodHandle(MinMaxCompare.class, "max", long.class);
 
     private MinMaxCompare() {}
 

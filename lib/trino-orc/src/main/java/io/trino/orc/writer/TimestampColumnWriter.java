@@ -95,20 +95,8 @@ import static java.util.Objects.requireNonNull;
 public class TimestampColumnWriter
         implements ColumnWriter
 {
-    private enum TimestampKind
-    {
-        TIMESTAMP_MILLIS,
-        TIMESTAMP_MICROS,
-        TIMESTAMP_NANOS,
-        INSTANT_MILLIS,
-        INSTANT_MICROS,
-        INSTANT_NANOS,
-    }
-
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(TimestampColumnWriter.class).instanceSize();
-
     private static final long ORC_EPOCH_IN_SECONDS = OffsetDateTime.of(2015, 1, 1, 0, 0, 0, 0, UTC).toEpochSecond();
-
     private final OrcColumnId columnId;
     private final Type type;
     private final TimestampKind timestampKind;
@@ -117,12 +105,9 @@ public class TimestampColumnWriter
     private final LongOutputStream secondsStream;
     private final LongOutputStream nanosStream;
     private final PresentOutputStream presentStream;
-
     private final List<ColumnStatistics> rowGroupColumnStatistics = new ArrayList<>();
-
     private final Supplier<TimestampStatisticsBuilder> statisticsBuilderSupplier;
     private LongValueStatisticsBuilder statisticsBuilder;
-
     private boolean closed;
 
     public TimestampColumnWriter(OrcColumnId columnId, Type type, CompressionKind compression, int bufferSize, Supplier<TimestampStatisticsBuilder> statisticsBuilderSupplier)
@@ -160,6 +145,37 @@ public class TimestampColumnWriter
             return TimestampKind.INSTANT_NANOS;
         }
         throw new IllegalArgumentException("Unsupported type for ORC timestamp writer: " + type);
+    }
+
+    private static List<Integer> createTimestampColumnPositionList(
+            boolean compressed,
+            LongStreamCheckpoint secondsCheckpoint,
+            LongStreamCheckpoint nanosCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(secondsCheckpoint.toPositionList(compressed));
+        positionList.addAll(nanosCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
+    // this comes from the Apache ORC code
+    private static long encodeNanos(long nanos)
+    {
+        if (nanos == 0) {
+            return 0;
+        }
+        if ((nanos % 100) != 0) {
+            return nanos << 3;
+        }
+        nanos /= 100;
+        int trailingZeros = 1;
+        while (((nanos % 10) == 0) && (trailingZeros < 7)) {
+            nanos /= 10;
+            trailingZeros++;
+        }
+        return (nanos << 3) | trailingZeros;
     }
 
     @Override
@@ -256,19 +272,6 @@ public class TimestampColumnWriter
         Slice slice = metadataWriter.writeRowIndexes(rowGroupIndexes.build());
         Stream stream = new Stream(columnId, StreamKind.ROW_INDEX, slice.length(), false);
         return ImmutableList.of(new StreamDataOutput(slice, stream));
-    }
-
-    private static List<Integer> createTimestampColumnPositionList(
-            boolean compressed,
-            LongStreamCheckpoint secondsCheckpoint,
-            LongStreamCheckpoint nanosCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(secondsCheckpoint.toPositionList(compressed));
-        positionList.addAll(nanosCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override
@@ -401,21 +404,13 @@ public class TimestampColumnWriter
         nanosStream.writeLong(encodeNanos(nanosFraction));
     }
 
-    // this comes from the Apache ORC code
-    private static long encodeNanos(long nanos)
+    private enum TimestampKind
     {
-        if (nanos == 0) {
-            return 0;
-        }
-        if ((nanos % 100) != 0) {
-            return nanos << 3;
-        }
-        nanos /= 100;
-        int trailingZeros = 1;
-        while (((nanos % 10) == 0) && (trailingZeros < 7)) {
-            nanos /= 10;
-            trailingZeros++;
-        }
-        return (nanos << 3) | trailingZeros;
+        TIMESTAMP_MILLIS,
+        TIMESTAMP_MICROS,
+        TIMESTAMP_NANOS,
+        INSTANT_MILLIS,
+        INSTANT_MICROS,
+        INSTANT_NANOS,
     }
 }

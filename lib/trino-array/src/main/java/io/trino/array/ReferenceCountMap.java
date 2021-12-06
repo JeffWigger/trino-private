@@ -39,35 +39,6 @@ public final class ReferenceCountMap
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ReferenceCountMap.class).instanceSize();
 
     /**
-     * Increments the reference count of an object by 1 and returns the updated reference count
-     */
-    public int incrementAndGet(Object key)
-    {
-        return addTo(getHashCode(key), 1) + 1;
-    }
-
-    /**
-     * Decrements the reference count of an object by 1 and returns the updated reference count
-     */
-    public int decrementAndGet(Object key)
-    {
-        long hashCode = getHashCode(key);
-        int previousCount = addTo(hashCode, -1);
-        if (previousCount == 1) {
-            remove(hashCode);
-        }
-        return previousCount - 1;
-    }
-
-    /**
-     * Returns the size of this map in bytes.
-     */
-    public long sizeOf()
-    {
-        return INSTANCE_SIZE + SizeOf.sizeOf(key) + SizeOf.sizeOf(value);
-    }
-
-    /**
      * Get the 64-bit hash code for an object
      */
     private static long getHashCode(Object key)
@@ -98,5 +69,34 @@ public final class ReferenceCountMap
             throw new IllegalArgumentException(format("Unsupported type for %s", key));
         }
         return (((long) System.identityHashCode(key)) << Integer.SIZE) + extraIdentity;
+    }
+
+    /**
+     * Increments the reference count of an object by 1 and returns the updated reference count
+     */
+    public int incrementAndGet(Object key)
+    {
+        return addTo(getHashCode(key), 1) + 1;
+    }
+
+    /**
+     * Decrements the reference count of an object by 1 and returns the updated reference count
+     */
+    public int decrementAndGet(Object key)
+    {
+        long hashCode = getHashCode(key);
+        int previousCount = addTo(hashCode, -1);
+        if (previousCount == 1) {
+            remove(hashCode);
+        }
+        return previousCount - 1;
+    }
+
+    /**
+     * Returns the size of this map in bytes.
+     */
+    public long sizeOf()
+    {
+        return INSTANCE_SIZE + SizeOf.sizeOf(key) + SizeOf.sizeOf(value);
     }
 }

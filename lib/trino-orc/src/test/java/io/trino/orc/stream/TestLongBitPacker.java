@@ -29,16 +29,6 @@ public class TestLongBitPacker
     private static final int OFFSETS = 4;
     private static final int WIDTHS = 64;
 
-    @Test
-    public void testBasic()
-            throws Exception
-    {
-        LongBitPacker packer = new LongBitPacker();
-        for (int length = 0; length < LENGTHS; length++) {
-            assertUnpacking(packer, length);
-        }
-    }
-
     private static void assertUnpacking(LongBitPacker packer, int length)
             throws IOException
     {
@@ -55,6 +45,16 @@ public class TestLongBitPacker
                 }
                 assertEquals(actualInput.getReadBytes(), expectedInput.getReadBytes(), format("Wrong number of bytes read for length = %s, width = %s, offset = %s", length, width, offset));
             }
+        }
+    }
+
+    @Test
+    public void testBasic()
+            throws Exception
+    {
+        LongBitPacker packer = new LongBitPacker();
+        for (int length = 0; length < LENGTHS; length++) {
+            assertUnpacking(packer, length);
         }
     }
 

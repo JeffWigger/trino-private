@@ -100,6 +100,14 @@ public abstract class AbstractTypedJacksonModule<T>
             this.typeSerializer = new AsPropertyTypeSerializer(typeIdResolver, null, TYPE_PROPERTY);
         }
 
+        @SuppressWarnings("unchecked")
+        private static <T> JsonSerializer<T> createSerializer(SerializerProvider provider, Class<?> type)
+                throws JsonMappingException
+        {
+            JavaType javaType = provider.constructType(type);
+            return (JsonSerializer<T>) BeanSerializerFactory.instance.createSerializer(provider, javaType);
+        }
+
         @Override
         public void serialize(T value, JsonGenerator generator, SerializerProvider provider)
                 throws IOException
@@ -121,14 +129,6 @@ public abstract class AbstractTypedJacksonModule<T>
                 }
                 throw new RuntimeException(e);
             }
-        }
-
-        @SuppressWarnings("unchecked")
-        private static <T> JsonSerializer<T> createSerializer(SerializerProvider provider, Class<?> type)
-                throws JsonMappingException
-        {
-            JavaType javaType = provider.constructType(type);
-            return (JsonSerializer<T>) BeanSerializerFactory.instance.createSerializer(provider, javaType);
         }
     }
 

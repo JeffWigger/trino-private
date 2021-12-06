@@ -33,6 +33,16 @@ public class AnyCatalogPermissionsRule
         this.catalogRegex = catalogRegex;
     }
 
+    private static boolean patternEquals(Optional<Pattern> left, Optional<Pattern> right)
+    {
+        if (left.isEmpty() || right.isEmpty()) {
+            return left.isEmpty() == right.isEmpty();
+        }
+        Pattern leftPattern = left.get();
+        Pattern rightPattern = right.get();
+        return leftPattern.pattern().equals(rightPattern.pattern()) && leftPattern.flags() == rightPattern.flags();
+    }
+
     public boolean match(String user, Set<String> roles, Set<String> groups, String catalog)
     {
         return userRegex.map(regex -> regex.matcher(user).matches()).orElse(true) &&
@@ -55,16 +65,6 @@ public class AnyCatalogPermissionsRule
                 patternEquals(roleRegex, that.roleRegex) &&
                 patternEquals(groupRegex, that.groupRegex) &&
                 patternEquals(catalogRegex, that.catalogRegex);
-    }
-
-    private static boolean patternEquals(Optional<Pattern> left, Optional<Pattern> right)
-    {
-        if (left.isEmpty() || right.isEmpty()) {
-            return left.isEmpty() == right.isEmpty();
-        }
-        Pattern leftPattern = left.get();
-        Pattern rightPattern = right.get();
-        return leftPattern.pattern().equals(rightPattern.pattern()) && leftPattern.flags() == rightPattern.flags();
     }
 
     @Override

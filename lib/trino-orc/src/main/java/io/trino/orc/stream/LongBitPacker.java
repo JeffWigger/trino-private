@@ -36,6 +36,73 @@ public final class LongBitPacker
     private final byte[] tmp = new byte[SIZE_OF_LONG * MAX_BUFFERED_POSITIONS];
     private final Slice slice = Slices.wrappedBuffer(tmp);
 
+    private static void unpackGeneric(long[] buffer, int offset, int len, int bitSize, InputStream input)
+            throws IOException
+    {
+        int bitsLeft = 0;
+        int current = 0;
+
+        for (int i = offset; i < (offset + len); i++) {
+            long result = 0;
+            int bitsLeftToRead = bitSize;
+            while (bitsLeftToRead > bitsLeft) {
+                result <<= bitsLeft;
+                result |= current & ((1 << bitsLeft) - 1);
+                bitsLeftToRead -= bitsLeft;
+                current = input.read();
+                bitsLeft = 8;
+            }
+
+            // handle the left over bits
+            if (bitsLeftToRead > 0) {
+                result <<= bitsLeftToRead;
+                bitsLeft -= bitsLeftToRead;
+                result |= (current >> bitsLeft) & ((1 << bitsLeftToRead) - 1);
+            }
+            buffer[i] = result;
+        }
+    }
+
+    private static void unpack1Unaligned(long[] buffer, int outputIndex, int length, int value)
+    {
+        switch (length) {
+            case 7:
+                buffer[outputIndex + 6] = (0b0000_0010 & value) >>> 1;
+                //noinspection fallthrough
+            case 6:
+                buffer[outputIndex + 5] = (0b0000_0100 & value) >>> 2;
+                //noinspection fallthrough
+            case 5:
+                buffer[outputIndex + 4] = (0b0000_1000 & value) >>> 3;
+                //noinspection fallthrough
+            case 4:
+                buffer[outputIndex + 3] = (0b0001_0000 & value) >>> 4;
+                //noinspection fallthrough
+            case 3:
+                buffer[outputIndex + 2] = (0b0010_0000 & value) >>> 5;
+                //noinspection fallthrough
+            case 2:
+                buffer[outputIndex + 1] = (0b0100_0000 & value) >>> 6;
+                //noinspection fallthrough
+            case 1:
+                buffer[outputIndex] = (0b1000_0000 & value) >>> 7;
+        }
+    }
+
+    private static void unpack2Unaligned(long[] buffer, int outputIndex, int length, int value)
+    {
+        switch (length) {
+            case 3:
+                buffer[outputIndex + 2] = (0b0000_1100 & value) >>> 2;
+                //noinspection fallthrough
+            case 2:
+                buffer[outputIndex + 1] = (0b0011_0000 & value) >>> 4;
+                //noinspection fallthrough
+            case 1:
+                buffer[outputIndex] = (0b1100_0000 & value) >>> 6;
+        }
+    }
+
     // TODO: refactor calling code, so that input can be a byte[]. (See comment above about performance)
     public void unpack(long[] buffer, int offset, int len, int bitSize, InputStream input)
             throws IOException
@@ -80,33 +147,6 @@ public final class LongBitPacker
         }
     }
 
-    private static void unpackGeneric(long[] buffer, int offset, int len, int bitSize, InputStream input)
-            throws IOException
-    {
-        int bitsLeft = 0;
-        int current = 0;
-
-        for (int i = offset; i < (offset + len); i++) {
-            long result = 0;
-            int bitsLeftToRead = bitSize;
-            while (bitsLeftToRead > bitsLeft) {
-                result <<= bitsLeft;
-                result |= current & ((1 << bitsLeft) - 1);
-                bitsLeftToRead -= bitsLeft;
-                current = input.read();
-                bitsLeft = 8;
-            }
-
-            // handle the left over bits
-            if (bitsLeftToRead > 0) {
-                result <<= bitsLeftToRead;
-                bitsLeft -= bitsLeftToRead;
-                result |= (current >> bitsLeft) & ((1 << bitsLeftToRead) - 1);
-            }
-            buffer[i] = result;
-        }
-    }
-
     private void unpack1(long[] buffer, int offset, int len, InputStream input)
             throws IOException
     {
@@ -142,32 +182,6 @@ public final class LongBitPacker
         }
     }
 
-    private static void unpack1Unaligned(long[] buffer, int outputIndex, int length, int value)
-    {
-        switch (length) {
-            case 7:
-                buffer[outputIndex + 6] = (0b0000_0010 & value) >>> 1;
-                //noinspection fallthrough
-            case 6:
-                buffer[outputIndex + 5] = (0b0000_0100 & value) >>> 2;
-                //noinspection fallthrough
-            case 5:
-                buffer[outputIndex + 4] = (0b0000_1000 & value) >>> 3;
-                //noinspection fallthrough
-            case 4:
-                buffer[outputIndex + 3] = (0b0001_0000 & value) >>> 4;
-                //noinspection fallthrough
-            case 3:
-                buffer[outputIndex + 2] = (0b0010_0000 & value) >>> 5;
-                //noinspection fallthrough
-            case 2:
-                buffer[outputIndex + 1] = (0b0100_0000 & value) >>> 6;
-                //noinspection fallthrough
-            case 1:
-                buffer[outputIndex] = (0b1000_0000 & value) >>> 7;
-        }
-    }
-
     private void unpack2(long[] buffer, int offset, int len, InputStream input)
             throws IOException
     {
@@ -196,20 +210,6 @@ public final class LongBitPacker
         // Get the last byte and decode it, if necessary
         if (outputIndex < end) {
             unpack2Unaligned(buffer, outputIndex, end - outputIndex, tmp[blockReadableBytes - 1]);
-        }
-    }
-
-    private static void unpack2Unaligned(long[] buffer, int outputIndex, int length, int value)
-    {
-        switch (length) {
-            case 3:
-                buffer[outputIndex + 2] = (0b0000_1100 & value) >>> 2;
-                //noinspection fallthrough
-            case 2:
-                buffer[outputIndex + 1] = (0b0011_0000 & value) >>> 4;
-                //noinspection fallthrough
-            case 1:
-                buffer[outputIndex] = (0b1100_0000 & value) >>> 6;
         }
     }
 

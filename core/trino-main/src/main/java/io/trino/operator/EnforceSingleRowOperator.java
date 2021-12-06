@@ -28,64 +28,10 @@ import static java.util.Objects.requireNonNull;
 public class EnforceSingleRowOperator
         implements Operator
 {
-    public static class EnforceSingleRowOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Page nullValuesPage;
-
-        private boolean closed;
-
-        public EnforceSingleRowOperatorFactory(int operatorId, PlanNodeId planNodeId, List<Type> types)
-        {
-            this(operatorId, planNodeId, makeNullValuesPage(types));
-        }
-
-        private EnforceSingleRowOperatorFactory(int operatorId, PlanNodeId planNodeId, Page nullValuesPage)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.nullValuesPage = requireNonNull(nullValuesPage, "nullValuesPage is null");
-        }
-
-        private static Page makeNullValuesPage(List<Type> types)
-        {
-            Block[] columns = new Block[types.size()];
-            for (int i = 0; i < types.size(); i++) {
-                columns[i] = types.get(i).createBlockBuilder(null, 1)
-                        .appendNull()
-                        .build();
-            }
-            return new Page(1, columns);
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, EnforceSingleRowOperator.class.getSimpleName());
-            return new EnforceSingleRowOperator(operatorContext, nullValuesPage);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new EnforceSingleRowOperatorFactory(operatorId, planNodeId, nullValuesPage);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final Page nullValuePage;
     private boolean finishing;
     private Page page;
-
     public EnforceSingleRowOperator(OperatorContext operatorContext, Page nullValuePage)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -144,5 +90,58 @@ public class EnforceSingleRowOperator
         Page pageToReturn = page;
         page = null;
         return pageToReturn;
+    }
+
+    public static class EnforceSingleRowOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Page nullValuesPage;
+
+        private boolean closed;
+
+        public EnforceSingleRowOperatorFactory(int operatorId, PlanNodeId planNodeId, List<Type> types)
+        {
+            this(operatorId, planNodeId, makeNullValuesPage(types));
+        }
+
+        private EnforceSingleRowOperatorFactory(int operatorId, PlanNodeId planNodeId, Page nullValuesPage)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.nullValuesPage = requireNonNull(nullValuesPage, "nullValuesPage is null");
+        }
+
+        private static Page makeNullValuesPage(List<Type> types)
+        {
+            Block[] columns = new Block[types.size()];
+            for (int i = 0; i < types.size(); i++) {
+                columns[i] = types.get(i).createBlockBuilder(null, 1)
+                        .appendNull()
+                        .build();
+            }
+            return new Page(1, columns);
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, EnforceSingleRowOperator.class.getSimpleName());
+            return new EnforceSingleRowOperator(operatorContext, nullValuesPage);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new EnforceSingleRowOperatorFactory(operatorId, planNodeId, nullValuesPage);
+        }
     }
 }

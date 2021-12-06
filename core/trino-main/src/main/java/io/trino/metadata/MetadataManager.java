@@ -335,6 +335,110 @@ public final class MetadataManager
                 NodeVersion.UNKNOWN);
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
+    private static void verifyMethodHandleSignature(BoundSignature boundSignature, FunctionInvoker functionInvoker, InvocationConvention convention)
+    {
+        MethodHandle methodHandle = functionInvoker.getMethodHandle();
+        MethodType methodType = methodHandle.type();
+
+        checkArgument(convention.getArgumentConventions().size() == boundSignature.getArgumentTypes().size(),
+                "Expected %s arguments, but got %s", boundSignature.getArgumentTypes().size(), convention.getArgumentConventions().size());
+
+        int expectedParameterCount = convention.getArgumentConventions().stream()
+                .mapToInt(InvocationArgumentConvention::getParameterCount)
+                .sum();
+        expectedParameterCount += methodType.parameterList().stream().filter(ConnectorSession.class::equals).count();
+        if (functionInvoker.getInstanceFactory().isPresent()) {
+            expectedParameterCount++;
+        }
+        checkArgument(expectedParameterCount == methodType.parameterCount(),
+                "Expected %s method parameters, but got %s", expectedParameterCount, methodType.parameterCount());
+
+        int parameterIndex = 0;
+        if (functionInvoker.getInstanceFactory().isPresent()) {
+            verifyFunctionSignature(convention.supportsInstanceFactor(), "Method requires instance factory, but calling convention does not support an instance factory");
+            MethodHandle factoryMethod = functionInvoker.getInstanceFactory().orElseThrow();
+            verifyFunctionSignature(methodType.parameterType(parameterIndex).equals(factoryMethod.type().returnType()), "Invalid return type");
+            parameterIndex++;
+        }
+
+        int lambdaArgumentIndex = 0;
+        for (int argumentIndex = 0; argumentIndex < boundSignature.getArgumentTypes().size(); argumentIndex++) {
+            // skip session parameters
+            while (methodType.parameterType(parameterIndex).equals(ConnectorSession.class)) {
+                verifyFunctionSignature(convention.supportsSession(), "Method requires session, but calling convention does not support session");
+                parameterIndex++;
+            }
+
+            Class<?> parameterType = methodType.parameterType(parameterIndex);
+            Type argumentType = boundSignature.getArgumentTypes().get(argumentIndex);
+            InvocationArgumentConvention argumentConvention = convention.getArgumentConvention(argumentIndex);
+            switch (argumentConvention) {
+                case NEVER_NULL:
+                    verifyFunctionSignature(parameterType.isAssignableFrom(argumentType.getJavaType()),
+                            "Expected argument type to be %s, but is %s", argumentType, parameterType);
+                    break;
+                case NULL_FLAG:
+                    verifyFunctionSignature(parameterType.isAssignableFrom(argumentType.getJavaType()),
+                            "Expected argument type to be %s, but is %s", argumentType.getJavaType(), parameterType);
+                    verifyFunctionSignature(methodType.parameterType(parameterIndex + 1).equals(boolean.class),
+                            "Expected null flag parameter to be followed by a boolean parameter");
+                    break;
+                case BOXED_NULLABLE:
+                    verifyFunctionSignature(parameterType.isAssignableFrom(wrap(argumentType.getJavaType())),
+                            "Expected argument type to be %s, but is %s", wrap(argumentType.getJavaType()), parameterType);
+                    break;
+                case BLOCK_POSITION:
+                    verifyFunctionSignature(parameterType.equals(Block.class) && methodType.parameterType(parameterIndex + 1).equals(int.class),
+                            "Expected BLOCK_POSITION argument have parameters Block and int");
+                    break;
+                case FUNCTION:
+                    Class<?> lambdaInterface = functionInvoker.getLambdaInterfaces().get(lambdaArgumentIndex);
+                    verifyFunctionSignature(parameterType.equals(lambdaInterface),
+                            "Expected function interface to be %s, but is %s", lambdaInterface, parameterType);
+                    lambdaArgumentIndex++;
+                    break;
+                default:
+                    throw new UnsupportedOperationException("Unknown argument convention: " + argumentConvention);
+            }
+            parameterIndex += argumentConvention.getParameterCount();
+        }
+
+        Type returnType = boundSignature.getReturnType();
+        switch (convention.getReturnConvention()) {
+            case FAIL_ON_NULL:
+                verifyFunctionSignature(methodType.returnType().isAssignableFrom(returnType.getJavaType()),
+                        "Expected return type to be %s, but is %s", returnType.getJavaType(), methodType.returnType());
+                break;
+            case NULLABLE_RETURN:
+                verifyFunctionSignature(methodType.returnType().isAssignableFrom(wrap(returnType.getJavaType())),
+                        "Expected return type to be %s, but is %s", returnType.getJavaType(), wrap(methodType.returnType()));
+                break;
+            default:
+                throw new UnsupportedOperationException("Unknown return convention: " + convention.getReturnConvention());
+        }
+    }
+
+    private static void verifyFunctionSignature(boolean check, String message, Object... args)
+    {
+        if (!check) {
+            throw new TrinoException(FUNCTION_IMPLEMENTATION_ERROR, format(message, args));
+        }
+    }
+
+    @VisibleForTesting
+    public static FunctionBinding toFunctionBinding(FunctionId functionId, BoundSignature boundSignature, Signature functionSignature)
+    {
+        return SignatureBinder.bindFunction(
+                functionId,
+                functionSignature,
+                boundSignature);
+    }
+
     @Override
     public Set<ConnectorCapabilities> getConnectorCapabilities(Session session, CatalogName catalogName)
     {
@@ -961,11 +1065,6 @@ public final class MetadataManager
         CatalogName catalogName = new CatalogName(viewName.getCatalogName());
         ConnectorMetadata metadata = getMetadata(session, catalogName);
         return asVoid(toListenableFuture(metadata.refreshMaterializedView(session.toConnectorSession(catalogName), viewName.asSchemaTableName())));
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -1671,8 +1770,12 @@ public final class MetadataManager
                 .map(Variable::getName)
                 .filter(variableName -> !assignedVariables.contains(variableName))
                 .findAny()
-                .ifPresent(variableName -> { throw new IllegalStateException("Unbound variable: " + variableName); });
+                .ifPresent(variableName -> {throw new IllegalStateException("Unbound variable: " + variableName);});
     }
+
+    //
+    // Roles and Grants
+    //
 
     @Override
     public void validateScan(Session session, TableHandle table)
@@ -1722,10 +1825,6 @@ public final class MetadataManager
                             result.isPrecalculateStatistics());
                 });
     }
-
-    //
-    // Roles and Grants
-    //
 
     @Override
     public boolean isCatalogManagedSecurity(Session session, String catalog)
@@ -1942,6 +2041,10 @@ public final class MetadataManager
         metadata.revokeTablePrivileges(session.toConnectorSession(catalogName), tableName.asSchemaTableName(), privileges, grantee, grantOption);
     }
 
+    //
+    // Types
+    //
+
     @Override
     public void grantSchemaPrivileges(Session session, CatalogSchemaName schemaName, Set<Privilege> privileges, TrinoPrincipal grantee, boolean grantOption)
     {
@@ -1998,10 +2101,6 @@ public final class MetadataManager
         }
         return ImmutableList.copyOf(grantInfos.build());
     }
-
-    //
-    // Types
-    //
 
     @Override
     public Type getType(TypeSignature signature)
@@ -2150,6 +2249,10 @@ public final class MetadataManager
         }
     }
 
+    //
+    // Functions
+    //
+
     private boolean hasComparisonMethod(Type type)
     {
         try {
@@ -2182,10 +2285,6 @@ public final class MetadataManager
             return false;
         }
     }
-
-    //
-    // Functions
-    //
 
     @Override
     public void addFunctions(List<? extends SqlFunction> functionInfos)
@@ -2395,109 +2494,10 @@ public final class MetadataManager
         return functionInvoker;
     }
 
-    private static void verifyMethodHandleSignature(BoundSignature boundSignature, FunctionInvoker functionInvoker, InvocationConvention convention)
-    {
-        MethodHandle methodHandle = functionInvoker.getMethodHandle();
-        MethodType methodType = methodHandle.type();
-
-        checkArgument(convention.getArgumentConventions().size() == boundSignature.getArgumentTypes().size(),
-                "Expected %s arguments, but got %s", boundSignature.getArgumentTypes().size(), convention.getArgumentConventions().size());
-
-        int expectedParameterCount = convention.getArgumentConventions().stream()
-                .mapToInt(InvocationArgumentConvention::getParameterCount)
-                .sum();
-        expectedParameterCount += methodType.parameterList().stream().filter(ConnectorSession.class::equals).count();
-        if (functionInvoker.getInstanceFactory().isPresent()) {
-            expectedParameterCount++;
-        }
-        checkArgument(expectedParameterCount == methodType.parameterCount(),
-                "Expected %s method parameters, but got %s", expectedParameterCount, methodType.parameterCount());
-
-        int parameterIndex = 0;
-        if (functionInvoker.getInstanceFactory().isPresent()) {
-            verifyFunctionSignature(convention.supportsInstanceFactor(), "Method requires instance factory, but calling convention does not support an instance factory");
-            MethodHandle factoryMethod = functionInvoker.getInstanceFactory().orElseThrow();
-            verifyFunctionSignature(methodType.parameterType(parameterIndex).equals(factoryMethod.type().returnType()), "Invalid return type");
-            parameterIndex++;
-        }
-
-        int lambdaArgumentIndex = 0;
-        for (int argumentIndex = 0; argumentIndex < boundSignature.getArgumentTypes().size(); argumentIndex++) {
-            // skip session parameters
-            while (methodType.parameterType(parameterIndex).equals(ConnectorSession.class)) {
-                verifyFunctionSignature(convention.supportsSession(), "Method requires session, but calling convention does not support session");
-                parameterIndex++;
-            }
-
-            Class<?> parameterType = methodType.parameterType(parameterIndex);
-            Type argumentType = boundSignature.getArgumentTypes().get(argumentIndex);
-            InvocationArgumentConvention argumentConvention = convention.getArgumentConvention(argumentIndex);
-            switch (argumentConvention) {
-                case NEVER_NULL:
-                    verifyFunctionSignature(parameterType.isAssignableFrom(argumentType.getJavaType()),
-                            "Expected argument type to be %s, but is %s", argumentType, parameterType);
-                    break;
-                case NULL_FLAG:
-                    verifyFunctionSignature(parameterType.isAssignableFrom(argumentType.getJavaType()),
-                            "Expected argument type to be %s, but is %s", argumentType.getJavaType(), parameterType);
-                    verifyFunctionSignature(methodType.parameterType(parameterIndex + 1).equals(boolean.class),
-                            "Expected null flag parameter to be followed by a boolean parameter");
-                    break;
-                case BOXED_NULLABLE:
-                    verifyFunctionSignature(parameterType.isAssignableFrom(wrap(argumentType.getJavaType())),
-                            "Expected argument type to be %s, but is %s", wrap(argumentType.getJavaType()), parameterType);
-                    break;
-                case BLOCK_POSITION:
-                    verifyFunctionSignature(parameterType.equals(Block.class) && methodType.parameterType(parameterIndex + 1).equals(int.class),
-                            "Expected BLOCK_POSITION argument have parameters Block and int");
-                    break;
-                case FUNCTION:
-                    Class<?> lambdaInterface = functionInvoker.getLambdaInterfaces().get(lambdaArgumentIndex);
-                    verifyFunctionSignature(parameterType.equals(lambdaInterface),
-                            "Expected function interface to be %s, but is %s", lambdaInterface, parameterType);
-                    lambdaArgumentIndex++;
-                    break;
-                default:
-                    throw new UnsupportedOperationException("Unknown argument convention: " + argumentConvention);
-            }
-            parameterIndex += argumentConvention.getParameterCount();
-        }
-
-        Type returnType = boundSignature.getReturnType();
-        switch (convention.getReturnConvention()) {
-            case FAIL_ON_NULL:
-                verifyFunctionSignature(methodType.returnType().isAssignableFrom(returnType.getJavaType()),
-                        "Expected return type to be %s, but is %s", returnType.getJavaType(), methodType.returnType());
-                break;
-            case NULLABLE_RETURN:
-                verifyFunctionSignature(methodType.returnType().isAssignableFrom(wrap(returnType.getJavaType())),
-                        "Expected return type to be %s, but is %s", returnType.getJavaType(), wrap(methodType.returnType()));
-                break;
-            default:
-                throw new UnsupportedOperationException("Unknown return convention: " + convention.getReturnConvention());
-        }
-    }
-
-    private static void verifyFunctionSignature(boolean check, String message, Object... args)
-    {
-        if (!check) {
-            throw new TrinoException(FUNCTION_IMPLEMENTATION_ERROR, format(message, args));
-        }
-    }
-
     private FunctionBinding toFunctionBinding(ResolvedFunction resolvedFunction)
     {
         Signature functionSignature = functions.get(resolvedFunction.getFunctionId()).getSignature();
         return toFunctionBinding(resolvedFunction.getFunctionId(), resolvedFunction.getSignature(), functionSignature);
-    }
-
-    @VisibleForTesting
-    public static FunctionBinding toFunctionBinding(FunctionId functionId, BoundSignature boundSignature, Signature functionSignature)
-    {
-        return SignatureBinder.bindFunction(
-                functionId,
-                functionSignature,
-                boundSignature);
     }
 
     @Override

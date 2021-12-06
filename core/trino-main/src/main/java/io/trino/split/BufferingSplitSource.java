@@ -76,6 +76,16 @@ public class BufferingSplitSource
         private final List<Split> splits = new ArrayList<>();
         private boolean noMoreSplits;
 
+        private GetNextBatch(SplitSource splitSource, int min, int max, ConnectorPartitionHandle partitionHandle, Lifespan lifespan)
+        {
+            this.splitSource = requireNonNull(splitSource, "splitSource is null");
+            checkArgument(min <= max, "Min splits greater than max splits");
+            this.min = min;
+            this.max = max;
+            this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
+            this.lifespan = requireNonNull(lifespan, "lifespan is null");
+        }
+
         public static ListenableFuture<SplitBatch> fetchNextBatchAsync(
                 SplitSource splitSource,
                 int min,
@@ -86,16 +96,6 @@ public class BufferingSplitSource
             GetNextBatch getNextBatch = new GetNextBatch(splitSource, min, max, partitionHandle, lifespan);
             ListenableFuture<Void> future = getNextBatch.fetchSplits();
             return Futures.transform(future, ignored -> new SplitBatch(getNextBatch.splits, getNextBatch.noMoreSplits), directExecutor());
-        }
-
-        private GetNextBatch(SplitSource splitSource, int min, int max, ConnectorPartitionHandle partitionHandle, Lifespan lifespan)
-        {
-            this.splitSource = requireNonNull(splitSource, "splitSource is null");
-            checkArgument(min <= max, "Min splits greater than max splits");
-            this.min = min;
-            this.max = max;
-            this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
-            this.lifespan = requireNonNull(lifespan, "lifespan is null");
         }
 
         private ListenableFuture<Void> fetchSplits()

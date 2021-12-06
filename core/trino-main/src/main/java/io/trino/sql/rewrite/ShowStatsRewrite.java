@@ -84,6 +84,14 @@ public class ShowStatsRewrite
     private static final Expression NULL_DOUBLE = new Cast(new NullLiteral(), toSqlType(DOUBLE));
     private static final Expression NULL_VARCHAR = new Cast(new NullLiteral(), toSqlType(VARCHAR));
 
+    private static Expression toDoubleLiteral(double value)
+    {
+        if (!isFinite(value)) {
+            return NULL_DOUBLE;
+        }
+        return new DoubleLiteral(Double.toString(value));
+    }
+
     @Override
     public Statement rewrite(
             Session session,
@@ -117,6 +125,52 @@ public class ShowStatsRewrite
             this.queryExplainer = requireNonNull(queryExplainer, "queryExplainer is null");
             this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
             this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
+        }
+
+        private static List<String> buildColumnsNames()
+        {
+            return ImmutableList.<String>builder()
+                    .add("column_name")
+                    .add("data_size")
+                    .add("distinct_values_count")
+                    .add("nulls_fraction")
+                    .add("row_count")
+                    .add("low_value")
+                    .add("high_value")
+                    .build();
+        }
+
+        private static List<SelectItem> buildSelectItems(List<String> columnNames)
+        {
+            return columnNames.stream()
+                    .map(QueryUtil::unaliasedName)
+                    .collect(toImmutableList());
+        }
+
+        private static Expression toStringLiteral(Type type, double value)
+        {
+            if (!isFinite(value)) {
+                return NULL_VARCHAR;
+            }
+            if (type.equals(BigintType.BIGINT) || type.equals(IntegerType.INTEGER) || type.equals(SmallintType.SMALLINT) || type.equals(TinyintType.TINYINT)) {
+                return new StringLiteral(Long.toString(round(value)));
+            }
+            if (type.equals(DOUBLE) || type instanceof DecimalType) {
+                return new StringLiteral(Double.toString(value));
+            }
+            if (type.equals(RealType.REAL)) {
+                return new StringLiteral(Float.toString((float) value));
+            }
+            if (type.equals(DATE)) {
+                return new StringLiteral(LocalDate.ofEpochDay(round(value)).toString());
+            }
+            if (type instanceof TimestampType) {
+                @SuppressWarnings("NumericCastThatLosesPrecision")
+                long epochMicros = (long) value;
+                int outputPrecision = min(((TimestampType) type).getPrecision(), TimestampType.MAX_SHORT_PRECISION);
+                return new StringLiteral(TimestampToVarcharCast.cast(outputPrecision, epochMicros).toStringUtf8());
+            }
+            throw new IllegalArgumentException("Unexpected type: " + type);
         }
 
         @Override
@@ -184,59 +238,5 @@ public class ShowStatsRewrite
         {
             return node;
         }
-
-        private static List<String> buildColumnsNames()
-        {
-            return ImmutableList.<String>builder()
-                    .add("column_name")
-                    .add("data_size")
-                    .add("distinct_values_count")
-                    .add("nulls_fraction")
-                    .add("row_count")
-                    .add("low_value")
-                    .add("high_value")
-                    .build();
-        }
-
-        private static List<SelectItem> buildSelectItems(List<String> columnNames)
-        {
-            return columnNames.stream()
-                    .map(QueryUtil::unaliasedName)
-                    .collect(toImmutableList());
-        }
-
-        private static Expression toStringLiteral(Type type, double value)
-        {
-            if (!isFinite(value)) {
-                return NULL_VARCHAR;
-            }
-            if (type.equals(BigintType.BIGINT) || type.equals(IntegerType.INTEGER) || type.equals(SmallintType.SMALLINT) || type.equals(TinyintType.TINYINT)) {
-                return new StringLiteral(Long.toString(round(value)));
-            }
-            if (type.equals(DOUBLE) || type instanceof DecimalType) {
-                return new StringLiteral(Double.toString(value));
-            }
-            if (type.equals(RealType.REAL)) {
-                return new StringLiteral(Float.toString((float) value));
-            }
-            if (type.equals(DATE)) {
-                return new StringLiteral(LocalDate.ofEpochDay(round(value)).toString());
-            }
-            if (type instanceof TimestampType) {
-                @SuppressWarnings("NumericCastThatLosesPrecision")
-                long epochMicros = (long) value;
-                int outputPrecision = min(((TimestampType) type).getPrecision(), TimestampType.MAX_SHORT_PRECISION);
-                return new StringLiteral(TimestampToVarcharCast.cast(outputPrecision, epochMicros).toStringUtf8());
-            }
-            throw new IllegalArgumentException("Unexpected type: " + type);
-        }
-    }
-
-    private static Expression toDoubleLiteral(double value)
-    {
-        if (!isFinite(value)) {
-            return NULL_DOUBLE;
-        }
-        return new DoubleLiteral(Double.toString(value));
     }
 }

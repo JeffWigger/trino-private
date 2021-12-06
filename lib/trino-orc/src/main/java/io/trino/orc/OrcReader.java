@@ -88,35 +88,6 @@ public class OrcReader
 
     private final Optional<OrcWriteValidation> writeValidation;
 
-    public static Optional<OrcReader> createOrcReader(OrcDataSource orcDataSource, OrcReaderOptions options)
-            throws IOException
-    {
-        return createOrcReader(orcDataSource, options, Optional.empty());
-    }
-
-    private static Optional<OrcReader> createOrcReader(
-            OrcDataSource orcDataSource,
-            OrcReaderOptions options,
-            Optional<OrcWriteValidation> writeValidation)
-            throws IOException
-    {
-        orcDataSource = wrapWithCacheIfTiny(orcDataSource, options.getTinyStripeThreshold());
-
-        // read the tail of the file, and check if the file is actually empty
-        long estimatedFileSize = orcDataSource.getEstimatedSize();
-        if (estimatedFileSize > 0 && estimatedFileSize <= MAGIC.length()) {
-            throw new OrcCorruptionException(orcDataSource.getId(), "Invalid file size %s", estimatedFileSize);
-        }
-
-        long expectedReadSize = min(estimatedFileSize, EXPECTED_FOOTER_SIZE);
-        Slice fileTail = orcDataSource.readTail(toIntExact(expectedReadSize));
-        if (fileTail.length() == 0) {
-            return Optional.empty();
-        }
-
-        return Optional.of(new OrcReader(orcDataSource, options, writeValidation, fileTail));
-    }
-
     private OrcReader(
             OrcDataSource orcDataSource,
             OrcReaderOptions options,
@@ -218,6 +189,146 @@ public class OrcReader
         }
     }
 
+    public static Optional<OrcReader> createOrcReader(OrcDataSource orcDataSource, OrcReaderOptions options)
+            throws IOException
+    {
+        return createOrcReader(orcDataSource, options, Optional.empty());
+    }
+
+    private static Optional<OrcReader> createOrcReader(
+            OrcDataSource orcDataSource,
+            OrcReaderOptions options,
+            Optional<OrcWriteValidation> writeValidation)
+            throws IOException
+    {
+        orcDataSource = wrapWithCacheIfTiny(orcDataSource, options.getTinyStripeThreshold());
+
+        // read the tail of the file, and check if the file is actually empty
+        long estimatedFileSize = orcDataSource.getEstimatedSize();
+        if (estimatedFileSize > 0 && estimatedFileSize <= MAGIC.length()) {
+            throw new OrcCorruptionException(orcDataSource.getId(), "Invalid file size %s", estimatedFileSize);
+        }
+
+        long expectedReadSize = min(estimatedFileSize, EXPECTED_FOOTER_SIZE);
+        Slice fileTail = orcDataSource.readTail(toIntExact(expectedReadSize));
+        if (fileTail.length() == 0) {
+            return Optional.empty();
+        }
+
+        return Optional.of(new OrcReader(orcDataSource, options, writeValidation, fileTail));
+    }
+
+    private static OrcDataSource wrapWithCacheIfTiny(OrcDataSource dataSource, DataSize maxCacheSize)
+            throws IOException
+    {
+        if (dataSource instanceof MemoryOrcDataSource || dataSource instanceof CachingOrcDataSource) {
+            return dataSource;
+        }
+        if (dataSource.getEstimatedSize() > maxCacheSize.toBytes()) {
+            return dataSource;
+        }
+        Slice data = dataSource.readTail(toIntExact(dataSource.getEstimatedSize()));
+        dataSource.close();
+        return new MemoryOrcDataSource(dataSource.getId(), data);
+    }
+
+    private static OrcColumn createOrcColumn(
+            String parentStreamName,
+            String fieldName,
+            OrcColumnId columnId,
+            ColumnMetadata<OrcType> types,
+            OrcDataSourceId orcDataSourceId)
+    {
+        String path = fieldName.isEmpty() ? parentStreamName : parentStreamName + "." + fieldName;
+        OrcType orcType = types.get(columnId);
+
+        List<OrcColumn> nestedColumns = ImmutableList.of();
+        if (orcType.getOrcTypeKind() == OrcTypeKind.STRUCT) {
+            nestedColumns = IntStream.range(0, orcType.getFieldCount())
+                    .mapToObj(fieldId -> createOrcColumn(
+                            path,
+                            orcType.getFieldName(fieldId),
+                            orcType.getFieldTypeIndex(fieldId),
+                            types,
+                            orcDataSourceId))
+                    .collect(toImmutableList());
+        }
+        else if (orcType.getOrcTypeKind() == OrcTypeKind.LIST) {
+            nestedColumns = ImmutableList.of(createOrcColumn(path, "item", orcType.getFieldTypeIndex(0), types, orcDataSourceId));
+        }
+        else if (orcType.getOrcTypeKind() == OrcTypeKind.MAP) {
+            nestedColumns = ImmutableList.of(
+                    createOrcColumn(path, "key", orcType.getFieldTypeIndex(0), types, orcDataSourceId),
+                    createOrcColumn(path, "value", orcType.getFieldTypeIndex(1), types, orcDataSourceId));
+        }
+        else if (orcType.getOrcTypeKind() == OrcTypeKind.UNION) {
+            nestedColumns = IntStream.range(0, orcType.getFieldCount())
+                    .mapToObj(fieldId -> createOrcColumn(
+                            path,
+                            "field" + fieldId,
+                            orcType.getFieldTypeIndex(fieldId),
+                            types,
+                            orcDataSourceId))
+                    .collect(toImmutableList());
+        }
+        return new OrcColumn(path, columnId, fieldName, orcType.getOrcTypeKind(), orcDataSourceId, nestedColumns, orcType.getAttributes());
+    }
+
+    /**
+     * Check to see if this ORC file is from a future version and if so,
+     * warn the user that we may not be able to read all of the column encodings.
+     */
+    // This is based on the Apache Hive ORC code
+    private static void checkOrcVersion(OrcDataSource orcDataSource, List<Integer> version)
+    {
+        if (version.size() >= 1) {
+            int major = version.get(0);
+            int minor = 0;
+            if (version.size() > 1) {
+                minor = version.get(1);
+            }
+
+            if (major > CURRENT_MAJOR_VERSION || (major == CURRENT_MAJOR_VERSION && minor > CURRENT_MINOR_VERSION)) {
+                log.warn("ORC file %s was written by a newer Hive version %s. This file may not be readable by this version of Hive (%s.%s).",
+                        orcDataSource,
+                        Joiner.on('.').join(version),
+                        CURRENT_MAJOR_VERSION,
+                        CURRENT_MINOR_VERSION);
+            }
+        }
+    }
+
+    static void validateFile(
+            OrcWriteValidation writeValidation,
+            OrcDataSource input,
+            List<Type> readTypes)
+            throws OrcCorruptionException
+    {
+        try {
+            OrcReader orcReader = createOrcReader(input, new OrcReaderOptions(), Optional.of(writeValidation))
+                    .orElseThrow(() -> new OrcCorruptionException(input.getId(), "File is empty"));
+            try (OrcRecordReader orcRecordReader = orcReader.createRecordReader(
+                    orcReader.getRootColumn().getNestedColumns(),
+                    readTypes,
+                    OrcPredicate.TRUE,
+                    UTC,
+                    newSimpleAggregatedMemoryContext(),
+                    INITIAL_BATCH_SIZE,
+                    exception -> {
+                        throwIfUnchecked(exception);
+                        return new RuntimeException(exception);
+                    })) {
+                for (Page page = orcRecordReader.nextPage(); page != null; page = orcRecordReader.nextPage()) {
+                    // fully load the page
+                    page.getLoadedPage();
+                }
+            }
+        }
+        catch (IOException e) {
+            throw new OrcCorruptionException(e, input.getId(), "Validation failed");
+        }
+    }
+
     public List<String> getColumnNames()
     {
         return footer.getTypes().get(ROOT_COLUMN).getFieldNames();
@@ -313,86 +424,6 @@ public class OrcReader
                 fieldMapperFactory);
     }
 
-    private static OrcDataSource wrapWithCacheIfTiny(OrcDataSource dataSource, DataSize maxCacheSize)
-            throws IOException
-    {
-        if (dataSource instanceof MemoryOrcDataSource || dataSource instanceof CachingOrcDataSource) {
-            return dataSource;
-        }
-        if (dataSource.getEstimatedSize() > maxCacheSize.toBytes()) {
-            return dataSource;
-        }
-        Slice data = dataSource.readTail(toIntExact(dataSource.getEstimatedSize()));
-        dataSource.close();
-        return new MemoryOrcDataSource(dataSource.getId(), data);
-    }
-
-    private static OrcColumn createOrcColumn(
-            String parentStreamName,
-            String fieldName,
-            OrcColumnId columnId,
-            ColumnMetadata<OrcType> types,
-            OrcDataSourceId orcDataSourceId)
-    {
-        String path = fieldName.isEmpty() ? parentStreamName : parentStreamName + "." + fieldName;
-        OrcType orcType = types.get(columnId);
-
-        List<OrcColumn> nestedColumns = ImmutableList.of();
-        if (orcType.getOrcTypeKind() == OrcTypeKind.STRUCT) {
-            nestedColumns = IntStream.range(0, orcType.getFieldCount())
-                    .mapToObj(fieldId -> createOrcColumn(
-                            path,
-                            orcType.getFieldName(fieldId),
-                            orcType.getFieldTypeIndex(fieldId),
-                            types,
-                            orcDataSourceId))
-                    .collect(toImmutableList());
-        }
-        else if (orcType.getOrcTypeKind() == OrcTypeKind.LIST) {
-            nestedColumns = ImmutableList.of(createOrcColumn(path, "item", orcType.getFieldTypeIndex(0), types, orcDataSourceId));
-        }
-        else if (orcType.getOrcTypeKind() == OrcTypeKind.MAP) {
-            nestedColumns = ImmutableList.of(
-                    createOrcColumn(path, "key", orcType.getFieldTypeIndex(0), types, orcDataSourceId),
-                    createOrcColumn(path, "value", orcType.getFieldTypeIndex(1), types, orcDataSourceId));
-        }
-        else if (orcType.getOrcTypeKind() == OrcTypeKind.UNION) {
-            nestedColumns = IntStream.range(0, orcType.getFieldCount())
-                    .mapToObj(fieldId -> createOrcColumn(
-                            path,
-                            "field" + fieldId,
-                            orcType.getFieldTypeIndex(fieldId),
-                            types,
-                            orcDataSourceId))
-                    .collect(toImmutableList());
-        }
-        return new OrcColumn(path, columnId, fieldName, orcType.getOrcTypeKind(), orcDataSourceId, nestedColumns, orcType.getAttributes());
-    }
-
-    /**
-     * Check to see if this ORC file is from a future version and if so,
-     * warn the user that we may not be able to read all of the column encodings.
-     */
-    // This is based on the Apache Hive ORC code
-    private static void checkOrcVersion(OrcDataSource orcDataSource, List<Integer> version)
-    {
-        if (version.size() >= 1) {
-            int major = version.get(0);
-            int minor = 0;
-            if (version.size() > 1) {
-                minor = version.get(1);
-            }
-
-            if (major > CURRENT_MAJOR_VERSION || (major == CURRENT_MAJOR_VERSION && minor > CURRENT_MINOR_VERSION)) {
-                log.warn("ORC file %s was written by a newer Hive version %s. This file may not be readable by this version of Hive (%s.%s).",
-                        orcDataSource,
-                        Joiner.on('.').join(version),
-                        CURRENT_MAJOR_VERSION,
-                        CURRENT_MINOR_VERSION);
-            }
-        }
-    }
-
     private void validateWrite(Predicate<OrcWriteValidation> test, String messageFormat, Object... args)
             throws OrcCorruptionException
     {
@@ -401,35 +432,15 @@ public class OrcReader
         }
     }
 
-    static void validateFile(
-            OrcWriteValidation writeValidation,
-            OrcDataSource input,
-            List<Type> readTypes)
-            throws OrcCorruptionException
+    public interface FieldMapperFactory
     {
-        try {
-            OrcReader orcReader = createOrcReader(input, new OrcReaderOptions(), Optional.of(writeValidation))
-                    .orElseThrow(() -> new OrcCorruptionException(input.getId(), "File is empty"));
-            try (OrcRecordReader orcRecordReader = orcReader.createRecordReader(
-                    orcReader.getRootColumn().getNestedColumns(),
-                    readTypes,
-                    OrcPredicate.TRUE,
-                    UTC,
-                    newSimpleAggregatedMemoryContext(),
-                    INITIAL_BATCH_SIZE,
-                    exception -> {
-                        throwIfUnchecked(exception);
-                        return new RuntimeException(exception);
-                    })) {
-                for (Page page = orcRecordReader.nextPage(); page != null; page = orcRecordReader.nextPage()) {
-                    // fully load the page
-                    page.getLoadedPage();
-                }
-            }
-        }
-        catch (IOException e) {
-            throw new OrcCorruptionException(e, input.getId(), "Validation failed");
-        }
+        FieldMapper create(OrcColumn orcColumn);
+    }
+
+    // Used for mapping a nested field with the appropriate OrcColumn
+    public interface FieldMapper
+    {
+        OrcColumn get(String fieldName);
     }
 
     public static class ProjectedLayout
@@ -439,15 +450,6 @@ public class OrcReader
         private ProjectedLayout(Optional<Map<String, ProjectedLayout>> fieldLayouts)
         {
             this.fieldLayouts = requireNonNull(fieldLayouts, "fieldLayouts is null");
-        }
-
-        public ProjectedLayout getFieldLayout(String name)
-        {
-            if (fieldLayouts.isPresent()) {
-                return fieldLayouts.get().get(name);
-            }
-
-            return fullyProjectedLayout();
         }
 
         public static ProjectedLayout fullyProjectedLayout()
@@ -476,16 +478,14 @@ public class OrcReader
 
             return new ProjectedLayout(Optional.of(fieldLayouts.build()));
         }
-    }
 
-    public interface FieldMapperFactory
-    {
-        FieldMapper create(OrcColumn orcColumn);
-    }
+        public ProjectedLayout getFieldLayout(String name)
+        {
+            if (fieldLayouts.isPresent()) {
+                return fieldLayouts.get().get(name);
+            }
 
-    // Used for mapping a nested field with the appropriate OrcColumn
-    public interface FieldMapper
-    {
-        OrcColumn get(String fieldName);
+            return fullyProjectedLayout();
+        }
     }
 }

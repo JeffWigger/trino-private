@@ -37,28 +37,14 @@ import static java.util.Objects.requireNonNull;
 
 public class JoinBridgeManager<T extends JoinBridge>
 {
-    @VisibleForTesting
-    public static JoinBridgeManager<PartitionedLookupSourceFactory> lookupAllAtOnce(PartitionedLookupSourceFactory factory)
-    {
-        return new JoinBridgeManager<>(
-                false,
-                UNGROUPED_EXECUTION,
-                UNGROUPED_EXECUTION,
-                ignored -> factory,
-                factory.getOutputTypes());
-    }
-
     private final List<Type> buildOutputTypes;
     private final boolean buildOuter;
     private final PipelineExecutionStrategy probeExecutionStrategy;
     private final PipelineExecutionStrategy buildExecutionStrategy;
     private final Function<Lifespan, T> joinBridgeProvider;
-
     private final FreezeOnReadCounter probeFactoryCount = new FreezeOnReadCounter();
-
     private final AtomicBoolean initialized = new AtomicBoolean();
     private InternalJoinBridgeDataManager<T> internalJoinBridgeDataManager;
-
     public JoinBridgeManager(
             boolean buildOuter,
             PipelineExecutionStrategy probeExecutionStrategy,
@@ -71,6 +57,47 @@ public class JoinBridgeManager<T extends JoinBridge>
         this.buildExecutionStrategy = requireNonNull(lookupSourceExecutionStrategy, "lookupSourceExecutionStrategy is null");
         this.joinBridgeProvider = requireNonNull(lookupSourceFactoryProvider, "lookupSourceFactoryProvider is null");
         this.buildOutputTypes = requireNonNull(buildOutputTypes, "buildOutputTypes is null");
+    }
+
+    @VisibleForTesting
+    public static JoinBridgeManager<PartitionedLookupSourceFactory> lookupAllAtOnce(PartitionedLookupSourceFactory factory)
+    {
+        return new JoinBridgeManager<>(
+                false,
+                UNGROUPED_EXECUTION,
+                UNGROUPED_EXECUTION,
+                ignored -> factory,
+                factory.getOutputTypes());
+    }
+
+    private static <T extends JoinBridge> InternalJoinBridgeDataManager<T> internalJoinBridgeDataManager(
+            PipelineExecutionStrategy probeExecutionStrategy,
+            PipelineExecutionStrategy buildExecutionStrategy,
+            Function<Lifespan, T> joinBridgeProvider,
+            int probeFactoryCount,
+            int outerFactoryCount)
+    {
+        checkArgument(outerFactoryCount == 0 || outerFactoryCount == 1, "outerFactoryCount should only be 0 or 1 because it is expected that outer factory never gets duplicated.");
+        switch (probeExecutionStrategy) {
+            case UNGROUPED_EXECUTION:
+                switch (buildExecutionStrategy) {
+                    case UNGROUPED_EXECUTION:
+                        return new TaskWideInternalJoinBridgeDataManager<>(joinBridgeProvider, probeFactoryCount, outerFactoryCount);
+                    case GROUPED_EXECUTION:
+                        throw new UnsupportedOperationException("Invalid combination. Lookup source should not be grouped if probe is not going to take advantage of it.");
+                }
+                throw new UnsupportedOperationException("Unknown buildExecutionStrategy: " + buildExecutionStrategy);
+
+            case GROUPED_EXECUTION:
+                switch (buildExecutionStrategy) {
+                    case UNGROUPED_EXECUTION:
+                        return new SharedInternalJoinBridgeDataManager<>(joinBridgeProvider, probeFactoryCount, outerFactoryCount);
+                    case GROUPED_EXECUTION:
+                        return new OneToOneInternalJoinBridgeDataManager<>(joinBridgeProvider, probeFactoryCount, outerFactoryCount);
+                }
+                throw new UnsupportedOperationException("Unknown buildExecutionStrategy: " + buildExecutionStrategy);
+        }
+        throw new UnsupportedOperationException("Unknown probeExecutionStrategy: " + probeExecutionStrategy);
     }
 
     private void initializeIfNecessary()
@@ -162,36 +189,6 @@ public class JoinBridgeManager<T extends JoinBridge>
     {
         initializeIfNecessary();
         return internalJoinBridgeDataManager.getOuterPositionsFuture(lifespan);
-    }
-
-    private static <T extends JoinBridge> InternalJoinBridgeDataManager<T> internalJoinBridgeDataManager(
-            PipelineExecutionStrategy probeExecutionStrategy,
-            PipelineExecutionStrategy buildExecutionStrategy,
-            Function<Lifespan, T> joinBridgeProvider,
-            int probeFactoryCount,
-            int outerFactoryCount)
-    {
-        checkArgument(outerFactoryCount == 0 || outerFactoryCount == 1, "outerFactoryCount should only be 0 or 1 because it is expected that outer factory never gets duplicated.");
-        switch (probeExecutionStrategy) {
-            case UNGROUPED_EXECUTION:
-                switch (buildExecutionStrategy) {
-                    case UNGROUPED_EXECUTION:
-                        return new TaskWideInternalJoinBridgeDataManager<>(joinBridgeProvider, probeFactoryCount, outerFactoryCount);
-                    case GROUPED_EXECUTION:
-                        throw new UnsupportedOperationException("Invalid combination. Lookup source should not be grouped if probe is not going to take advantage of it.");
-                }
-                throw new UnsupportedOperationException("Unknown buildExecutionStrategy: " + buildExecutionStrategy);
-
-            case GROUPED_EXECUTION:
-                switch (buildExecutionStrategy) {
-                    case UNGROUPED_EXECUTION:
-                        return new SharedInternalJoinBridgeDataManager<>(joinBridgeProvider, probeFactoryCount, outerFactoryCount);
-                    case GROUPED_EXECUTION:
-                        return new OneToOneInternalJoinBridgeDataManager<>(joinBridgeProvider, probeFactoryCount, outerFactoryCount);
-                }
-                throw new UnsupportedOperationException("Unknown buildExecutionStrategy: " + buildExecutionStrategy);
-        }
-        throw new UnsupportedOperationException("Unknown probeExecutionStrategy: " + probeExecutionStrategy);
     }
 
     private interface InternalJoinBridgeDataManager<T extends JoinBridge>

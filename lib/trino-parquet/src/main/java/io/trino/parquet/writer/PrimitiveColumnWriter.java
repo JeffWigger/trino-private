@@ -63,30 +63,23 @@ public class PrimitiveColumnWriter
     private final RunLengthBitPackingHybridEncoder repetitionLevelEncoder;
 
     private final ParquetMetadataConverter parquetMetadataConverter = new ParquetMetadataConverter();
-
+    // column meta data stats
+    private final Set<Encoding> encodings;
+    private final int maxDefinitionLevel;
+    private final List<ParquetDataOutput> pageBuffer = new ArrayList<>();
+    @Nullable
+    private final ParquetCompressor compressor;
+    private final int pageSizeThreshold;
     private boolean closed;
     private boolean getDataStreamsCalled;
-
     // current page stats
     private int currentPageRows;
     private int currentPageNullCounts;
     private int currentPageRowCount;
-
-    // column meta data stats
-    private final Set<Encoding> encodings;
     private long totalCompressedSize;
     private long totalUnCompressedSize;
     private long totalRows;
     private Statistics<?> columnStatistics;
-
-    private final int maxDefinitionLevel;
-
-    private final List<ParquetDataOutput> pageBuffer = new ArrayList<>();
-
-    @Nullable
-    private final ParquetCompressor compressor;
-
-    private final int pageSizeThreshold;
 
     public PrimitiveColumnWriter(ColumnDescriptor columnDescriptor, PrimitiveValueWriter primitiveValueWriter, RunLengthBitPackingHybridEncoder definitionLevelEncoder, RunLengthBitPackingHybridEncoder repetitionLevelEncoder, CompressionCodecName compressionCodecName, int pageSizeThreshold)
     {

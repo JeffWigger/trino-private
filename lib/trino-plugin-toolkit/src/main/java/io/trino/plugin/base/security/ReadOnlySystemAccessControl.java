@@ -36,24 +36,6 @@ public class ReadOnlySystemAccessControl
 
     private static final ReadOnlySystemAccessControl INSTANCE = new ReadOnlySystemAccessControl();
 
-    public static class Factory
-            implements SystemAccessControlFactory
-    {
-        @Override
-        public String getName()
-        {
-            return NAME;
-        }
-
-        @Override
-        public SystemAccessControl create(Map<String, String> config)
-        {
-            requireNonNull(config, "config is null");
-            checkArgument(config.isEmpty(), "This access controller does not support any configuration properties");
-            return INSTANCE;
-        }
-    }
-
     @Override
     public void checkCanSetUser(Optional<Principal> principal, String userName)
     {
@@ -162,5 +144,23 @@ public class ReadOnlySystemAccessControl
     @Override
     public void checkCanExecuteFunction(SystemSecurityContext systemSecurityContext, String functionName)
     {
+    }
+
+    public static class Factory
+            implements SystemAccessControlFactory
+    {
+        @Override
+        public String getName()
+        {
+            return NAME;
+        }
+
+        @Override
+        public SystemAccessControl create(Map<String, String> config)
+        {
+            requireNonNull(config, "config is null");
+            checkArgument(config.isEmpty(), "This access controller does not support any configuration properties");
+            return INSTANCE;
+        }
     }
 }

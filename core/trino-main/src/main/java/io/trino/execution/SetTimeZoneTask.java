@@ -80,6 +80,38 @@ public class SetTimeZoneTask
         this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
     }
 
+    private static Expression rewriteExpression(Expression expression, Analysis analysis)
+    {
+        return ExpressionTreeRewriter.rewriteWith(new ExpressionRewriter<Void>()
+        {
+            @Override
+            public Expression rewriteFunctionCall(FunctionCall node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
+            {
+                ResolvedFunction resolvedFunction = analysis.getResolvedFunction(node);
+                checkArgument(resolvedFunction != null, "Function has not been analyzed: %s", node);
+
+                FunctionCall rewritten = treeRewriter.defaultRewrite(node, context);
+                rewritten = new FunctionCall(
+                        rewritten.getLocation(),
+                        resolvedFunction.toQualifiedName(),
+                        rewritten.getWindow(),
+                        rewritten.getFilter(),
+                        rewritten.getOrderBy(),
+                        rewritten.isDistinct(),
+                        rewritten.getNullTreatment(),
+                        rewritten.getProcessingMode(),
+                        rewritten.getArguments());
+                return rewritten;
+            }
+        }, expression, null);
+    }
+
+    private static long getZoneOffsetMinutes(long interval)
+    {
+        checkCondition((interval % 60_000L) == 0L, INVALID_LITERAL, "Invalid time zone offset interval: interval contains seconds");
+        return interval / 60_000L;
+    }
+
     @Override
     public String getName()
     {
@@ -174,37 +206,5 @@ public class SetTimeZoneTask
                 stateMachine.getWarningCollector(),
                 statsCalculator)
                 .analyze(statement);
-    }
-
-    private static Expression rewriteExpression(Expression expression, Analysis analysis)
-    {
-        return ExpressionTreeRewriter.rewriteWith(new ExpressionRewriter<Void>()
-        {
-            @Override
-            public Expression rewriteFunctionCall(FunctionCall node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
-            {
-                ResolvedFunction resolvedFunction = analysis.getResolvedFunction(node);
-                checkArgument(resolvedFunction != null, "Function has not been analyzed: %s", node);
-
-                FunctionCall rewritten = treeRewriter.defaultRewrite(node, context);
-                rewritten = new FunctionCall(
-                        rewritten.getLocation(),
-                        resolvedFunction.toQualifiedName(),
-                        rewritten.getWindow(),
-                        rewritten.getFilter(),
-                        rewritten.getOrderBy(),
-                        rewritten.isDistinct(),
-                        rewritten.getNullTreatment(),
-                        rewritten.getProcessingMode(),
-                        rewritten.getArguments());
-                return rewritten;
-            }
-        }, expression, null);
-    }
-
-    private static long getZoneOffsetMinutes(long interval)
-    {
-        checkCondition((interval % 60_000L) == 0L, INVALID_LITERAL, "Invalid time zone offset interval: interval contains seconds");
-        return interval / 60_000L;
     }
 }

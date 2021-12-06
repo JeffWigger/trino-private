@@ -152,6 +152,17 @@ public final class Session
         checkArgument(catalog.isPresent() || schema.isEmpty(), "schema is set but catalog is not");
     }
 
+    public static SessionBuilder builder(SessionPropertyManager sessionPropertyManager)
+    {
+        return new SessionBuilder(sessionPropertyManager);
+    }
+
+    @VisibleForTesting
+    public static SessionBuilder builder(Session session)
+    {
+        return new SessionBuilder(session);
+    }
+
     public QueryId getQueryId()
     {
         return queryId;
@@ -522,17 +533,6 @@ public final class Session
                 .toString();
     }
 
-    public static SessionBuilder builder(SessionPropertyManager sessionPropertyManager)
-    {
-        return new SessionBuilder(sessionPropertyManager);
-    }
-
-    @VisibleForTesting
-    public static SessionBuilder builder(Session session)
-    {
-        return new SessionBuilder(session);
-    }
-
     public SecurityContext toSecurityContext()
     {
         return new SecurityContext(getRequiredTransactionId(), getIdentity(), queryId);
@@ -540,6 +540,10 @@ public final class Session
 
     public static class SessionBuilder
     {
+        private final Map<String, String> systemProperties = new HashMap<>();
+        private final Map<String, Map<String, String>> catalogSessionProperties = new HashMap<>();
+        private final SessionPropertyManager sessionPropertyManager;
+        private final Map<String, String> preparedStatements = new HashMap<>();
         private QueryId queryId;
         private TransactionId transactionId;
         private boolean clientTransactionSupport;
@@ -558,10 +562,6 @@ public final class Session
         private Set<String> clientCapabilities = ImmutableSet.of();
         private ResourceEstimates resourceEstimates;
         private Instant start = Instant.now();
-        private final Map<String, String> systemProperties = new HashMap<>();
-        private final Map<String, Map<String, String>> catalogSessionProperties = new HashMap<>();
-        private final SessionPropertyManager sessionPropertyManager;
-        private final Map<String, String> preparedStatements = new HashMap<>();
         private ProtocolHeaders protocolHeaders = TRINO_HEADERS;
 
         private SessionBuilder(SessionPropertyManager sessionPropertyManager)

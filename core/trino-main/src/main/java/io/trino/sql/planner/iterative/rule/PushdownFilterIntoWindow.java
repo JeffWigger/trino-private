@@ -82,6 +82,51 @@ public class PushdownFilterIntoWindow
         this.typeOperators = typeOperators;
     }
 
+    private static boolean allRowNumberValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
+    {
+        if (tupleDomain.isNone()) {
+            return false;
+        }
+        Domain domain = tupleDomain.getDomains().get().get(symbol);
+        if (domain == null) {
+            return true;
+        }
+        return domain.getValues().contains(ValueSet.ofRanges(range(domain.getType(), 1L, true, upperBound, true)));
+    }
+
+    private static OptionalInt extractUpperBound(TupleDomain<Symbol> tupleDomain, Symbol symbol)
+    {
+        if (tupleDomain.isNone()) {
+            return OptionalInt.empty();
+        }
+
+        Domain rowNumberDomain = tupleDomain.getDomains().get().get(symbol);
+        if (rowNumberDomain == null) {
+            return OptionalInt.empty();
+        }
+        ValueSet values = rowNumberDomain.getValues();
+        if (values.isAll() || values.isNone() || values.getRanges().getRangeCount() <= 0) {
+            return OptionalInt.empty();
+        }
+
+        Range span = values.getRanges().getSpan();
+
+        if (span.isHighUnbounded()) {
+            return OptionalInt.empty();
+        }
+
+        verify(rowNumberDomain.getType().equals(BIGINT));
+        long upperBound = (Long) span.getHighBoundedValue();
+        if (!span.isHighInclusive()) {
+            upperBound--;
+        }
+
+        if (upperBound >= Integer.MIN_VALUE && upperBound <= Integer.MAX_VALUE) {
+            return OptionalInt.of(toIntExact(upperBound));
+        }
+        return OptionalInt.empty();
+    }
+
     @Override
     public Pattern<FilterNode> getPattern()
     {
@@ -142,51 +187,6 @@ public class PushdownFilterIntoWindow
             return Result.ofPlanNode(newSource);
         }
         return Result.ofPlanNode(new FilterNode(node.getId(), newSource, newPredicate));
-    }
-
-    private static boolean allRowNumberValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
-    {
-        if (tupleDomain.isNone()) {
-            return false;
-        }
-        Domain domain = tupleDomain.getDomains().get().get(symbol);
-        if (domain == null) {
-            return true;
-        }
-        return domain.getValues().contains(ValueSet.ofRanges(range(domain.getType(), 1L, true, upperBound, true)));
-    }
-
-    private static OptionalInt extractUpperBound(TupleDomain<Symbol> tupleDomain, Symbol symbol)
-    {
-        if (tupleDomain.isNone()) {
-            return OptionalInt.empty();
-        }
-
-        Domain rowNumberDomain = tupleDomain.getDomains().get().get(symbol);
-        if (rowNumberDomain == null) {
-            return OptionalInt.empty();
-        }
-        ValueSet values = rowNumberDomain.getValues();
-        if (values.isAll() || values.isNone() || values.getRanges().getRangeCount() <= 0) {
-            return OptionalInt.empty();
-        }
-
-        Range span = values.getRanges().getSpan();
-
-        if (span.isHighUnbounded()) {
-            return OptionalInt.empty();
-        }
-
-        verify(rowNumberDomain.getType().equals(BIGINT));
-        long upperBound = (Long) span.getHighBoundedValue();
-        if (!span.isHighInclusive()) {
-            upperBound--;
-        }
-
-        if (upperBound >= Integer.MIN_VALUE && upperBound <= Integer.MAX_VALUE) {
-            return OptionalInt.of(toIntExact(upperBound));
-        }
-        return OptionalInt.empty();
     }
 
     private Optional<RankingType> toTopNRankingType(WindowNode node)

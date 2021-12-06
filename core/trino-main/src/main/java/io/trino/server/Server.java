@@ -73,6 +73,70 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 public class Server
 {
+    @SuppressWarnings("unchecked")
+    private static <T> Key<Optional<T>> optionalKey(Class<T> type)
+    {
+        return Key.get((TypeLiteral<Optional<T>>) TypeLiteral.get(Types.newParameterizedType(Optional.class, type)));
+    }
+
+    private static void addMessages(StringBuilder output, String type, List<Object> messages)
+    {
+        if (messages.isEmpty()) {
+            return;
+        }
+        output.append("\n").append(type).append(":\n\n");
+        for (int index = 0; index < messages.size(); index++) {
+            output.append(format("%s) %s\n", index + 1, messages.get(index)));
+        }
+    }
+
+    private static void updateConnectorIds(Announcer announcer, CatalogManager metadata)
+    {
+        // get existing announcement
+        ServiceAnnouncement announcement = getTrinoAnnouncement(announcer.getServiceAnnouncements());
+
+        // automatically build connectorIds if not configured
+        Set<String> connectorIds = metadata.getCatalogs().stream()
+                .map(Catalog::getConnectorCatalogName)
+                .map(Object::toString)
+                .collect(toImmutableSet());
+
+        // build announcement with updated sources
+        ServiceAnnouncementBuilder builder = serviceAnnouncement(announcement.getType());
+        builder.addProperties(announcement.getProperties());
+        builder.addProperty("connectorIds", Joiner.on(',').join(connectorIds));
+
+        // update announcement
+        announcer.removeServiceAnnouncement(announcement.getId());
+        announcer.addServiceAnnouncement(builder.build());
+    }
+
+    private static ServiceAnnouncement getTrinoAnnouncement(Set<ServiceAnnouncement> announcements)
+    {
+        for (ServiceAnnouncement announcement : announcements) {
+            if (announcement.getType().equals("trino")) {
+                return announcement;
+            }
+        }
+        throw new IllegalArgumentException("Trino announcement not found: " + announcements);
+    }
+
+    private static void logLocation(Logger log, String name, Path path)
+    {
+        if (!Files.exists(path, NOFOLLOW_LINKS)) {
+            log.info("%s: [does not exist]", name);
+            return;
+        }
+        try {
+            path = path.toAbsolutePath().toRealPath();
+        }
+        catch (IOException e) {
+            log.info("%s: [not accessible]", name);
+            return;
+        }
+        log.info("%s: %s", name, path);
+    }
+
     public final void start(String trinoVersion)
     {
         new EmbedVersion(trinoVersion).embedVersion(() -> doStart(trinoVersion)).run();
@@ -161,72 +225,8 @@ public class Server
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static <T> Key<Optional<T>> optionalKey(Class<T> type)
-    {
-        return Key.get((TypeLiteral<Optional<T>>) TypeLiteral.get(Types.newParameterizedType(Optional.class, type)));
-    }
-
-    private static void addMessages(StringBuilder output, String type, List<Object> messages)
-    {
-        if (messages.isEmpty()) {
-            return;
-        }
-        output.append("\n").append(type).append(":\n\n");
-        for (int index = 0; index < messages.size(); index++) {
-            output.append(format("%s) %s\n", index + 1, messages.get(index)));
-        }
-    }
-
     protected Iterable<? extends Module> getAdditionalModules()
     {
         return ImmutableList.of();
-    }
-
-    private static void updateConnectorIds(Announcer announcer, CatalogManager metadata)
-    {
-        // get existing announcement
-        ServiceAnnouncement announcement = getTrinoAnnouncement(announcer.getServiceAnnouncements());
-
-        // automatically build connectorIds if not configured
-        Set<String> connectorIds = metadata.getCatalogs().stream()
-                .map(Catalog::getConnectorCatalogName)
-                .map(Object::toString)
-                .collect(toImmutableSet());
-
-        // build announcement with updated sources
-        ServiceAnnouncementBuilder builder = serviceAnnouncement(announcement.getType());
-        builder.addProperties(announcement.getProperties());
-        builder.addProperty("connectorIds", Joiner.on(',').join(connectorIds));
-
-        // update announcement
-        announcer.removeServiceAnnouncement(announcement.getId());
-        announcer.addServiceAnnouncement(builder.build());
-    }
-
-    private static ServiceAnnouncement getTrinoAnnouncement(Set<ServiceAnnouncement> announcements)
-    {
-        for (ServiceAnnouncement announcement : announcements) {
-            if (announcement.getType().equals("trino")) {
-                return announcement;
-            }
-        }
-        throw new IllegalArgumentException("Trino announcement not found: " + announcements);
-    }
-
-    private static void logLocation(Logger log, String name, Path path)
-    {
-        if (!Files.exists(path, NOFOLLOW_LINKS)) {
-            log.info("%s: [does not exist]", name);
-            return;
-        }
-        try {
-            path = path.toAbsolutePath().toRealPath();
-        }
-        catch (IOException e) {
-            log.info("%s: [not accessible]", name);
-            return;
-        }
-        log.info("%s: %s", name, path);
     }
 }

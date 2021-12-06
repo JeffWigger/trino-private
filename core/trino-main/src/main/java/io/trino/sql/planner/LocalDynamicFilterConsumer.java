@@ -67,6 +67,37 @@ public class LocalDynamicFilterConsumer
         this.partitions = new ArrayList<>(partitionCount);
     }
 
+    public static LocalDynamicFilterConsumer create(
+            JoinNode planNode,
+            List<Type> buildSourceTypes,
+            int partitionCount,
+            Set<DynamicFilterId> collectedFilters)
+    {
+        checkArgument(!planNode.getDynamicFilters().isEmpty(), "Join node dynamicFilters is empty.");
+        checkArgument(!collectedFilters.isEmpty(), "Collected dynamic filters set is empty");
+        checkArgument(planNode.getDynamicFilters().keySet().containsAll(collectedFilters), "Collected dynamic filters set is not subset of join dynamic filters");
+
+        PlanNode buildNode = planNode.getRight();
+        Map<DynamicFilterId, Integer> buildChannels = planNode.getDynamicFilters().entrySet().stream()
+                .filter(entry -> collectedFilters.contains(entry.getKey()))
+                .collect(toImmutableMap(
+                        // Dynamic filter ID
+                        Map.Entry::getKey,
+                        // Build-side channel index
+                        entry -> {
+                            Symbol buildSymbol = entry.getValue();
+                            int buildChannelIndex = buildNode.getOutputSymbols().indexOf(buildSymbol);
+                            verify(buildChannelIndex >= 0);
+                            return buildChannelIndex;
+                        }));
+
+        Map<DynamicFilterId, Type> filterBuildTypes = buildChannels.entrySet().stream()
+                .collect(toImmutableMap(
+                        Map.Entry::getKey,
+                        entry -> buildSourceTypes.get(entry.getValue())));
+        return new LocalDynamicFilterConsumer(buildChannels, filterBuildTypes, partitionCount);
+    }
+
     public ListenableFuture<Map<DynamicFilterId, Domain>> getDynamicFilterDomains()
     {
         return Futures.transform(resultFuture, this::convertTupleDomain, directExecutor());
@@ -104,37 +135,6 @@ public class LocalDynamicFilterConsumer
         // Add `all` domain explicitly for dynamic filters to notify dynamic filter listeners
         buildChannels.keySet().forEach(filterId -> domains.putIfAbsent(filterId, Domain.all(filterBuildTypes.get(filterId))));
         return ImmutableMap.copyOf(domains);
-    }
-
-    public static LocalDynamicFilterConsumer create(
-            JoinNode planNode,
-            List<Type> buildSourceTypes,
-            int partitionCount,
-            Set<DynamicFilterId> collectedFilters)
-    {
-        checkArgument(!planNode.getDynamicFilters().isEmpty(), "Join node dynamicFilters is empty.");
-        checkArgument(!collectedFilters.isEmpty(), "Collected dynamic filters set is empty");
-        checkArgument(planNode.getDynamicFilters().keySet().containsAll(collectedFilters), "Collected dynamic filters set is not subset of join dynamic filters");
-
-        PlanNode buildNode = planNode.getRight();
-        Map<DynamicFilterId, Integer> buildChannels = planNode.getDynamicFilters().entrySet().stream()
-                .filter(entry -> collectedFilters.contains(entry.getKey()))
-                .collect(toImmutableMap(
-                        // Dynamic filter ID
-                        Map.Entry::getKey,
-                        // Build-side channel index
-                        entry -> {
-                            Symbol buildSymbol = entry.getValue();
-                            int buildChannelIndex = buildNode.getOutputSymbols().indexOf(buildSymbol);
-                            verify(buildChannelIndex >= 0);
-                            return buildChannelIndex;
-                        }));
-
-        Map<DynamicFilterId, Type> filterBuildTypes = buildChannels.entrySet().stream()
-                .collect(toImmutableMap(
-                        Map.Entry::getKey,
-                        entry -> buildSourceTypes.get(entry.getValue())));
-        return new LocalDynamicFilterConsumer(buildChannels, filterBuildTypes, partitionCount);
     }
 
     public Map<DynamicFilterId, Integer> getBuildChannels()

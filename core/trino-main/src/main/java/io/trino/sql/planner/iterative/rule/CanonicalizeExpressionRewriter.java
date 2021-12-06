@@ -64,12 +64,12 @@ import static java.util.Objects.requireNonNull;
 
 public final class CanonicalizeExpressionRewriter
 {
+    private CanonicalizeExpressionRewriter() {}
+
     public static Expression canonicalizeExpression(Expression expression, Map<NodeRef<Expression>, Type> expressionTypes, Metadata metadata)
     {
         return ExpressionTreeRewriter.rewriteWith(new Visitor(metadata, expressionTypes), expression);
     }
-
-    private CanonicalizeExpressionRewriter() {}
 
     public static Expression rewrite(Expression expression, Session session, Metadata metadata, TypeAnalyzer typeAnalyzer, TypeProvider types)
     {
@@ -82,6 +82,21 @@ public final class CanonicalizeExpressionRewriter
         Map<NodeRef<Expression>, Type> expressionTypes = typeAnalyzer.getTypes(session, types, expression);
 
         return ExpressionTreeRewriter.rewriteWith(new Visitor(metadata, expressionTypes), expression);
+    }
+
+    private static boolean isConstant(Expression expression)
+    {
+        // Current IR has no way to represent typed constants. It encodes simple ones as Cast(Literal)
+        // This is the simplest possible check that
+        //   1) doesn't require ExpressionInterpreter.optimize(), which is not cheap
+        //   2) doesn't try to duplicate all the logic in LiteralEncoder
+        //   3) covers a sufficient portion of the use cases that occur in practice
+        // TODO: this should eventually be removed when IR includes types
+        if (expression instanceof Cast && ((Cast) expression).getExpression() instanceof Literal) {
+            return true;
+        }
+
+        return expression instanceof Literal;
     }
 
     private static class Visitor
@@ -289,20 +304,5 @@ public final class CanonicalizeExpressionRewriter
                     .addArgument(RowType.anonymous(argumentTypes.subList(1, arguments.size())), new Row(arguments.subList(1, arguments.size())))
                     .build();
         }
-    }
-
-    private static boolean isConstant(Expression expression)
-    {
-        // Current IR has no way to represent typed constants. It encodes simple ones as Cast(Literal)
-        // This is the simplest possible check that
-        //   1) doesn't require ExpressionInterpreter.optimize(), which is not cheap
-        //   2) doesn't try to duplicate all the logic in LiteralEncoder
-        //   3) covers a sufficient portion of the use cases that occur in practice
-        // TODO: this should eventually be removed when IR includes types
-        if (expression instanceof Cast && ((Cast) expression).getExpression() instanceof Literal) {
-            return true;
-        }
-
-        return expression instanceof Literal;
     }
 }

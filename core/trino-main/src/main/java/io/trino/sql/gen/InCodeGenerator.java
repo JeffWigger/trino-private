@@ -78,13 +78,6 @@ public class InCodeGenerator
         resolvedIsIndeterminate = specialForm.getOperatorDependency(INDETERMINATE);
     }
 
-    enum SwitchGenerationCase
-    {
-        DIRECT_SWITCH,
-        HASH_SWITCH,
-        SET_CONTAINS
-    }
-
     @VisibleForTesting
     static SwitchGenerationCase checkSwitchGenerationCase(Type type, List<RowExpression> values)
     {
@@ -114,6 +107,107 @@ public class InCodeGenerator
             }
         }
         return SwitchGenerationCase.DIRECT_SWITCH;
+    }
+
+    public static boolean isInteger(long value)
+    {
+        return value == (int) value;
+    }
+
+    private static BytecodeBlock buildInCase(
+            BytecodeGeneratorContext generatorContext,
+            Scope scope,
+            ResolvedFunction equals,
+            LabelNode matchLabel,
+            LabelNode noMatchLabel,
+            Variable value,
+            Collection<BytecodeNode> testValues,
+            boolean checkForNulls,
+            ResolvedFunction isIndeterminateFunction)
+    {
+        Variable caseWasNull = null; // caseWasNull is set to true the first time a null in `testValues` is encountered
+        if (checkForNulls) {
+            caseWasNull = scope.createTempVariable(boolean.class);
+        }
+
+        BytecodeBlock caseBlock = new BytecodeBlock();
+
+        if (checkForNulls) {
+            caseBlock.putVariable(caseWasNull, false);
+        }
+
+        LabelNode elseLabel = new LabelNode("else");
+        BytecodeBlock elseBlock = new BytecodeBlock()
+                .visitLabel(elseLabel);
+
+        Variable wasNull = generatorContext.wasNull();
+        if (checkForNulls) {
+            // Consider following expression: "ARRAY[null] IN (ARRAY[1], ARRAY[2], ARRAY[3]) => NULL"
+            // All lookup values will go to the SET_CONTAINS, since neither of them is indeterminate.
+            // As ARRAY[null] is not among them, the code will fall through to the defaultCaseBlock.
+            // Since there is no values in the defaultCaseBlock, the defaultCaseBlock will return FALSE.
+            // That is incorrect. Doing an explicit check for indeterminate is required to correctly return NULL.
+            if (testValues.isEmpty()) {
+                elseBlock.append(new BytecodeBlock()
+                        .append(generatorContext.generateCall(isIndeterminateFunction, ImmutableList.of(value)))
+                        .putVariable(wasNull));
+            }
+            else {
+                elseBlock.append(wasNull.set(caseWasNull));
+            }
+        }
+
+        elseBlock.gotoLabel(noMatchLabel);
+
+        BytecodeNode elseNode = elseBlock;
+        for (BytecodeNode testNode : testValues) {
+            LabelNode testLabel = new LabelNode("test");
+            IfStatement test = new IfStatement();
+
+            BytecodeNode equalsCall = generatorContext.generateCall(equals, ImmutableList.of(value, testNode));
+
+            test.condition()
+                    .visitLabel(testLabel)
+                    .append(equalsCall);
+
+            if (checkForNulls) {
+                IfStatement wasNullCheck = new IfStatement("if wasNull, set caseWasNull to true, clear wasNull, pop boolean, and goto next test value");
+                wasNullCheck.condition(wasNull);
+                wasNullCheck.ifTrue(new BytecodeBlock()
+                        .append(caseWasNull.set(constantTrue()))
+                        .append(wasNull.set(constantFalse()))
+                        .pop(boolean.class)
+                        .gotoLabel(elseLabel));
+                test.condition().append(wasNullCheck);
+            }
+
+            test.ifTrue().gotoLabel(matchLabel);
+            test.ifFalse(elseNode);
+
+            elseNode = test;
+            elseLabel = testLabel;
+        }
+        caseBlock.append(elseNode);
+        return caseBlock;
+    }
+
+    private static boolean isDeterminateConstant(RowExpression expression, MethodHandle isIndeterminateFunction)
+    {
+        if (!(expression instanceof ConstantExpression)) {
+            return false;
+        }
+        ConstantExpression constantExpression = (ConstantExpression) expression;
+        Object value = constantExpression.getValue();
+        if (value == null) {
+            return false;
+        }
+        try {
+            return !(boolean) isIndeterminateFunction.invoke(value);
+        }
+        catch (Throwable t) {
+            throwIfUnchecked(t);
+            throw new RuntimeException(t);
+        }
     }
 
     @Override
@@ -281,104 +375,10 @@ public class InCodeGenerator
         return block;
     }
 
-    public static boolean isInteger(long value)
+    enum SwitchGenerationCase
     {
-        return value == (int) value;
-    }
-
-    private static BytecodeBlock buildInCase(
-            BytecodeGeneratorContext generatorContext,
-            Scope scope,
-            ResolvedFunction equals,
-            LabelNode matchLabel,
-            LabelNode noMatchLabel,
-            Variable value,
-            Collection<BytecodeNode> testValues,
-            boolean checkForNulls,
-            ResolvedFunction isIndeterminateFunction)
-    {
-        Variable caseWasNull = null; // caseWasNull is set to true the first time a null in `testValues` is encountered
-        if (checkForNulls) {
-            caseWasNull = scope.createTempVariable(boolean.class);
-        }
-
-        BytecodeBlock caseBlock = new BytecodeBlock();
-
-        if (checkForNulls) {
-            caseBlock.putVariable(caseWasNull, false);
-        }
-
-        LabelNode elseLabel = new LabelNode("else");
-        BytecodeBlock elseBlock = new BytecodeBlock()
-                .visitLabel(elseLabel);
-
-        Variable wasNull = generatorContext.wasNull();
-        if (checkForNulls) {
-            // Consider following expression: "ARRAY[null] IN (ARRAY[1], ARRAY[2], ARRAY[3]) => NULL"
-            // All lookup values will go to the SET_CONTAINS, since neither of them is indeterminate.
-            // As ARRAY[null] is not among them, the code will fall through to the defaultCaseBlock.
-            // Since there is no values in the defaultCaseBlock, the defaultCaseBlock will return FALSE.
-            // That is incorrect. Doing an explicit check for indeterminate is required to correctly return NULL.
-            if (testValues.isEmpty()) {
-                elseBlock.append(new BytecodeBlock()
-                        .append(generatorContext.generateCall(isIndeterminateFunction, ImmutableList.of(value)))
-                        .putVariable(wasNull));
-            }
-            else {
-                elseBlock.append(wasNull.set(caseWasNull));
-            }
-        }
-
-        elseBlock.gotoLabel(noMatchLabel);
-
-        BytecodeNode elseNode = elseBlock;
-        for (BytecodeNode testNode : testValues) {
-            LabelNode testLabel = new LabelNode("test");
-            IfStatement test = new IfStatement();
-
-            BytecodeNode equalsCall = generatorContext.generateCall(equals, ImmutableList.of(value, testNode));
-
-            test.condition()
-                    .visitLabel(testLabel)
-                    .append(equalsCall);
-
-            if (checkForNulls) {
-                IfStatement wasNullCheck = new IfStatement("if wasNull, set caseWasNull to true, clear wasNull, pop boolean, and goto next test value");
-                wasNullCheck.condition(wasNull);
-                wasNullCheck.ifTrue(new BytecodeBlock()
-                        .append(caseWasNull.set(constantTrue()))
-                        .append(wasNull.set(constantFalse()))
-                        .pop(boolean.class)
-                        .gotoLabel(elseLabel));
-                test.condition().append(wasNullCheck);
-            }
-
-            test.ifTrue().gotoLabel(matchLabel);
-            test.ifFalse(elseNode);
-
-            elseNode = test;
-            elseLabel = testLabel;
-        }
-        caseBlock.append(elseNode);
-        return caseBlock;
-    }
-
-    private static boolean isDeterminateConstant(RowExpression expression, MethodHandle isIndeterminateFunction)
-    {
-        if (!(expression instanceof ConstantExpression)) {
-            return false;
-        }
-        ConstantExpression constantExpression = (ConstantExpression) expression;
-        Object value = constantExpression.getValue();
-        if (value == null) {
-            return false;
-        }
-        try {
-            return !(boolean) isIndeterminateFunction.invoke(value);
-        }
-        catch (Throwable t) {
-            throwIfUnchecked(t);
-            throw new RuntimeException(t);
-        }
+        DIRECT_SWITCH,
+        HASH_SWITCH,
+        SET_CONTAINS
     }
 }

@@ -49,6 +49,28 @@ import static java.util.Locale.ENGLISH;
 public class ServerSecurityModule
         extends AbstractConfigurationAwareModule
 {
+    public static Module authenticatorModule(String name, Class<? extends Authenticator> clazz, Module module)
+    {
+        checkArgument(name.toLowerCase(ENGLISH).equals(name), "name is not lower case: %s", name);
+        Module authModule = binder -> authenticatorBinder(binder).addBinding(name).to(clazz).in(Scopes.SINGLETON);
+        return conditionalModule(
+                SecurityConfig.class,
+                config -> authenticationTypes(config).contains(name),
+                combine(module, authModule));
+    }
+
+    private static MapBinder<String, Authenticator> authenticatorBinder(Binder binder)
+    {
+        return newMapBinder(binder, String.class, Authenticator.class);
+    }
+
+    private static List<String> authenticationTypes(SecurityConfig config)
+    {
+        return config.getAuthenticationTypes().stream()
+                .map(type -> type.toLowerCase(ENGLISH))
+                .collect(toImmutableList());
+    }
+
     @Override
     protected void setup(Binder binder)
     {
@@ -103,31 +125,9 @@ public class ServerSecurityModule
                 .collect(toImmutableList());
     }
 
-    public static Module authenticatorModule(String name, Class<? extends Authenticator> clazz, Module module)
-    {
-        checkArgument(name.toLowerCase(ENGLISH).equals(name), "name is not lower case: %s", name);
-        Module authModule = binder -> authenticatorBinder(binder).addBinding(name).to(clazz).in(Scopes.SINGLETON);
-        return conditionalModule(
-                SecurityConfig.class,
-                config -> authenticationTypes(config).contains(name),
-                combine(module, authModule));
-    }
-
     private void installAuthenticator(String name, Class<? extends Authenticator> authenticator, Class<?> config)
     {
         install(authenticatorModule(name, authenticator, binder -> configBinder(binder).bindConfig(config)));
-    }
-
-    private static MapBinder<String, Authenticator> authenticatorBinder(Binder binder)
-    {
-        return newMapBinder(binder, String.class, Authenticator.class);
-    }
-
-    private static List<String> authenticationTypes(SecurityConfig config)
-    {
-        return config.getAuthenticationTypes().stream()
-                .map(type -> type.toLowerCase(ENGLISH))
-                .collect(toImmutableList());
     }
 
     private void insecureHttpAuthenticationDefaults()

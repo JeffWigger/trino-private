@@ -213,12 +213,6 @@ public class AccessControlManager
                         .build());
     }
 
-    @VisibleForTesting
-    public void setSystemAccessControls(List<SystemAccessControl> systemAccessControls)
-    {
-        checkState(this.systemAccessControls.compareAndSet(null, systemAccessControls), "System access control already initialized");
-    }
-
     @Override
     public void checkCanImpersonateUser(Identity identity, String userName)
     {
@@ -1162,6 +1156,22 @@ public class AccessControlManager
                 .orElse(ImmutableList.of(new InitializingSystemAccessControl()));
     }
 
+    @VisibleForTesting
+    public void setSystemAccessControls(List<SystemAccessControl> systemAccessControls)
+    {
+        checkState(this.systemAccessControls.compareAndSet(null, systemAccessControls), "System access control already initialized");
+    }
+
+    private static class InitializingSystemAccessControl
+            extends ForwardingSystemAccessControl
+    {
+        @Override
+        protected SystemAccessControl delegate()
+        {
+            throw new TrinoException(SERVER_STARTING_UP, "Trino server is still initializing");
+        }
+    }
+
     private class CatalogAccessControlEntry
     {
         private final CatalogName catalogName;
@@ -1199,16 +1209,6 @@ public class AccessControlManager
                     transactionManager.getConnectorTransaction(requiredTransactionId, catalogName),
                     identity.toConnectorIdentity(catalogName.getCatalogName()),
                     queryId);
-        }
-    }
-
-    private static class InitializingSystemAccessControl
-            extends ForwardingSystemAccessControl
-    {
-        @Override
-        protected SystemAccessControl delegate()
-        {
-            throw new TrinoException(SERVER_STARTING_UP, "Trino server is still initializing");
         }
     }
 }

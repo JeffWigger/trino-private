@@ -22,16 +22,16 @@ import java.util.List;
 
 public interface PartitioningSpillerFactory
 {
-    PartitioningSpiller create(
-            List<Type> types,
-            PartitionFunction partitionFunction,
-            SpillContext spillContext,
-            AggregatedMemoryContext memoryContext);
-
     static PartitioningSpillerFactory unsupportedPartitioningSpillerFactory()
     {
         return (types, partitionFunction, spillContext, memoryContext) -> {
             throw new UnsupportedOperationException();
         };
     }
+
+    PartitioningSpiller create(
+            List<Type> types,
+            PartitionFunction partitionFunction,
+            SpillContext spillContext,
+            AggregatedMemoryContext memoryContext);
 }

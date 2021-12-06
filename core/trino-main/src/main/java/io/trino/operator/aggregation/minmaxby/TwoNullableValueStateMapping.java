@@ -26,30 +26,9 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 public final class TwoNullableValueStateMapping
 {
-    private TwoNullableValueStateMapping() {}
-
     private static final Map<List<Class<?>>, Class<? extends AccumulatorState>> STATE_MAPPINGS;
 
-    static {
-        STATE_MAPPINGS = new ImmutableMap.Builder<List<Class<?>>, Class<? extends AccumulatorState>>()
-                .put(ImmutableList.of(boolean.class, boolean.class), BooleanBooleanState.class)
-                .put(ImmutableList.of(boolean.class, double.class), BooleanDoubleState.class)
-                .put(ImmutableList.of(boolean.class, long.class), BooleanLongState.class)
-                .put(ImmutableList.of(boolean.class, Object.class), BooleanAndBlockPositionValueState.class)
-                .put(ImmutableList.of(double.class, boolean.class), DoubleBooleanState.class)
-                .put(ImmutableList.of(double.class, double.class), DoubleDoubleState.class)
-                .put(ImmutableList.of(double.class, long.class), DoubleLongState.class)
-                .put(ImmutableList.of(double.class, Object.class), DoubleAndBlockPositionValueState.class)
-                .put(ImmutableList.of(long.class, boolean.class), LongBooleanState.class)
-                .put(ImmutableList.of(long.class, double.class), LongDoubleState.class)
-                .put(ImmutableList.of(long.class, long.class), LongLongState.class)
-                .put(ImmutableList.of(long.class, Object.class), LongAndBlockPositionValueState.class)
-                .put(ImmutableList.of(Object.class, boolean.class), ObjectBooleanState.class)
-                .put(ImmutableList.of(Object.class, double.class), ObjectDoubleState.class)
-                .put(ImmutableList.of(Object.class, long.class), ObjectLongState.class)
-                .put(ImmutableList.of(Object.class, Object.class), ObjectAndBlockPositionValueState.class)
-                .build();
-    }
+    private TwoNullableValueStateMapping() {}
 
     public static Class<? extends AccumulatorState> getStateClass(Class<?> first, Class<?> second)
     {
@@ -75,5 +54,26 @@ public final class TwoNullableValueStateMapping
             return new DoubleAndBlockPositionStateSerializer(firstType, secondType);
         }
         return new ObjectAndBlockPositionStateSerializer(firstType, secondType);
+    }
+
+    static {
+        STATE_MAPPINGS = new ImmutableMap.Builder<List<Class<?>>, Class<? extends AccumulatorState>>()
+                .put(ImmutableList.of(boolean.class, boolean.class), BooleanBooleanState.class)
+                .put(ImmutableList.of(boolean.class, double.class), BooleanDoubleState.class)
+                .put(ImmutableList.of(boolean.class, long.class), BooleanLongState.class)
+                .put(ImmutableList.of(boolean.class, Object.class), BooleanAndBlockPositionValueState.class)
+                .put(ImmutableList.of(double.class, boolean.class), DoubleBooleanState.class)
+                .put(ImmutableList.of(double.class, double.class), DoubleDoubleState.class)
+                .put(ImmutableList.of(double.class, long.class), DoubleLongState.class)
+                .put(ImmutableList.of(double.class, Object.class), DoubleAndBlockPositionValueState.class)
+                .put(ImmutableList.of(long.class, boolean.class), LongBooleanState.class)
+                .put(ImmutableList.of(long.class, double.class), LongDoubleState.class)
+                .put(ImmutableList.of(long.class, long.class), LongLongState.class)
+                .put(ImmutableList.of(long.class, Object.class), LongAndBlockPositionValueState.class)
+                .put(ImmutableList.of(Object.class, boolean.class), ObjectBooleanState.class)
+                .put(ImmutableList.of(Object.class, double.class), ObjectDoubleState.class)
+                .put(ImmutableList.of(Object.class, long.class), ObjectLongState.class)
+                .put(ImmutableList.of(Object.class, Object.class), ObjectAndBlockPositionValueState.class)
+                .build();
     }
 }

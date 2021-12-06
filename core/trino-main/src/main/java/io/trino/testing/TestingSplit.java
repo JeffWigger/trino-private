@@ -29,6 +29,13 @@ public class TestingSplit
     private final boolean remotelyAccessible;
     private final List<HostAddress> addresses;
 
+    @JsonCreator
+    public TestingSplit(@JsonProperty("remotelyAccessible") boolean remotelyAccessible, @JsonProperty("addresses") List<HostAddress> addresses)
+    {
+        this.addresses = addresses;
+        this.remotelyAccessible = remotelyAccessible;
+    }
+
     public static TestingSplit createLocalSplit()
     {
         return new TestingSplit(false, ImmutableList.of(localHost));
@@ -42,13 +49,6 @@ public class TestingSplit
     public static TestingSplit createRemoteSplit()
     {
         return new TestingSplit(true, ImmutableList.of());
-    }
-
-    @JsonCreator
-    public TestingSplit(@JsonProperty("remotelyAccessible") boolean remotelyAccessible, @JsonProperty("addresses") List<HostAddress> addresses)
-    {
-        this.addresses = addresses;
-        this.remotelyAccessible = remotelyAccessible;
     }
 
     @JsonProperty

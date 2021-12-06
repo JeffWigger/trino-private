@@ -49,6 +49,17 @@ public class DecimalEncoding
         this.type = (DecimalType) type;
     }
 
+    private static int getWriteByteCount(long value)
+    {
+        // if the value is negative flip the bits, so we can always count leading zero bytes
+        if (value < 0) {
+            value = ~value;
+        }
+
+        // count number of leading zero bytes
+        return (Long.SIZE - Long.numberOfLeadingZeros(value)) / BITS_IN_BYTE + 1;
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -200,17 +211,6 @@ public class DecimalEncoding
         for (int i = length - 1; i >= 0; i--) {
             output.writeByte((int) (value >> (i * 8)));
         }
-    }
-
-    private static int getWriteByteCount(long value)
-    {
-        // if the value is negative flip the bits, so we can always count leading zero bytes
-        if (value < 0) {
-            value = ~value;
-        }
-
-        // count number of leading zero bytes
-        return (Long.SIZE - Long.numberOfLeadingZeros(value)) / BITS_IN_BYTE + 1;
     }
 
     private void writeSlice(SliceOutput output, Block block, int position)

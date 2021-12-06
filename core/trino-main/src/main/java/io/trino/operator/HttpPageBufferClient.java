@@ -94,26 +94,6 @@ public final class HttpPageBufferClient
         implements Closeable
 {
     private static final Logger log = Logger.get(HttpPageBufferClient.class);
-
-    /**
-     * For each request, the addPage method will be called zero or more times,
-     * followed by either requestComplete or clientFinished (if buffer complete).  If the client is
-     * closed, requestComplete or bufferFinished may never be called.
-     * <p/>
-     * <b>NOTE:</b> Implementations of this interface are not allowed to perform
-     * blocking operations.
-     */
-    public interface ClientCallback
-    {
-        boolean addPages(HttpPageBufferClient client, List<SerializedPage> pages);
-
-        void requestComplete(HttpPageBufferClient client);
-
-        void clientFinished(HttpPageBufferClient client);
-
-        void clientFailed(HttpPageBufferClient client, Throwable cause);
-    }
-
     private final String selfAddress;
     private final HttpClient httpClient;
     private final DataIntegrityVerification dataIntegrityVerification;
@@ -123,7 +103,14 @@ public final class HttpPageBufferClient
     private final ClientCallback clientCallback;
     private final ScheduledExecutorService scheduler;
     private final Backoff backoff;
-
+    private final AtomicLong rowsReceived = new AtomicLong();
+    private final AtomicInteger pagesReceived = new AtomicInteger();
+    private final AtomicLong rowsRejected = new AtomicLong();
+    private final AtomicInteger pagesRejected = new AtomicInteger();
+    private final AtomicInteger requestsScheduled = new AtomicInteger();
+    private final AtomicInteger requestsCompleted = new AtomicInteger();
+    private final AtomicInteger requestsFailed = new AtomicInteger();
+    private final Executor pageBufferClientCallbackExecutor;
     @GuardedBy("this")
     private boolean closed;
     @GuardedBy("this")
@@ -138,18 +125,6 @@ public final class HttpPageBufferClient
     private boolean completed;
     @GuardedBy("this")
     private String taskInstanceId;
-
-    private final AtomicLong rowsReceived = new AtomicLong();
-    private final AtomicInteger pagesReceived = new AtomicInteger();
-
-    private final AtomicLong rowsRejected = new AtomicLong();
-    private final AtomicInteger pagesRejected = new AtomicInteger();
-
-    private final AtomicInteger requestsScheduled = new AtomicInteger();
-    private final AtomicInteger requestsCompleted = new AtomicInteger();
-    private final AtomicInteger requestsFailed = new AtomicInteger();
-
-    private final Executor pageBufferClientCallbackExecutor;
 
     public HttpPageBufferClient(
             String selfAddress,
@@ -202,6 +177,20 @@ public final class HttpPageBufferClient
         requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         requireNonNull(ticker, "ticker is null");
         this.backoff = new Backoff(maxErrorDuration, ticker);
+    }
+
+    @SuppressWarnings("checkstyle:IllegalToken")
+    private static void assertNotHoldsLock(Object lock)
+    {
+        assert !Thread.holdsLock(lock) : "Cannot execute this method while holding a lock";
+    }
+
+    private static Throwable rewriteException(Throwable t)
+    {
+        if (t instanceof ResponseTooLargeException) {
+            return new PageTooLargeException();
+        }
+        return t;
     }
 
     public synchronized PageBufferClientStatus getStatus()
@@ -499,12 +488,6 @@ public final class HttpPageBufferClient
         }, pageBufferClientCallbackExecutor);
     }
 
-    @SuppressWarnings("checkstyle:IllegalToken")
-    private static void assertNotHoldsLock(Object lock)
-    {
-        assert !Thread.holdsLock(lock) : "Cannot execute this method while holding a lock";
-    }
-
     private void handleFailure(Throwable t, HttpResponseFuture<?> expectedFuture)
     {
         // Cannot delegate to other callback while holding a lock on this
@@ -572,12 +555,23 @@ public final class HttpPageBufferClient
                 .toString();
     }
 
-    private static Throwable rewriteException(Throwable t)
+    /**
+     * For each request, the addPage method will be called zero or more times,
+     * followed by either requestComplete or clientFinished (if buffer complete).  If the client is
+     * closed, requestComplete or bufferFinished may never be called.
+     * <p/>
+     * <b>NOTE:</b> Implementations of this interface are not allowed to perform
+     * blocking operations.
+     */
+    public interface ClientCallback
     {
-        if (t instanceof ResponseTooLargeException) {
-            return new PageTooLargeException();
-        }
-        return t;
+        boolean addPages(HttpPageBufferClient client, List<SerializedPage> pages);
+
+        void requestComplete(HttpPageBufferClient client);
+
+        void clientFinished(HttpPageBufferClient client);
+
+        void clientFailed(HttpPageBufferClient client, Throwable cause);
     }
 
     public static class PageResponseHandler
@@ -588,6 +582,52 @@ public final class HttpPageBufferClient
         private PageResponseHandler(boolean dataIntegrityVerificationEnabled)
         {
             this.dataIntegrityVerificationEnabled = dataIntegrityVerificationEnabled;
+        }
+
+        private static String getTaskInstanceId(Response response, URI uri)
+        {
+            String taskInstanceId = response.getHeader(TRINO_TASK_INSTANCE_ID);
+            if (taskInstanceId == null) {
+                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_TASK_INSTANCE_ID));
+            }
+            return taskInstanceId;
+        }
+
+        private static long getToken(Response response, URI uri)
+        {
+            String tokenHeader = response.getHeader(TRINO_PAGE_TOKEN);
+            if (tokenHeader == null) {
+                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_PAGE_TOKEN));
+            }
+            return Long.parseLong(tokenHeader);
+        }
+
+        private static long getNextToken(Response response, URI uri)
+        {
+            String nextTokenHeader = response.getHeader(TRINO_PAGE_NEXT_TOKEN);
+            if (nextTokenHeader == null) {
+                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_PAGE_NEXT_TOKEN));
+            }
+            return Long.parseLong(nextTokenHeader);
+        }
+
+        private static boolean getComplete(Response response, URI uri)
+        {
+            String bufferComplete = response.getHeader(TRINO_BUFFER_COMPLETE);
+            if (bufferComplete == null) {
+                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_BUFFER_COMPLETE));
+            }
+            return Boolean.parseBoolean(bufferComplete);
+        }
+
+        private static boolean mediaTypeMatches(String value, MediaType range)
+        {
+            try {
+                return MediaType.parse(value).is(range);
+            }
+            catch (IllegalArgumentException | IllegalStateException e) {
+                return false;
+            }
         }
 
         @Override
@@ -676,56 +716,24 @@ public final class HttpPageBufferClient
                 }
             }
         }
-
-        private static String getTaskInstanceId(Response response, URI uri)
-        {
-            String taskInstanceId = response.getHeader(TRINO_TASK_INSTANCE_ID);
-            if (taskInstanceId == null) {
-                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_TASK_INSTANCE_ID));
-            }
-            return taskInstanceId;
-        }
-
-        private static long getToken(Response response, URI uri)
-        {
-            String tokenHeader = response.getHeader(TRINO_PAGE_TOKEN);
-            if (tokenHeader == null) {
-                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_PAGE_TOKEN));
-            }
-            return Long.parseLong(tokenHeader);
-        }
-
-        private static long getNextToken(Response response, URI uri)
-        {
-            String nextTokenHeader = response.getHeader(TRINO_PAGE_NEXT_TOKEN);
-            if (nextTokenHeader == null) {
-                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_PAGE_NEXT_TOKEN));
-            }
-            return Long.parseLong(nextTokenHeader);
-        }
-
-        private static boolean getComplete(Response response, URI uri)
-        {
-            String bufferComplete = response.getHeader(TRINO_BUFFER_COMPLETE);
-            if (bufferComplete == null) {
-                throw new PageTransportErrorException(fromUri(uri), format("Expected %s header", TRINO_BUFFER_COMPLETE));
-            }
-            return Boolean.parseBoolean(bufferComplete);
-        }
-
-        private static boolean mediaTypeMatches(String value, MediaType range)
-        {
-            try {
-                return MediaType.parse(value).is(range);
-            }
-            catch (IllegalArgumentException | IllegalStateException e) {
-                return false;
-            }
-        }
     }
 
     public static class PagesResponse
     {
+        private final String taskInstanceId;
+        private final long token;
+        private final long nextToken;
+        private final List<SerializedPage> pages;
+        private final boolean clientComplete;
+        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete)
+        {
+            this.taskInstanceId = taskInstanceId;
+            this.token = token;
+            this.nextToken = nextToken;
+            this.pages = ImmutableList.copyOf(pages);
+            this.clientComplete = clientComplete;
+        }
+
         public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete)
         {
             return new PagesResponse(taskInstanceId, token, nextToken, pages, complete);
@@ -734,21 +742,6 @@ public final class HttpPageBufferClient
         public static PagesResponse createEmptyPagesResponse(String taskInstanceId, long token, long nextToken, boolean complete)
         {
             return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete);
-        }
-
-        private final String taskInstanceId;
-        private final long token;
-        private final long nextToken;
-        private final List<SerializedPage> pages;
-        private final boolean clientComplete;
-
-        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete)
-        {
-            this.taskInstanceId = taskInstanceId;
-            this.token = token;
-            this.nextToken = nextToken;
-            this.pages = ImmutableList.copyOf(pages);
-            this.clientComplete = clientComplete;
         }
 
         public long getToken()

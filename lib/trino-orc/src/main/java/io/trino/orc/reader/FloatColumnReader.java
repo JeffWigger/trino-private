@@ -52,23 +52,17 @@ public class FloatColumnReader
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(FloatColumnReader.class).instanceSize();
 
     private final OrcColumn column;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<FloatInputStream> dataStreamSource = missingStreamSource(FloatInputStream.class);
     @Nullable
     private FloatInputStream dataStream;
-
     private boolean rowGroupOpen;
-
     private int[] nonNullValueTemp = new int[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public FloatColumnReader(Type type, OrcColumn column, LocalMemoryContext systemMemoryContext)
             throws OrcCorruptionException

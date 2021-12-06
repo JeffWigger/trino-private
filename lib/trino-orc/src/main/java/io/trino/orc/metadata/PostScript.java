@@ -25,31 +25,12 @@ import static java.util.Objects.requireNonNull;
 public class PostScript
 {
     public static final Slice MAGIC = Slices.utf8Slice("ORC");
-
-    public enum HiveWriterVersion
-    {
-        ORIGINAL(0), ORC_HIVE_8732(1);
-
-        private final int orcWriterVersion;
-
-        HiveWriterVersion(int orcWriterVersion)
-        {
-            this.orcWriterVersion = orcWriterVersion;
-        }
-
-        public int getOrcWriterVersion()
-        {
-            return orcWriterVersion;
-        }
-    }
-
     private final List<Integer> version;
     private final long footerLength;
     private final long metadataLength;
     private final CompressionKind compression;
     private final long compressionBlockSize;
     private final HiveWriterVersion hiveWriterVersion;
-
     public PostScript(List<Integer> version, long footerLength, long metadataLength, CompressionKind compression, long compressionBlockSize, HiveWriterVersion hiveWriterVersion)
     {
         this.version = ImmutableList.copyOf(requireNonNull(version, "version is null"));
@@ -101,5 +82,22 @@ public class PostScript
                 .add("compressionBlockSize", compressionBlockSize)
                 .add("hiveWriterVersion", hiveWriterVersion)
                 .toString();
+    }
+
+    public enum HiveWriterVersion
+    {
+        ORIGINAL(0), ORC_HIVE_8732(1);
+
+        private final int orcWriterVersion;
+
+        HiveWriterVersion(int orcWriterVersion)
+        {
+            this.orcWriterVersion = orcWriterVersion;
+        }
+
+        public int getOrcWriterVersion()
+        {
+            return orcWriterVersion;
+        }
     }
 }

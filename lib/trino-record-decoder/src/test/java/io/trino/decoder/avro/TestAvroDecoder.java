@@ -141,28 +141,6 @@ public class TestAvroDecoder
                 .fields();
     }
 
-    private Map<DecoderColumnHandle, FieldValueProvider> buildAndDecodeColumns(Set<DecoderColumnHandle> columns, Map<String, String> fieldSchema, Map<String, Object> fieldValue)
-    {
-        Schema schema = getAvroSchema(fieldSchema);
-        byte[] avroData = buildAvroData(schema, fieldValue);
-
-        return decodeRow(
-                avroData,
-                columns,
-                ImmutableMap.of(DATA_SCHEMA, schema.toString()));
-    }
-
-    private Map<DecoderColumnHandle, FieldValueProvider> buildAndDecodeColumn(DecoderTestColumnHandle column, String columnName, String columnType, Object actualValue)
-    {
-        Map<DecoderColumnHandle, FieldValueProvider> decodedRow = buildAndDecodeColumns(
-                ImmutableSet.of(column),
-                ImmutableMap.of(columnName, columnType),
-                ImmutableMap.of(columnName, actualValue));
-
-        assertEquals(decodedRow.size(), 1);
-        return decodedRow;
-    }
-
     private static Map<DecoderColumnHandle, FieldValueProvider> decodeRow(byte[] avroData, Set<DecoderColumnHandle> columns, Map<String, String> dataParams)
     {
         RowDecoder rowDecoder = DECODER_FACTORY.create(dataParams, columns);
@@ -204,6 +182,61 @@ public class TestAvroDecoder
             throw new RuntimeException("Failed to convert to Avro.", e);
         }
         return record;
+    }
+
+    private static void checkRowValue(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle, Object expected)
+    {
+        checkRowValues(getBlock(decodedRow, handle), handle.getType(), expected);
+    }
+
+    private static void checkArrayValue(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle, Object expected)
+    {
+        checkArrayValues(getBlock(decodedRow, handle), handle.getType(), expected);
+    }
+
+    private static void checkArrayItemIsNull(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle, long[] expected)
+    {
+        Block actualBlock = getBlock(decodedRow, handle);
+        assertEquals(actualBlock.getPositionCount(), expected.length);
+
+        for (int i = 0; i < actualBlock.getPositionCount(); i++) {
+            assertTrue(actualBlock.isNull(i));
+            assertEquals(BIGINT.getLong(actualBlock, i), expected[i]);
+        }
+    }
+
+    private static void checkMapValue(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderTestColumnHandle handle, Object expected)
+    {
+        checkMapValues(getBlock(decodedRow, handle), handle.getType(), expected);
+    }
+
+    private static Block getBlock(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle)
+    {
+        FieldValueProvider provider = decodedRow.get(handle);
+        assertNotNull(provider);
+        return provider.getBlock();
+    }
+
+    private Map<DecoderColumnHandle, FieldValueProvider> buildAndDecodeColumns(Set<DecoderColumnHandle> columns, Map<String, String> fieldSchema, Map<String, Object> fieldValue)
+    {
+        Schema schema = getAvroSchema(fieldSchema);
+        byte[] avroData = buildAvroData(schema, fieldValue);
+
+        return decodeRow(
+                avroData,
+                columns,
+                ImmutableMap.of(DATA_SCHEMA, schema.toString()));
+    }
+
+    private Map<DecoderColumnHandle, FieldValueProvider> buildAndDecodeColumn(DecoderTestColumnHandle column, String columnName, String columnType, Object actualValue)
+    {
+        Map<DecoderColumnHandle, FieldValueProvider> decodedRow = buildAndDecodeColumns(
+                ImmutableSet.of(column),
+                ImmutableMap.of(columnName, columnType),
+                ImmutableMap.of(columnName, actualValue));
+
+        assertEquals(decodedRow.size(), 1);
+        return decodedRow;
     }
 
     @Test
@@ -1142,39 +1175,6 @@ public class TestAvroDecoder
                 .build())), "array_field", null, null, false, false, false);
         Map<DecoderColumnHandle, FieldValueProvider> decodedRow = buildAndDecodeColumn(row, "array_field", schema.toString(), data);
         checkArrayValue(decodedRow, row, data);
-    }
-
-    private static void checkRowValue(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle, Object expected)
-    {
-        checkRowValues(getBlock(decodedRow, handle), handle.getType(), expected);
-    }
-
-    private static void checkArrayValue(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle, Object expected)
-    {
-        checkArrayValues(getBlock(decodedRow, handle), handle.getType(), expected);
-    }
-
-    private static void checkArrayItemIsNull(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle, long[] expected)
-    {
-        Block actualBlock = getBlock(decodedRow, handle);
-        assertEquals(actualBlock.getPositionCount(), expected.length);
-
-        for (int i = 0; i < actualBlock.getPositionCount(); i++) {
-            assertTrue(actualBlock.isNull(i));
-            assertEquals(BIGINT.getLong(actualBlock, i), expected[i]);
-        }
-    }
-
-    private static void checkMapValue(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderTestColumnHandle handle, Object expected)
-    {
-        checkMapValues(getBlock(decodedRow, handle), handle.getType(), expected);
-    }
-
-    private static Block getBlock(Map<DecoderColumnHandle, FieldValueProvider> decodedRow, DecoderColumnHandle handle)
-    {
-        FieldValueProvider provider = decodedRow.get(handle);
-        assertNotNull(provider);
-        return provider.getBlock();
     }
 
     @Test

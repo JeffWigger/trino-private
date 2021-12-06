@@ -31,6 +31,98 @@ import static java.util.Objects.requireNonNull;
 public class WorkProcessorOperatorAdapter
         implements Operator
 {
+    private final OperatorContext operatorContext;
+    private final AdapterWorkProcessorOperator workProcessorOperator;
+    private final WorkProcessor<Page> pages;
+
+    public WorkProcessorOperatorAdapter(OperatorContext operatorContext, AdapterWorkProcessorOperatorFactory workProcessorOperatorFactory)
+    {
+        this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
+        MemoryTrackingContext memoryTrackingContext = new MemoryTrackingContext(
+                operatorContext.aggregateUserMemoryContext(),
+                operatorContext.aggregateRevocableMemoryContext(),
+                operatorContext.aggregateSystemMemoryContext());
+        memoryTrackingContext.initializeLocalMemoryContexts(workProcessorOperatorFactory.getOperatorType());
+        this.workProcessorOperator = requireNonNull(workProcessorOperatorFactory, "workProcessorOperatorFactory is null")
+                .createAdapterOperator(new ProcessorContext(operatorContext.getSession(), memoryTrackingContext, operatorContext));
+        this.pages = workProcessorOperator.getOutputPages();
+        operatorContext.setInfoSupplier(() -> workProcessorOperator.getOperatorInfo().orElse(null));
+    }
+
+    public static OperatorFactory createAdapterOperatorFactory(AdapterWorkProcessorOperatorFactory operatorFactory)
+    {
+        return new Factory(operatorFactory);
+    }
+
+    @Override
+    public OperatorContext getOperatorContext()
+    {
+        return operatorContext;
+    }
+
+    @Override
+    public ListenableFuture<Void> isBlocked()
+    {
+        if (!pages.isBlocked()) {
+            return NOT_BLOCKED;
+        }
+
+        return pages.getBlockedFuture();
+    }
+
+    @Override
+    public boolean needsInput()
+    {
+        return !isFinished() && workProcessorOperator.needsInput();
+    }
+
+    @Override
+    public void addInput(Page page)
+    {
+        workProcessorOperator.addInput(page);
+    }
+
+    @Override
+    public Page getOutput()
+    {
+        if (!pages.process()) {
+            updateOperatorMetrics();
+            return null;
+        }
+
+        if (pages.isFinished()) {
+            updateOperatorMetrics();
+            return null;
+        }
+
+        updateOperatorMetrics();
+        return pages.getResult();
+    }
+
+    @Override
+    public void finish()
+    {
+        workProcessorOperator.finish();
+    }
+
+    @Override
+    public boolean isFinished()
+    {
+        return pages.isFinished();
+    }
+
+    @Override
+    public void close()
+            throws Exception
+    {
+        workProcessorOperator.close();
+    }
+
+    private void updateOperatorMetrics()
+    {
+        operatorContext.setLatestMetrics(workProcessorOperator.getMetrics());
+    }
+
     public interface AdapterWorkProcessorOperator
             extends WorkProcessorOperator
     {
@@ -47,11 +139,6 @@ public class WorkProcessorOperatorAdapter
         AdapterWorkProcessorOperator createAdapterOperator(ProcessorContext processorContext);
 
         AdapterWorkProcessorOperatorFactory duplicate();
-    }
-
-    public static OperatorFactory createAdapterOperatorFactory(AdapterWorkProcessorOperatorFactory operatorFactory)
-    {
-        return new Factory(operatorFactory);
     }
 
     /**
@@ -134,92 +221,5 @@ public class WorkProcessorOperatorAdapter
         {
             operatorFactory.close();
         }
-    }
-
-    private final OperatorContext operatorContext;
-    private final AdapterWorkProcessorOperator workProcessorOperator;
-    private final WorkProcessor<Page> pages;
-
-    public WorkProcessorOperatorAdapter(OperatorContext operatorContext, AdapterWorkProcessorOperatorFactory workProcessorOperatorFactory)
-    {
-        this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
-        MemoryTrackingContext memoryTrackingContext = new MemoryTrackingContext(
-                operatorContext.aggregateUserMemoryContext(),
-                operatorContext.aggregateRevocableMemoryContext(),
-                operatorContext.aggregateSystemMemoryContext());
-        memoryTrackingContext.initializeLocalMemoryContexts(workProcessorOperatorFactory.getOperatorType());
-        this.workProcessorOperator = requireNonNull(workProcessorOperatorFactory, "workProcessorOperatorFactory is null")
-                .createAdapterOperator(new ProcessorContext(operatorContext.getSession(), memoryTrackingContext, operatorContext));
-        this.pages = workProcessorOperator.getOutputPages();
-        operatorContext.setInfoSupplier(() -> workProcessorOperator.getOperatorInfo().orElse(null));
-    }
-
-    @Override
-    public OperatorContext getOperatorContext()
-    {
-        return operatorContext;
-    }
-
-    @Override
-    public ListenableFuture<Void> isBlocked()
-    {
-        if (!pages.isBlocked()) {
-            return NOT_BLOCKED;
-        }
-
-        return pages.getBlockedFuture();
-    }
-
-    @Override
-    public boolean needsInput()
-    {
-        return !isFinished() && workProcessorOperator.needsInput();
-    }
-
-    @Override
-    public void addInput(Page page)
-    {
-        workProcessorOperator.addInput(page);
-    }
-
-    @Override
-    public Page getOutput()
-    {
-        if (!pages.process()) {
-            updateOperatorMetrics();
-            return null;
-        }
-
-        if (pages.isFinished()) {
-            updateOperatorMetrics();
-            return null;
-        }
-
-        updateOperatorMetrics();
-        return pages.getResult();
-    }
-
-    @Override
-    public void finish()
-    {
-        workProcessorOperator.finish();
-    }
-
-    @Override
-    public boolean isFinished()
-    {
-        return pages.isFinished();
-    }
-
-    @Override
-    public void close()
-            throws Exception
-    {
-        workProcessorOperator.close();
-    }
-
-    private void updateOperatorMetrics()
-    {
-        operatorContext.setLatestMetrics(workProcessorOperator.getMetrics());
     }
 }

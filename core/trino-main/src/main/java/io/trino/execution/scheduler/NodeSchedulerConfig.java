@@ -26,11 +26,6 @@ import static java.util.Locale.ENGLISH;
 @DefunctConfig({"node-scheduler.location-aware-scheduling-enabled", "node-scheduler.multiple-tasks-per-node-enabled"})
 public class NodeSchedulerConfig
 {
-    public enum NodeSchedulerPolicy
-    {
-        UNIFORM, TOPOLOGY
-    }
-
     private int minCandidates = 10;
     private boolean includeCoordinator = true;
     private int maxSplitsPerNode = 100;
@@ -38,20 +33,6 @@ public class NodeSchedulerConfig
     private NodeSchedulerPolicy nodeSchedulerPolicy = NodeSchedulerPolicy.UNIFORM;
     private boolean optimizedLocalScheduling = true;
     private int maxUnacknowledgedSplitsPerTask = 500;
-
-    @NotNull
-    public NodeSchedulerPolicy getNodeSchedulerPolicy()
-    {
-        return nodeSchedulerPolicy;
-    }
-
-    @LegacyConfig("node-scheduler.network-topology")
-    @Config("node-scheduler.policy")
-    public NodeSchedulerConfig setNodeSchedulerPolicy(String nodeSchedulerPolicy)
-    {
-        this.nodeSchedulerPolicy = toNodeSchedulerPolicy(nodeSchedulerPolicy);
-        return this;
-    }
 
     private static NodeSchedulerPolicy toNodeSchedulerPolicy(String nodeSchedulerPolicy)
     {
@@ -66,6 +47,20 @@ public class NodeSchedulerConfig
             default:
                 throw new IllegalArgumentException("Unknown node scheduler policy: " + nodeSchedulerPolicy);
         }
+    }
+
+    @NotNull
+    public NodeSchedulerPolicy getNodeSchedulerPolicy()
+    {
+        return nodeSchedulerPolicy;
+    }
+
+    @LegacyConfig("node-scheduler.network-topology")
+    @Config("node-scheduler.policy")
+    public NodeSchedulerConfig setNodeSchedulerPolicy(String nodeSchedulerPolicy)
+    {
+        this.nodeSchedulerPolicy = toNodeSchedulerPolicy(nodeSchedulerPolicy);
+        return this;
     }
 
     @Min(1)
@@ -93,17 +88,17 @@ public class NodeSchedulerConfig
         return this;
     }
 
+    public int getMaxPendingSplitsPerTask()
+    {
+        return maxPendingSplitsPerTask;
+    }
+
     @Config("node-scheduler.max-pending-splits-per-task")
     @LegacyConfig({"node-scheduler.max-pending-splits-per-node-per-task", "node-scheduler.max-pending-splits-per-node-per-stage"})
     public NodeSchedulerConfig setMaxPendingSplitsPerTask(int maxPendingSplitsPerTask)
     {
         this.maxPendingSplitsPerTask = maxPendingSplitsPerTask;
         return this;
-    }
-
-    public int getMaxPendingSplitsPerTask()
-    {
-        return maxPendingSplitsPerTask;
     }
 
     public int getMaxSplitsPerNode()
@@ -142,5 +137,10 @@ public class NodeSchedulerConfig
     {
         this.optimizedLocalScheduling = optimizedLocalScheduling;
         return this;
+    }
+
+    public enum NodeSchedulerPolicy
+    {
+        UNIFORM, TOPOLOGY
     }
 }

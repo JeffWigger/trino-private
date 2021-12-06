@@ -78,6 +78,24 @@ public class Analyzer
         this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
     }
 
+    static void verifyNoAggregateWindowOrGroupingFunctions(Metadata metadata, Expression predicate, String clause)
+    {
+        List<FunctionCall> aggregates = extractAggregateFunctions(ImmutableList.of(predicate), metadata);
+
+        List<Expression> windowExpressions = extractWindowExpressions(ImmutableList.of(predicate));
+
+        List<GroupingOperation> groupingOperations = extractExpressions(ImmutableList.of(predicate), GroupingOperation.class);
+
+        List<Expression> found = ImmutableList.copyOf(Iterables.concat(
+                aggregates,
+                windowExpressions,
+                groupingOperations));
+
+        if (!found.isEmpty()) {
+            throw semanticException(EXPRESSION_NOT_SCALAR, predicate, "%s cannot contain aggregations, window functions or grouping operations: %s", clause, found);
+        }
+    }
+
     public Analysis analyze(Statement statement)
     {
         return analyze(statement, false);
@@ -98,23 +116,5 @@ public class Analyzer
                                 tableName,
                                 columns)));
         return analysis;
-    }
-
-    static void verifyNoAggregateWindowOrGroupingFunctions(Metadata metadata, Expression predicate, String clause)
-    {
-        List<FunctionCall> aggregates = extractAggregateFunctions(ImmutableList.of(predicate), metadata);
-
-        List<Expression> windowExpressions = extractWindowExpressions(ImmutableList.of(predicate));
-
-        List<GroupingOperation> groupingOperations = extractExpressions(ImmutableList.of(predicate), GroupingOperation.class);
-
-        List<Expression> found = ImmutableList.copyOf(Iterables.concat(
-                aggregates,
-                windowExpressions,
-                groupingOperations));
-
-        if (!found.isEmpty()) {
-            throw semanticException(EXPRESSION_NOT_SCALAR, predicate, "%s cannot contain aggregations, window functions or grouping operations: %s", clause, found);
-        }
     }
 }

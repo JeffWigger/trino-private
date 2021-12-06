@@ -47,6 +47,23 @@ public class ClusterMemoryLeakDetector
     @GuardedBy("this")
     private Set<QueryId> leakedQueries;
 
+    private static boolean isLeaked(Map<QueryId, BasicQueryInfo> queryIdToInfo, QueryId queryId)
+    {
+        BasicQueryInfo queryInfo = queryIdToInfo.get(queryId);
+
+        if (queryInfo == null) {
+            return true;
+        }
+
+        DateTime queryEndTime = queryInfo.getQueryStats().getEndTime();
+
+        if (queryInfo.getState() == RUNNING || queryEndTime == null) {
+            return false;
+        }
+
+        return secondsBetween(queryEndTime, now()).getSeconds() >= DEFAULT_LEAK_CLAIM_DELTA_SEC;
+    }
+
     /**
      * @param queryInfoSupplier All queries that the coordinator knows about.
      * @param queryMemoryReservations The memory reservations of queries in the GENERAL cluster memory pool.
@@ -72,23 +89,6 @@ public class ClusterMemoryLeakDetector
         synchronized (this) {
             leakedQueries = ImmutableSet.copyOf(leakedQueryReservations.keySet());
         }
-    }
-
-    private static boolean isLeaked(Map<QueryId, BasicQueryInfo> queryIdToInfo, QueryId queryId)
-    {
-        BasicQueryInfo queryInfo = queryIdToInfo.get(queryId);
-
-        if (queryInfo == null) {
-            return true;
-        }
-
-        DateTime queryEndTime = queryInfo.getQueryStats().getEndTime();
-
-        if (queryInfo.getState() == RUNNING || queryEndTime == null) {
-            return false;
-        }
-
-        return secondsBetween(queryEndTime, now()).getSeconds() >= DEFAULT_LEAK_CLAIM_DELTA_SEC;
     }
 
     synchronized boolean wasQueryPossiblyLeaked(QueryId queryId)

@@ -33,6 +33,11 @@ public class BooleanInputStream
         this.byteStream = new ByteInputStream(byteStream);
     }
 
+    private static int bitCount(byte data)
+    {
+        return Integer.bitCount(data & 0xFF);
+    }
+
     private void readByte()
             throws IOException
     {
@@ -310,10 +315,5 @@ public class BooleanInputStream
         }
 
         return unsetCount;
-    }
-
-    private static int bitCount(byte data)
-    {
-        return Integer.bitCount(data & 0xFF);
     }
 }

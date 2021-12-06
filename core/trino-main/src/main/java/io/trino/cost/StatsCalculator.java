@@ -21,6 +21,11 @@ import io.trino.sql.planner.plan.PlanNode;
 
 public interface StatsCalculator
 {
+    static StatsCalculator noopStatsCalculator()
+    {
+        return (node, sourceStats, lookup, ignore, types) -> PlanNodeStatsEstimate.unknown();
+    }
+
     /**
      * Calculate stats for the {@code node}.
      *
@@ -35,9 +40,4 @@ public interface StatsCalculator
             Lookup lookup,
             Session session,
             TypeProvider types);
-
-    static StatsCalculator noopStatsCalculator()
-    {
-        return (node, sourceStats, lookup, ignore, types) -> PlanNodeStatsEstimate.unknown();
-    }
 }

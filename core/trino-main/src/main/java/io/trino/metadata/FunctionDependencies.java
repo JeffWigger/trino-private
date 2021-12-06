@@ -66,6 +66,25 @@ public class FunctionDependencies
                 .collect(toImmutableMap(CastKey::new, identity()));
     }
 
+    private static List<TypeSignature> toTypeSignatures(List<Type> types)
+    {
+        return types.stream()
+                .map(Type::getTypeSignature)
+                .collect(toImmutableList());
+    }
+
+    private static boolean isOperator(ResolvedFunction function)
+    {
+        String name = function.getSignature().getName();
+        return isOperatorName(name) && unmangleOperator(name) != CAST;
+    }
+
+    private static boolean isCast(ResolvedFunction function)
+    {
+        String name = function.getSignature().getName();
+        return isOperatorName(name) && unmangleOperator(name) == CAST;
+    }
+
     public Type getType(TypeSignature typeSignature)
     {
         // CHAR type does not properly roundtrip, so load directly from metadata and then verify type was declared correctly
@@ -164,25 +183,6 @@ public class FunctionDependencies
             throw new UndeclaredDependencyException(castKey.toString());
         }
         return metadata.getScalarFunctionInvoker(resolvedFunction, invocationConvention);
-    }
-
-    private static List<TypeSignature> toTypeSignatures(List<Type> types)
-    {
-        return types.stream()
-                .map(Type::getTypeSignature)
-                .collect(toImmutableList());
-    }
-
-    private static boolean isOperator(ResolvedFunction function)
-    {
-        String name = function.getSignature().getName();
-        return isOperatorName(name) && unmangleOperator(name) != CAST;
-    }
-
-    private static boolean isCast(ResolvedFunction function)
-    {
-        String name = function.getSignature().getName();
-        return isOperatorName(name) && unmangleOperator(name) == CAST;
     }
 
     public static final class FunctionKey

@@ -29,6 +29,27 @@ class BoundVariables
     private final Map<String, Type> typeVariables = new TreeMap<>(CASE_INSENSITIVE_ORDER);
     private final Map<String, Long> longVariables = new TreeMap<>(CASE_INSENSITIVE_ORDER);
 
+    private static <T> T getValue(Map<String, T> map, String variableName)
+    {
+        checkState(variableName != null, "variableName is null");
+        T value = map.get(variableName);
+        checkState(value != null, "value for variable '%s' is null", variableName);
+        return value;
+    }
+
+    private static boolean containsValue(Map<String, ?> map, String variableName)
+    {
+        checkState(variableName != null, "variableName is null");
+        return map.containsKey(variableName);
+    }
+
+    private static <T> void setValue(Map<String, T> map, String variableName, T value)
+    {
+        checkState(variableName != null, "variableName is null");
+        checkState(value != null, "value for variable '%s' is null", variableName);
+        map.put(variableName, value);
+    }
+
     @Override
     public Type getTypeVariable(String variableName)
     {
@@ -73,27 +94,6 @@ class BoundVariables
     public Map<String, Long> getLongVariables()
     {
         return longVariables;
-    }
-
-    private static <T> T getValue(Map<String, T> map, String variableName)
-    {
-        checkState(variableName != null, "variableName is null");
-        T value = map.get(variableName);
-        checkState(value != null, "value for variable '%s' is null", variableName);
-        return value;
-    }
-
-    private static boolean containsValue(Map<String, ?> map, String variableName)
-    {
-        checkState(variableName != null, "variableName is null");
-        return map.containsKey(variableName);
-    }
-
-    private static <T> void setValue(Map<String, T> map, String variableName, T value)
-    {
-        checkState(variableName != null, "variableName is null");
-        checkState(value != null, "value for variable '%s' is null", variableName);
-        map.put(variableName, value);
     }
 
     @Override

@@ -24,11 +24,10 @@ import static java.util.Objects.requireNonNull;
 
 final class BlockUtil
 {
-    private static final double BLOCK_RESET_SKEW = 1.25;
-
-    private static final int DEFAULT_CAPACITY = 64;
     // See java.util.ArrayList for an explanation
     static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
+    private static final double BLOCK_RESET_SKEW = 1.25;
+    private static final int DEFAULT_CAPACITY = 64;
 
     private BlockUtil()
     {

@@ -44,73 +44,6 @@ import static java.util.Objects.requireNonNull;
 public class MergeOperator
         implements SourceOperator
 {
-    public static class MergeOperatorFactory
-            implements SourceOperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId sourceId;
-        private final ExchangeClientSupplier exchangeClientSupplier;
-        private final PagesSerdeFactory serdeFactory;
-        private final List<Type> types;
-        private final List<Integer> outputChannels;
-        private final List<Type> outputTypes;
-        private final List<Integer> sortChannels;
-        private final List<SortOrder> sortOrder;
-        private final OrderingCompiler orderingCompiler;
-        private boolean closed;
-
-        public MergeOperatorFactory(
-                int operatorId,
-                PlanNodeId sourceId,
-                ExchangeClientSupplier exchangeClientSupplier,
-                PagesSerdeFactory serdeFactory,
-                OrderingCompiler orderingCompiler,
-                List<Type> types,
-                List<Integer> outputChannels,
-                List<Integer> sortChannels,
-                List<SortOrder> sortOrder)
-        {
-            this.operatorId = operatorId;
-            this.sourceId = requireNonNull(sourceId, "sourceId is null");
-            this.exchangeClientSupplier = requireNonNull(exchangeClientSupplier, "exchangeClientSupplier is null");
-            this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
-            this.types = requireNonNull(types, "types is null");
-            this.outputChannels = requireNonNull(outputChannels, "outputChannels is null");
-            this.outputTypes = mappedCopy(outputChannels, types::get);
-            this.sortChannels = requireNonNull(sortChannels, "sortChannels is null");
-            this.sortOrder = requireNonNull(sortOrder, "sortOrder is null");
-            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
-        }
-
-        @Override
-        public PlanNodeId getSourceId()
-        {
-            return sourceId;
-        }
-
-        @Override
-        public SourceOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, MergeOperator.class.getSimpleName());
-
-            return new MergeOperator(
-                    operatorContext,
-                    sourceId,
-                    exchangeClientSupplier,
-                    serdeFactory.createPagesSerde(),
-                    orderingCompiler.compilePageWithPositionComparator(types, sortChannels, sortOrder),
-                    outputChannels,
-                    outputTypes);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
     private final ExchangeClientSupplier exchangeClientSupplier;
@@ -118,15 +51,11 @@ public class MergeOperator
     private final PageWithPositionComparator comparator;
     private final List<Integer> outputChannels;
     private final List<Type> outputTypes;
-
     private final SettableFuture<Void> blockedOnSplits = SettableFuture.create();
-
     private final List<WorkProcessor<Page>> pageProducers = new ArrayList<>();
     private final Closer closer = Closer.create();
-
     private WorkProcessor<Page> mergedPages;
     private boolean closed;
-
     public MergeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
@@ -251,6 +180,73 @@ public class MergeOperator
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    public static class MergeOperatorFactory
+            implements SourceOperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId sourceId;
+        private final ExchangeClientSupplier exchangeClientSupplier;
+        private final PagesSerdeFactory serdeFactory;
+        private final List<Type> types;
+        private final List<Integer> outputChannels;
+        private final List<Type> outputTypes;
+        private final List<Integer> sortChannels;
+        private final List<SortOrder> sortOrder;
+        private final OrderingCompiler orderingCompiler;
+        private boolean closed;
+
+        public MergeOperatorFactory(
+                int operatorId,
+                PlanNodeId sourceId,
+                ExchangeClientSupplier exchangeClientSupplier,
+                PagesSerdeFactory serdeFactory,
+                OrderingCompiler orderingCompiler,
+                List<Type> types,
+                List<Integer> outputChannels,
+                List<Integer> sortChannels,
+                List<SortOrder> sortOrder)
+        {
+            this.operatorId = operatorId;
+            this.sourceId = requireNonNull(sourceId, "sourceId is null");
+            this.exchangeClientSupplier = requireNonNull(exchangeClientSupplier, "exchangeClientSupplier is null");
+            this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
+            this.types = requireNonNull(types, "types is null");
+            this.outputChannels = requireNonNull(outputChannels, "outputChannels is null");
+            this.outputTypes = mappedCopy(outputChannels, types::get);
+            this.sortChannels = requireNonNull(sortChannels, "sortChannels is null");
+            this.sortOrder = requireNonNull(sortOrder, "sortOrder is null");
+            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
+        }
+
+        @Override
+        public PlanNodeId getSourceId()
+        {
+            return sourceId;
+        }
+
+        @Override
+        public SourceOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, MergeOperator.class.getSimpleName());
+
+            return new MergeOperator(
+                    operatorContext,
+                    sourceId,
+                    exchangeClientSupplier,
+                    serdeFactory.createPagesSerde(),
+                    orderingCompiler.compilePageWithPositionComparator(types, sortChannels, sortOrder),
+                    outputChannels,
+                    outputTypes);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
         }
     }
 }

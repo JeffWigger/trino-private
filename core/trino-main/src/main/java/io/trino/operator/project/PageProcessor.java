@@ -140,6 +140,85 @@ public class PageProcessor
         return WorkProcessor.create(new ProjectSelectedPositions(session, yieldSignal, memoryContext, page, positionsRange(0, page.getPositionCount()), avoidPageMaterialization));
     }
 
+    @VisibleForTesting
+    public List<PageProjection> getProjections()
+    {
+        return projections;
+    }
+
+    @NotThreadSafe
+    private static class DictionarySourceIdFunction
+            implements Function<DictionaryBlock, DictionaryId>
+    {
+        private final Map<DictionaryId, DictionaryId> dictionarySourceIds = new HashMap<>();
+
+        @Override
+        public DictionaryId apply(DictionaryBlock block)
+        {
+            return dictionarySourceIds.computeIfAbsent(block.getDictionarySourceId(), ignored -> randomDictionaryId());
+        }
+
+        public void reset()
+        {
+            dictionarySourceIds.clear();
+        }
+    }
+
+    private static class ProcessBatchResult
+    {
+        private final ProcessBatchState state;
+        private final Page page;
+
+        private ProcessBatchResult(ProcessBatchState state, Page page)
+        {
+            this.state = state;
+            this.page = page;
+        }
+
+        public static ProcessBatchResult processBatchYield()
+        {
+            return new ProcessBatchResult(ProcessBatchState.YIELD, null);
+        }
+
+        public static ProcessBatchResult processBatchTooLarge()
+        {
+            return new ProcessBatchResult(ProcessBatchState.PAGE_TOO_LARGE, null);
+        }
+
+        public static ProcessBatchResult processBatchSuccess(Page page)
+        {
+            return new ProcessBatchResult(ProcessBatchState.SUCCESS, requireNonNull(page));
+        }
+
+        public boolean isYieldFinish()
+        {
+            return state == ProcessBatchState.YIELD;
+        }
+
+        public boolean isPageTooLarge()
+        {
+            return state == ProcessBatchState.PAGE_TOO_LARGE;
+        }
+
+        public boolean isSuccess()
+        {
+            return state == ProcessBatchState.SUCCESS;
+        }
+
+        public Page getPage()
+        {
+            verify(state == ProcessBatchState.SUCCESS);
+            return verifyNotNull(page);
+        }
+
+        private enum ProcessBatchState
+        {
+            YIELD,
+            PAGE_TOO_LARGE,
+            SUCCESS
+        }
+    }
+
     private class ProjectSelectedPositions
             implements WorkProcessor.Process<Page>
     {
@@ -147,9 +226,8 @@ public class PageProcessor
         private final DriverYieldSignal yieldSignal;
         private final LocalMemoryContext memoryContext;
         private final boolean avoidPageMaterialization;
-
-        private Page page;
         private final Block[] previouslyComputedResults;
+        private Page page;
         private SelectedPositions selectedPositions;
         private long retainedSizeInBytes;
 
@@ -348,85 +426,6 @@ public class PageProcessor
                 }
             }
             return ProcessBatchResult.processBatchSuccess(new Page(positionsBatch.size(), blocks));
-        }
-    }
-
-    @VisibleForTesting
-    public List<PageProjection> getProjections()
-    {
-        return projections;
-    }
-
-    @NotThreadSafe
-    private static class DictionarySourceIdFunction
-            implements Function<DictionaryBlock, DictionaryId>
-    {
-        private final Map<DictionaryId, DictionaryId> dictionarySourceIds = new HashMap<>();
-
-        @Override
-        public DictionaryId apply(DictionaryBlock block)
-        {
-            return dictionarySourceIds.computeIfAbsent(block.getDictionarySourceId(), ignored -> randomDictionaryId());
-        }
-
-        public void reset()
-        {
-            dictionarySourceIds.clear();
-        }
-    }
-
-    private static class ProcessBatchResult
-    {
-        private final ProcessBatchState state;
-        private final Page page;
-
-        private ProcessBatchResult(ProcessBatchState state, Page page)
-        {
-            this.state = state;
-            this.page = page;
-        }
-
-        public static ProcessBatchResult processBatchYield()
-        {
-            return new ProcessBatchResult(ProcessBatchState.YIELD, null);
-        }
-
-        public static ProcessBatchResult processBatchTooLarge()
-        {
-            return new ProcessBatchResult(ProcessBatchState.PAGE_TOO_LARGE, null);
-        }
-
-        public static ProcessBatchResult processBatchSuccess(Page page)
-        {
-            return new ProcessBatchResult(ProcessBatchState.SUCCESS, requireNonNull(page));
-        }
-
-        public boolean isYieldFinish()
-        {
-            return state == ProcessBatchState.YIELD;
-        }
-
-        public boolean isPageTooLarge()
-        {
-            return state == ProcessBatchState.PAGE_TOO_LARGE;
-        }
-
-        public boolean isSuccess()
-        {
-            return state == ProcessBatchState.SUCCESS;
-        }
-
-        public Page getPage()
-        {
-            verify(state == ProcessBatchState.SUCCESS);
-            return verifyNotNull(page);
-        }
-
-        private enum ProcessBatchState
-        {
-            YIELD,
-            PAGE_TOO_LARGE,
-            SUCCESS
         }
     }
 }

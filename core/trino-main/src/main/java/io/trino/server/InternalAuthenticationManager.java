@@ -54,6 +54,14 @@ public class InternalAuthenticationManager
         this(getSharedSecret(internalCommunicationConfig, nodeInfo), nodeInfo.getNodeId());
     }
 
+    public InternalAuthenticationManager(String sharedSecret, String nodeId)
+    {
+        requireNonNull(sharedSecret, "sharedSecret is null");
+        requireNonNull(nodeId, "nodeId is null");
+        this.hmac = Hashing.sha256().hashString(sharedSecret, UTF_8).asBytes();
+        this.nodeId = nodeId;
+    }
+
     private static String getSharedSecret(InternalCommunicationConfig internalCommunicationConfig, NodeInfo nodeInfo)
     {
         requireNonNull(internalCommunicationConfig, "internalCommunicationConfig is null");
@@ -66,14 +74,6 @@ public class InternalAuthenticationManager
         }
 
         return internalCommunicationConfig.getSharedSecret().orElseGet(nodeInfo::getEnvironment);
-    }
-
-    public InternalAuthenticationManager(String sharedSecret, String nodeId)
-    {
-        requireNonNull(sharedSecret, "sharedSecret is null");
-        requireNonNull(nodeId, "nodeId is null");
-        this.hmac = Hashing.sha256().hashString(sharedSecret, UTF_8).asBytes();
-        this.nodeId = nodeId;
     }
 
     public static boolean isInternalRequest(ContainerRequestContext request)

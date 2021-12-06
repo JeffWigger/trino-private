@@ -33,8 +33,8 @@ import static java.util.stream.Collectors.toMap;
 public class PlanNodeStats
         implements Mergeable<PlanNodeStats>
 {
+    protected final Map<String, OperatorInputStats> operatorInputStats;
     private final PlanNodeId planNodeId;
-
     private final Duration planNodeScheduledTime;
     private final Duration planNodeCpuTime;
     private final long planNodeInputPositions;
@@ -42,8 +42,6 @@ public class PlanNodeStats
     private final long planNodeOutputPositions;
     private final DataSize planNodeOutputDataSize;
     private final DataSize planNodeSpilledDataSize;
-
-    protected final Map<String, OperatorInputStats> operatorInputStats;
 
     PlanNodeStats(
             PlanNodeId planNodeId,

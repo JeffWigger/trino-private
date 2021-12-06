@@ -35,6 +35,22 @@ public class WindowFunctionDefinition
     private final boolean ignoreNulls;
     private final List<LambdaProvider> lambdaProviders;
 
+    WindowFunctionDefinition(WindowFunctionSupplier functionSupplier, Type type, Optional<FrameInfo> frameInfo, boolean ignoreNulls, List<LambdaProvider> lambdaProviders, List<Integer> argumentChannels)
+    {
+        requireNonNull(functionSupplier, "functionSupplier is null");
+        requireNonNull(type, "type is null");
+        requireNonNull(frameInfo, "frameInfo is null");
+        requireNonNull(lambdaProviders, "lambdaProviders is null");
+        requireNonNull(argumentChannels, "argumentChannels is null");
+
+        this.functionSupplier = functionSupplier;
+        this.type = type;
+        this.frameInfo = frameInfo;
+        this.ignoreNulls = ignoreNulls;
+        this.lambdaProviders = lambdaProviders;
+        this.argumentChannels = ImmutableList.copyOf(argumentChannels);
+    }
+
     public static WindowFunctionDefinition window(WindowFunctionSupplier functionSupplier, Type type, FrameInfo frameInfo, boolean ignoreNulls, List<LambdaProvider> lambdaProviders, List<Integer> inputs)
     {
         return new WindowFunctionDefinition(functionSupplier, type, Optional.of(frameInfo), ignoreNulls, lambdaProviders, inputs);
@@ -54,22 +70,6 @@ public class WindowFunctionDefinition
     public static WindowFunctionDefinition window(WindowFunctionSupplier functionSupplier, Type type, boolean ignoreNulls, List<LambdaProvider> lambdaProviders, List<Integer> inputs)
     {
         return new WindowFunctionDefinition(functionSupplier, type, Optional.empty(), ignoreNulls, lambdaProviders, inputs);
-    }
-
-    WindowFunctionDefinition(WindowFunctionSupplier functionSupplier, Type type, Optional<FrameInfo> frameInfo, boolean ignoreNulls, List<LambdaProvider> lambdaProviders, List<Integer> argumentChannels)
-    {
-        requireNonNull(functionSupplier, "functionSupplier is null");
-        requireNonNull(type, "type is null");
-        requireNonNull(frameInfo, "frameInfo is null");
-        requireNonNull(lambdaProviders, "lambdaProviders is null");
-        requireNonNull(argumentChannels, "argumentChannels is null");
-
-        this.functionSupplier = functionSupplier;
-        this.type = type;
-        this.frameInfo = frameInfo;
-        this.ignoreNulls = ignoreNulls;
-        this.lambdaProviders = lambdaProviders;
-        this.argumentChannels = ImmutableList.copyOf(argumentChannels);
     }
 
     public Optional<FrameInfo> getFrameInfo()

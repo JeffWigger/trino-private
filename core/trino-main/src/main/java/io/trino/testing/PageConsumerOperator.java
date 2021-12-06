@@ -33,67 +33,11 @@ import static java.util.Objects.requireNonNull;
 public class PageConsumerOperator
         implements Operator
 {
-    public static class PageConsumerOutputFactory
-            implements OutputFactory
-    {
-        private final Function<List<Type>, Consumer<Page>> pageConsumerFactory;
-
-        public PageConsumerOutputFactory(Function<List<Type>, Consumer<Page>> pageConsumerFactory)
-        {
-            this.pageConsumerFactory = requireNonNull(pageConsumerFactory, "pageConsumerFactory is null");
-        }
-
-        @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
-        {
-            return new PageConsumerOperatorFactory(operatorId, planNodeId, pageConsumerFactory.apply(types), pagePreprocessor);
-        }
-    }
-
-    public static class PageConsumerOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Consumer<Page> pageConsumer;
-        private final Function<Page, Page> pagePreprocessor;
-        private boolean closed;
-
-        public PageConsumerOperatorFactory(int operatorId, PlanNodeId planNodeId, Consumer<Page> pageConsumer, Function<Page, Page> pagePreprocessor)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.pageConsumer = requireNonNull(pageConsumer, "pageConsumer is null");
-            this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PageConsumerOperator.class.getSimpleName());
-            return new PageConsumerOperator(operatorContext, pageConsumer, pagePreprocessor);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new PageConsumerOperatorFactory(operatorId, planNodeId, pageConsumer, pagePreprocessor);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final Consumer<Page> pageConsumer;
     private final Function<Page, Page> pagePreprocessor;
     private boolean finished;
     private boolean closed;
-
     public PageConsumerOperator(OperatorContext operatorContext, Consumer<Page> pageConsumer, Function<Page, Page> pagePreprocessor)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -151,5 +95,60 @@ public class PageConsumerOperator
     public void close()
     {
         closed = true;
+    }
+
+    public static class PageConsumerOutputFactory
+            implements OutputFactory
+    {
+        private final Function<List<Type>, Consumer<Page>> pageConsumerFactory;
+
+        public PageConsumerOutputFactory(Function<List<Type>, Consumer<Page>> pageConsumerFactory)
+        {
+            this.pageConsumerFactory = requireNonNull(pageConsumerFactory, "pageConsumerFactory is null");
+        }
+
+        @Override
+        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        {
+            return new PageConsumerOperatorFactory(operatorId, planNodeId, pageConsumerFactory.apply(types), pagePreprocessor);
+        }
+    }
+
+    public static class PageConsumerOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Consumer<Page> pageConsumer;
+        private final Function<Page, Page> pagePreprocessor;
+        private boolean closed;
+
+        public PageConsumerOperatorFactory(int operatorId, PlanNodeId planNodeId, Consumer<Page> pageConsumer, Function<Page, Page> pagePreprocessor)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.pageConsumer = requireNonNull(pageConsumer, "pageConsumer is null");
+            this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PageConsumerOperator.class.getSimpleName());
+            return new PageConsumerOperator(operatorContext, pageConsumer, pagePreprocessor);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new PageConsumerOperatorFactory(operatorId, planNodeId, pageConsumer, pagePreprocessor);
+        }
     }
 }

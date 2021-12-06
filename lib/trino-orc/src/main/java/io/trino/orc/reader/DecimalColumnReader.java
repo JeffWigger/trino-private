@@ -62,27 +62,20 @@ public class DecimalColumnReader
 
     private final DecimalType type;
     private final OrcColumn column;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<DecimalInputStream> decimalStreamSource = missingStreamSource(DecimalInputStream.class);
     @Nullable
     private DecimalInputStream decimalStream;
-
     private InputStreamSource<LongInputStream> scaleStreamSource = missingStreamSource(LongInputStream.class);
     @Nullable
     private LongInputStream scaleStream;
-
     private boolean rowGroupOpen;
-
     private long[] nonNullValueTemp = new long[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public DecimalColumnReader(Type type, OrcColumn column, LocalMemoryContext systemMemoryContext)
             throws OrcCorruptionException

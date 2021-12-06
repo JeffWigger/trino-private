@@ -65,36 +65,27 @@ public class SliceDictionaryColumnReader
     private final OrcColumn column;
     private final int maxCodePointCount;
     private final boolean isCharType;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<ByteArrayInputStream> dictionaryDataStreamSource = missingStreamSource(ByteArrayInputStream.class);
     private boolean dictionaryOpen;
     private int dictionarySize;
     private int[] dictionaryLength = new int[0];
     private byte[] dictionaryData = EMPTY_DICTIONARY_DATA;
     private int[] dictionaryOffsetVector = EMPTY_DICTIONARY_OFFSETS;
-
     private VariableWidthBlock dictionaryBlock = new VariableWidthBlock(1, wrappedBuffer(EMPTY_DICTIONARY_DATA), EMPTY_DICTIONARY_OFFSETS, Optional.of(new boolean[] {true}));
     private byte[] currentDictionaryData = EMPTY_DICTIONARY_DATA;
-
     private InputStreamSource<LongInputStream> dictionaryLengthStreamSource = missingStreamSource(LongInputStream.class);
-
     private InputStreamSource<LongInputStream> dataStreamSource = missingStreamSource(LongInputStream.class);
     @Nullable
     private LongInputStream dataStream;
-
     private boolean rowGroupOpen;
-
     private int[] nonNullValueTemp = new int[0];
     private int[] nonNullPositionList = new int[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public SliceDictionaryColumnReader(OrcColumn column, LocalMemoryContext systemMemoryContext, int maxCodePointCount, boolean isCharType)
     {
@@ -102,6 +93,48 @@ public class SliceDictionaryColumnReader
         this.isCharType = isCharType;
         this.column = requireNonNull(column, "column is null");
         this.systemMemoryContext = requireNonNull(systemMemoryContext, "systemMemoryContext is null");
+    }
+
+    // Reads dictionary into data and offsetVector
+    private static void readDictionary(
+            ByteArrayInputStream dictionaryDataStream,
+            int dictionarySize,
+            int[] dictionaryLengthVector,
+            int offsetVectorOffset,
+            byte[] data,
+            int[] offsetVector,
+            int maxCodePointCount,
+            boolean isCharType)
+            throws IOException
+    {
+        Slice slice = wrappedBuffer(data);
+
+        // initialize the offset if necessary;
+        // otherwise, use the previous offset
+        if (offsetVectorOffset == 0) {
+            offsetVector[0] = 0;
+        }
+
+        // truncate string and update offsets
+        for (int i = 0; i < dictionarySize; i++) {
+            int offsetIndex = offsetVectorOffset + i;
+            int offset = offsetVector[offsetIndex];
+            int length = dictionaryLengthVector[i];
+
+            int truncatedLength;
+            if (length > 0) {
+                // read data without truncation
+                dictionaryDataStream.next(data, offset, offset + length);
+
+                // adjust offsets with truncated length
+                truncatedLength = computeTruncatedLength(slice, offset, length, maxCodePointCount, isCharType);
+                verify(truncatedLength >= 0);
+            }
+            else {
+                truncatedLength = 0;
+            }
+            offsetVector[offsetIndex + 1] = offsetVector[offsetIndex] + truncatedLength;
+        }
     }
 
     @Override
@@ -267,48 +300,6 @@ public class SliceDictionaryColumnReader
         dataStream = dataStreamSource.openStream();
 
         rowGroupOpen = true;
-    }
-
-    // Reads dictionary into data and offsetVector
-    private static void readDictionary(
-            ByteArrayInputStream dictionaryDataStream,
-            int dictionarySize,
-            int[] dictionaryLengthVector,
-            int offsetVectorOffset,
-            byte[] data,
-            int[] offsetVector,
-            int maxCodePointCount,
-            boolean isCharType)
-            throws IOException
-    {
-        Slice slice = wrappedBuffer(data);
-
-        // initialize the offset if necessary;
-        // otherwise, use the previous offset
-        if (offsetVectorOffset == 0) {
-            offsetVector[0] = 0;
-        }
-
-        // truncate string and update offsets
-        for (int i = 0; i < dictionarySize; i++) {
-            int offsetIndex = offsetVectorOffset + i;
-            int offset = offsetVector[offsetIndex];
-            int length = dictionaryLengthVector[i];
-
-            int truncatedLength;
-            if (length > 0) {
-                // read data without truncation
-                dictionaryDataStream.next(data, offset, offset + length);
-
-                // adjust offsets with truncated length
-                truncatedLength = computeTruncatedLength(slice, offset, length, maxCodePointCount, isCharType);
-                verify(truncatedLength >= 0);
-            }
-            else {
-                truncatedLength = 0;
-            }
-            offsetVector[offsetIndex + 1] = offsetVector[offsetIndex] + truncatedLength;
-        }
     }
 
     @Override

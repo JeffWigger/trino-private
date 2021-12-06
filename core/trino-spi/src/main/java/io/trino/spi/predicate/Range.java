@@ -134,6 +134,16 @@ public final class Range
         return new Range(type, lowInclusive, Optional.of(low), highInclusive, Optional.of(high));
     }
 
+    private static int compareValues(MethodHandle comparisonOperator, Object left, Object right)
+    {
+        try {
+            return (int) (long) comparisonOperator.invoke(left, right);
+        }
+        catch (Throwable throwable) {
+            throw handleThrowable(throwable);
+        }
+    }
+
     public Type getType()
     {
         return type;
@@ -353,16 +363,6 @@ public final class Range
             return a.isEmpty() == b.isEmpty();
         }
         return compareValues(comparisonOperator, a.get(), b.get()) == 0;
-    }
-
-    private static int compareValues(MethodHandle comparisonOperator, Object left, Object right)
-    {
-        try {
-            return (int) (long) comparisonOperator.invoke(left, right);
-        }
-        catch (Throwable throwable) {
-            throw handleThrowable(throwable);
-        }
     }
 
     @Override

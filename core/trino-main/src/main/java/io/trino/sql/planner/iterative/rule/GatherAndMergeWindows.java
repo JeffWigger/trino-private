@@ -86,31 +86,6 @@ public final class GatherAndMergeWindows
             this.pattern = window().with(childPattern);
         }
 
-        @Override
-        public Pattern<WindowNode> getPattern()
-        {
-            return pattern;
-        }
-
-        @Override
-        public Result apply(WindowNode parent, Captures captures, Context context)
-        {
-            // Pulling the descendant WindowNode above projects is done as a part of this rule, as opposed in a
-            // separate rule, because that pullup is not useful on its own, and could be undone by other rules.
-            // For example, a rule could insert a project-off node between adjacent WindowNodes that use different
-            // input symbols.
-            List<ProjectNode> projects = projectCaptures.stream()
-                    .map(captures::get)
-                    .collect(toImmutableList());
-
-            return pullWindowNodeAboveProjects(captures.get(childCapture), projects)
-                    .flatMap(newChild -> manipulateAdjacentWindowNodes(parent, newChild, context))
-                    .map(Result::ofPlanNode)
-                    .orElse(Result.empty());
-        }
-
-        protected abstract Optional<PlanNode> manipulateAdjacentWindowNodes(WindowNode parent, WindowNode child, Context context);
-
         /**
          * Looks for the pattern (ProjectNode*)WindowNode, and rewrites it to WindowNode(ProjectNode*),
          * returning an empty option if it can't rewrite the projects, for example because they rely on
@@ -168,6 +143,31 @@ public final class GatherAndMergeWindows
             }
             return Optional.of(newTarget);
         }
+
+        @Override
+        public Pattern<WindowNode> getPattern()
+        {
+            return pattern;
+        }
+
+        @Override
+        public Result apply(WindowNode parent, Captures captures, Context context)
+        {
+            // Pulling the descendant WindowNode above projects is done as a part of this rule, as opposed in a
+            // separate rule, because that pullup is not useful on its own, and could be undone by other rules.
+            // For example, a rule could insert a project-off node between adjacent WindowNodes that use different
+            // input symbols.
+            List<ProjectNode> projects = projectCaptures.stream()
+                    .map(captures::get)
+                    .collect(toImmutableList());
+
+            return pullWindowNodeAboveProjects(captures.get(childCapture), projects)
+                    .flatMap(newChild -> manipulateAdjacentWindowNodes(parent, newChild, context))
+                    .map(Result::ofPlanNode)
+                    .orElse(Result.empty());
+        }
+
+        protected abstract Optional<PlanNode> manipulateAdjacentWindowNodes(WindowNode parent, WindowNode child, Context context);
     }
 
     public static class MergeAdjacentWindowsOverProjects
@@ -210,20 +210,6 @@ public final class GatherAndMergeWindows
         public SwapAdjacentWindowsBySpecifications(int numProjects)
         {
             super(numProjects);
-        }
-
-        @Override
-        protected Optional<PlanNode> manipulateAdjacentWindowNodes(WindowNode parent, WindowNode child, Context context)
-        {
-            if ((compare(parent, child) < 0) && (!dependsOn(parent, child))) {
-                PlanNode transposedWindows = transpose(parent, child);
-                return Optional.of(
-                        restrictOutputs(context.getIdAllocator(), transposedWindows, ImmutableSet.copyOf(parent.getOutputSymbols()))
-                                .orElse(transposedWindows));
-            }
-            else {
-                return Optional.empty();
-            }
         }
 
         private static int compare(WindowNode o1, WindowNode o2)
@@ -306,6 +292,20 @@ public final class GatherAndMergeWindows
                 return -1;
             }
             return 0;
+        }
+
+        @Override
+        protected Optional<PlanNode> manipulateAdjacentWindowNodes(WindowNode parent, WindowNode child, Context context)
+        {
+            if ((compare(parent, child) < 0) && (!dependsOn(parent, child))) {
+                PlanNode transposedWindows = transpose(parent, child);
+                return Optional.of(
+                        restrictOutputs(context.getIdAllocator(), transposedWindows, ImmutableSet.copyOf(parent.getOutputSymbols()))
+                                .orElse(transposedWindows));
+            }
+            else {
+                return Optional.empty();
+            }
         }
     }
 }

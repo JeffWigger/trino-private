@@ -43,13 +43,6 @@ public class QueryInfoUrlFactory
         });
     }
 
-    public Optional<URI> getQueryInfoUrl(QueryId queryId)
-    {
-        return queryInfoUrlTemplate
-                .map(template -> template.replace("${QUERY_ID}", queryId.toString()))
-                .map(URI::create);
-    }
-
     public static URI getQueryInfoUri(Optional<URI> queryInfoUrl, QueryId queryId, UriInfo uriInfo)
     {
         return queryInfoUrl.orElseGet(() ->
@@ -57,5 +50,12 @@ public class QueryInfoUrlFactory
                         .replacePath("ui/query.html")
                         .replaceQuery(queryId.toString())
                         .build());
+    }
+
+    public Optional<URI> getQueryInfoUrl(QueryId queryId)
+    {
+        return queryInfoUrlTemplate
+                .map(template -> template.replace("${QUERY_ID}", queryId.toString()))
+                .map(URI::create);
     }
 }

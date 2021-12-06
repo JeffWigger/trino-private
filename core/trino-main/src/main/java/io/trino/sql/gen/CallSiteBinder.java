@@ -24,9 +24,8 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 
 public final class CallSiteBinder
 {
-    private int nextId;
-
     private final Map<Long, MethodHandle> bindings = new HashMap<>();
+    private int nextId;
 
     public Binding bind(MethodHandle method)
     {

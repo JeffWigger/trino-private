@@ -42,6 +42,21 @@ import static java.util.Objects.requireNonNull;
 public class WebUiAuthenticationModule
         extends AbstractConfigurationAwareModule
 {
+    public static Module webUiAuthenticator(String type, Module module)
+    {
+        return new ConditionalWebUiAuthenticationModule(type, module);
+    }
+
+    public static Module webUiAuthenticator(String name, Class<? extends Authenticator> clazz, Module module)
+    {
+        checkArgument(name.toLowerCase(ENGLISH).equals(name), "name is not lower case: %s", name);
+        Module authModule = binder -> {
+            binder.install(new FormUiAuthenticatorModule(false));
+            newOptionalBinder(binder, Key.get(Authenticator.class, ForWebUi.class)).setBinding().to(clazz).in(SINGLETON);
+        };
+        return webUiAuthenticator(name, combine(module, authModule));
+    }
+
     @Override
     protected void setup(Binder binder)
     {
@@ -68,21 +83,6 @@ public class WebUiAuthenticationModule
     private void installWebUiAuthenticator(String name, Class<? extends Authenticator> authenticator, Class<?> config)
     {
         install(webUiAuthenticator(name, authenticator, binder -> configBinder(binder).bindConfig(config)));
-    }
-
-    public static Module webUiAuthenticator(String type, Module module)
-    {
-        return new ConditionalWebUiAuthenticationModule(type, module);
-    }
-
-    public static Module webUiAuthenticator(String name, Class<? extends Authenticator> clazz, Module module)
-    {
-        checkArgument(name.toLowerCase(ENGLISH).equals(name), "name is not lower case: %s", name);
-        Module authModule = binder -> {
-            binder.install(new FormUiAuthenticatorModule(false));
-            newOptionalBinder(binder, Key.get(Authenticator.class, ForWebUi.class)).setBinding().to(clazz).in(SINGLETON);
-        };
-        return webUiAuthenticator(name, combine(module, authModule));
     }
 
     private static class ConditionalWebUiAuthenticationModule

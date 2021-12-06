@@ -41,7 +41,7 @@ public class ByteArrayBlockEncoding
     public void writeBlock(BlockEncodingSerde blockEncodingSerde, SliceOutput sliceOutput, Block block)
     {
         int positionCount = block.getPositionCount();
-        if (block instanceof UpdatableByteArrayBlock){
+        if (block instanceof UpdatableByteArrayBlock) {
             UpdatableByteArrayBlock uBlock = (UpdatableByteArrayBlock) block;
             sliceOutput.writeByte(UPDATABLE);
             sliceOutput.appendInt(positionCount);
@@ -50,8 +50,8 @@ public class ByteArrayBlockEncoding
             // TODO: for further encoding we would need to write code that filters out the nulls and deleted columns
             sliceOutput.writeBytes(uBlock.getValueMarkerSlice());
             sliceOutput.writeBytes(getValuesSlice(block));
-
-        }else {
+        }
+        else {
             sliceOutput.writeByte(STATIC);
             sliceOutput.appendInt(positionCount);
 
@@ -81,7 +81,7 @@ public class ByteArrayBlockEncoding
     {
         byte type = sliceInput.readByte();
         int positionCount = sliceInput.readInt();
-        if(type == STATIC) {
+        if (type == STATIC) {
             byte[] valueIsNullPacked = retrieveNullBits(sliceInput, positionCount);
             byte[] values = new byte[positionCount];
 
@@ -121,14 +121,15 @@ public class ByteArrayBlockEncoding
                 // Do nothing if there are only nulls
             }
             return new ByteArrayBlock(0, positionCount, valueIsNull, values);
-        }else{
+        }
+        else {
             int nullCounter = sliceInput.readInt();
             int deleteCounter = sliceInput.readInt();
             byte[] valueMarker = new byte[positionCount];
             byte[] values = new byte[positionCount];
             sliceInput.readBytes(Slices.wrappedBuffer(valueMarker));
             sliceInput.readBytes(Slices.wrappedBuffer(values));
-            return  new UpdatableByteArrayBlock(null, positionCount, valueMarker, values, nullCounter, deleteCounter);
+            return new UpdatableByteArrayBlock(null, positionCount, valueMarker, values, nullCounter, deleteCounter);
         }
     }
 
@@ -140,7 +141,7 @@ public class ByteArrayBlockEncoding
         else if (block instanceof ByteArrayBlockBuilder) {
             return ((ByteArrayBlockBuilder) block).getValuesSlice();
         }
-        else if (block instanceof UpdatableByteArrayBlock){
+        else if (block instanceof UpdatableByteArrayBlock) {
             return ((UpdatableByteArrayBlock) block).getValuesSlice();
         }
 

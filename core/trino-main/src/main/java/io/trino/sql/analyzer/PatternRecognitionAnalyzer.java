@@ -165,10 +165,10 @@ public class PatternRecognitionAnalyzer
 
         // check no prohibited nesting: cannot nest one row pattern recognition within another
         List<Expression> expressions = Streams.concat(
-                measures.stream()
-                        .map(MeasureDefinition::getExpression),
-                variableDefinitions.stream()
-                        .map(VariableDefinition::getExpression))
+                        measures.stream()
+                                .map(MeasureDefinition::getExpression),
+                        variableDefinitions.stream()
+                                .map(VariableDefinition::getExpression))
                 .collect(toImmutableList());
         expressions.forEach(expression -> preOrder(expression)
                 .filter(child -> child instanceof PatternRecognitionRelation || child instanceof RowPattern)
@@ -213,10 +213,10 @@ public class PatternRecognitionAnalyzer
     public static void validateNoMatchNumber(List<MeasureDefinition> measures, List<VariableDefinition> variableDefinitions, Set<NodeRef<FunctionCall>> patternRecognitionFunctions)
     {
         List<Expression> expressions = Streams.concat(
-                measures.stream()
-                        .map(MeasureDefinition::getExpression),
-                variableDefinitions.stream()
-                        .map(VariableDefinition::getExpression))
+                        measures.stream()
+                                .map(MeasureDefinition::getExpression),
+                        variableDefinitions.stream()
+                                .map(VariableDefinition::getExpression))
                 .collect(toImmutableList());
         expressions.forEach(expression -> preOrder(expression)
                 .filter(child -> patternRecognitionFunctions.contains(NodeRef.of(child)))

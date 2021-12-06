@@ -39,12 +39,12 @@ import static java.util.Objects.requireNonNull;
 
 public final class DesugarAtTimeZoneRewriter
 {
+    private DesugarAtTimeZoneRewriter() {}
+
     public static Expression rewrite(Expression expression, Map<NodeRef<Expression>, Type> expressionTypes, Metadata metadata)
     {
         return ExpressionTreeRewriter.rewriteWith(new Visitor(expressionTypes, metadata), expression);
     }
-
-    private DesugarAtTimeZoneRewriter() {}
 
     public static Expression rewrite(Expression expression, Session session, Metadata metadata, TypeAnalyzer typeAnalyzer, SymbolAllocator symbolAllocator)
     {

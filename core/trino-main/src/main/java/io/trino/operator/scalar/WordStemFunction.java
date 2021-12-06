@@ -50,8 +50,6 @@ import static io.trino.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 
 public final class WordStemFunction
 {
-    private WordStemFunction() {}
-
     private static final Map<Slice, Supplier<SnowballProgram>> STEMMERS = ImmutableMap.<Slice, Supplier<SnowballProgram>>builder()
             .put(utf8Slice("ca"), CatalanStemmer::new)
             .put(utf8Slice("da"), DanishStemmer::new)
@@ -74,6 +72,8 @@ public final class WordStemFunction
             .put(utf8Slice("sv"), SwedishStemmer::new)
             .put(utf8Slice("tr"), TurkishStemmer::new)
             .build();
+
+    private WordStemFunction() {}
 
     @Description("Returns the stem of a word in the English language")
     @ScalarFunction

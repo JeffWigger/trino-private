@@ -32,19 +32,15 @@ public class ArrayBlockBuilder
         implements BlockBuilder
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ArrayBlockBuilder.class).instanceSize();
-
-    private int positionCount;
-
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
-    private boolean initialized;
     private final int initialEntryCount;
-
+    private final BlockBuilder values;
+    private int positionCount;
+    private boolean initialized;
     private int[] offsets = new int[1];
     private boolean[] valueIsNull = new boolean[0];
     private boolean hasNullValue;
-
-    private final BlockBuilder values;
     private boolean currentEntryOpened;
 
     private long retainedSizeInBytes;

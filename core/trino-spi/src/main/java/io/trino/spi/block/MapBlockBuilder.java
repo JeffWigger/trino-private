@@ -39,14 +39,12 @@ public class MapBlockBuilder
 
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
-
-    private int positionCount;
-    private int[] offsets;
-    private boolean[] mapIsNull;
     private final BlockBuilder keyBlockBuilder;
     private final BlockBuilder valueBlockBuilder;
     private final MapHashTables hashTables;
-
+    private int positionCount;
+    private int[] offsets;
+    private boolean[] mapIsNull;
     private boolean currentEntryOpened;
     private boolean strict;
 

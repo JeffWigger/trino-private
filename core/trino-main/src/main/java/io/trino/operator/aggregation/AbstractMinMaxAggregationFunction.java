@@ -103,111 +103,6 @@ public abstract class AbstractMinMaxAggregationFunction
         this.min = min;
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return FunctionDependencyDeclaration.builder()
-                .addOperatorSignature(COMPARISON, ImmutableList.of(new TypeSignature("E"), new TypeSignature("E")))
-                .build();
-    }
-
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type type = functionBinding.getTypeVariable("E");
-        if (type.getJavaType() == long.class) {
-            return ImmutableList.of(StateCompiler.getSerializedType(NullableLongState.class).getTypeSignature());
-        }
-        if (type.getJavaType() == double.class) {
-            return ImmutableList.of(StateCompiler.getSerializedType(NullableDoubleState.class).getTypeSignature());
-        }
-        if (type.getJavaType() == boolean.class) {
-            return ImmutableList.of(StateCompiler.getSerializedType(NullableBooleanState.class).getTypeSignature());
-        }
-        // native container type is Slice or Block
-        return ImmutableList.of(new BlockPositionStateSerializer(type).getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        Type type = functionBinding.getTypeVariable("E");
-        InvocationConvention invocationConvention;
-        if (type.getJavaType().isPrimitive()) {
-            invocationConvention = simpleConvention(FAIL_ON_NULL, NEVER_NULL, NEVER_NULL);
-        }
-        else {
-            invocationConvention = simpleConvention(FAIL_ON_NULL, BLOCK_POSITION, BLOCK_POSITION);
-        }
-
-        MethodHandle compareMethodHandle = getMinMaxCompare(functionDependencies, type, invocationConvention, min);
-
-        return generateAggregation(type, compareMethodHandle);
-    }
-
-    protected InternalAggregationFunction generateAggregation(Type type, MethodHandle compareMethodHandle)
-    {
-        DynamicClassLoader classLoader = new DynamicClassLoader(AbstractMinMaxAggregationFunction.class.getClassLoader());
-
-        List<Type> inputTypes = ImmutableList.of(type);
-
-        MethodHandle inputFunction;
-        MethodHandle combineFunction;
-        MethodHandle outputFunction;
-        Class<? extends AccumulatorState> stateInterface;
-        AccumulatorStateSerializer<?> stateSerializer;
-
-        if (type.getJavaType() == long.class) {
-            stateInterface = NullableLongState.class;
-            stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
-            inputFunction = LONG_INPUT_FUNCTION.bindTo(compareMethodHandle);
-            combineFunction = LONG_COMBINE_FUNCTION.bindTo(compareMethodHandle);
-            outputFunction = LONG_OUTPUT_FUNCTION.bindTo(type);
-        }
-        else if (type.getJavaType() == double.class) {
-            stateInterface = NullableDoubleState.class;
-            stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
-            inputFunction = DOUBLE_INPUT_FUNCTION.bindTo(compareMethodHandle);
-            combineFunction = DOUBLE_COMBINE_FUNCTION.bindTo(compareMethodHandle);
-            outputFunction = DOUBLE_OUTPUT_FUNCTION.bindTo(type);
-        }
-        else if (type.getJavaType() == boolean.class) {
-            stateInterface = NullableBooleanState.class;
-            stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
-            inputFunction = BOOLEAN_INPUT_FUNCTION.bindTo(compareMethodHandle);
-            combineFunction = BOOLEAN_COMBINE_FUNCTION.bindTo(compareMethodHandle);
-            outputFunction = BOOLEAN_OUTPUT_FUNCTION.bindTo(type);
-        }
-        else {
-            // native container type is Slice or Block
-            stateInterface = BlockPositionState.class;
-            stateSerializer = new BlockPositionStateSerializer(type);
-            inputFunction = BLOCK_POSITION_INPUT_FUNCTION.bindTo(compareMethodHandle);
-            combineFunction = BLOCK_POSITION_COMBINE_FUNCTION.bindTo(compareMethodHandle);
-            outputFunction = BLOCK_POSITION_OUTPUT_FUNCTION.bindTo(type);
-        }
-
-        AccumulatorStateFactory<?> stateFactory = StateCompiler.generateStateFactory(stateInterface, classLoader);
-
-        Type intermediateType = stateSerializer.getSerializedType();
-        String name = getFunctionMetadata().getSignature().getName();
-        AggregationMetadata metadata = new AggregationMetadata(
-                generateAggregationName(name, type.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
-                createParameterMetadata(type),
-                inputFunction,
-                Optional.empty(),
-                combineFunction,
-                outputFunction,
-                ImmutableList.of(new AccumulatorStateDescriptor(
-                        stateInterface,
-                        stateSerializer,
-                        stateFactory)),
-                type);
-
-        GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
-        return new InternalAggregationFunction(name, inputTypes, ImmutableList.of(intermediateType), type, factory);
-    }
-
     private static List<ParameterMetadata> createParameterMetadata(Type type)
     {
         if (type.getJavaType().isPrimitive()) {
@@ -338,5 +233,110 @@ public abstract class AbstractMinMaxAggregationFunction
         catch (Throwable t) {
             throw internalError(t);
         }
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return FunctionDependencyDeclaration.builder()
+                .addOperatorSignature(COMPARISON, ImmutableList.of(new TypeSignature("E"), new TypeSignature("E")))
+                .build();
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type type = functionBinding.getTypeVariable("E");
+        if (type.getJavaType() == long.class) {
+            return ImmutableList.of(StateCompiler.getSerializedType(NullableLongState.class).getTypeSignature());
+        }
+        if (type.getJavaType() == double.class) {
+            return ImmutableList.of(StateCompiler.getSerializedType(NullableDoubleState.class).getTypeSignature());
+        }
+        if (type.getJavaType() == boolean.class) {
+            return ImmutableList.of(StateCompiler.getSerializedType(NullableBooleanState.class).getTypeSignature());
+        }
+        // native container type is Slice or Block
+        return ImmutableList.of(new BlockPositionStateSerializer(type).getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        Type type = functionBinding.getTypeVariable("E");
+        InvocationConvention invocationConvention;
+        if (type.getJavaType().isPrimitive()) {
+            invocationConvention = simpleConvention(FAIL_ON_NULL, NEVER_NULL, NEVER_NULL);
+        }
+        else {
+            invocationConvention = simpleConvention(FAIL_ON_NULL, BLOCK_POSITION, BLOCK_POSITION);
+        }
+
+        MethodHandle compareMethodHandle = getMinMaxCompare(functionDependencies, type, invocationConvention, min);
+
+        return generateAggregation(type, compareMethodHandle);
+    }
+
+    protected InternalAggregationFunction generateAggregation(Type type, MethodHandle compareMethodHandle)
+    {
+        DynamicClassLoader classLoader = new DynamicClassLoader(AbstractMinMaxAggregationFunction.class.getClassLoader());
+
+        List<Type> inputTypes = ImmutableList.of(type);
+
+        MethodHandle inputFunction;
+        MethodHandle combineFunction;
+        MethodHandle outputFunction;
+        Class<? extends AccumulatorState> stateInterface;
+        AccumulatorStateSerializer<?> stateSerializer;
+
+        if (type.getJavaType() == long.class) {
+            stateInterface = NullableLongState.class;
+            stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+            inputFunction = LONG_INPUT_FUNCTION.bindTo(compareMethodHandle);
+            combineFunction = LONG_COMBINE_FUNCTION.bindTo(compareMethodHandle);
+            outputFunction = LONG_OUTPUT_FUNCTION.bindTo(type);
+        }
+        else if (type.getJavaType() == double.class) {
+            stateInterface = NullableDoubleState.class;
+            stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+            inputFunction = DOUBLE_INPUT_FUNCTION.bindTo(compareMethodHandle);
+            combineFunction = DOUBLE_COMBINE_FUNCTION.bindTo(compareMethodHandle);
+            outputFunction = DOUBLE_OUTPUT_FUNCTION.bindTo(type);
+        }
+        else if (type.getJavaType() == boolean.class) {
+            stateInterface = NullableBooleanState.class;
+            stateSerializer = StateCompiler.generateStateSerializer(stateInterface, classLoader);
+            inputFunction = BOOLEAN_INPUT_FUNCTION.bindTo(compareMethodHandle);
+            combineFunction = BOOLEAN_COMBINE_FUNCTION.bindTo(compareMethodHandle);
+            outputFunction = BOOLEAN_OUTPUT_FUNCTION.bindTo(type);
+        }
+        else {
+            // native container type is Slice or Block
+            stateInterface = BlockPositionState.class;
+            stateSerializer = new BlockPositionStateSerializer(type);
+            inputFunction = BLOCK_POSITION_INPUT_FUNCTION.bindTo(compareMethodHandle);
+            combineFunction = BLOCK_POSITION_COMBINE_FUNCTION.bindTo(compareMethodHandle);
+            outputFunction = BLOCK_POSITION_OUTPUT_FUNCTION.bindTo(type);
+        }
+
+        AccumulatorStateFactory<?> stateFactory = StateCompiler.generateStateFactory(stateInterface, classLoader);
+
+        Type intermediateType = stateSerializer.getSerializedType();
+        String name = getFunctionMetadata().getSignature().getName();
+        AggregationMetadata metadata = new AggregationMetadata(
+                generateAggregationName(name, type.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
+                createParameterMetadata(type),
+                inputFunction,
+                Optional.empty(),
+                combineFunction,
+                outputFunction,
+                ImmutableList.of(new AccumulatorStateDescriptor(
+                        stateInterface,
+                        stateSerializer,
+                        stateFactory)),
+                type);
+
+        GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
+        return new InternalAggregationFunction(name, inputTypes, ImmutableList.of(intermediateType), type, factory);
     }
 }

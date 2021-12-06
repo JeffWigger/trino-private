@@ -60,6 +60,220 @@ public class TestUnscaledDecimal128Arithmetic
     private static final Slice MIN_DECIMAL = unscaledDecimal(MIN_DECIMAL_UNSCALED_VALUE);
     private static final BigInteger TWO = BigInteger.valueOf(2);
 
+    private static void assertMultiply256(Slice left, Slice right, Slice expected)
+    {
+        int[] leftArg = new int[8];
+        leftArg[0] = left.getInt(0);
+        leftArg[1] = left.getInt(4);
+        leftArg[2] = left.getInt(8);
+        leftArg[3] = left.getInt(12);
+
+        multiply256Destructive(leftArg, right);
+        assertEquals(wrappedIntArray(leftArg), expected);
+    }
+
+    private static void assertUnscaledBigIntegerToDecimalOverflows(BigInteger value)
+    {
+        assertThatThrownBy(() -> unscaledDecimal(value))
+                .isInstanceOf(ArithmeticException.class)
+                .hasMessage("Decimal overflow");
+    }
+
+    private static void assertDecimalToUnscaledLongOverflows(BigInteger value)
+    {
+        Slice decimal = unscaledDecimal(value);
+        assertThatThrownBy(() -> unscaledDecimalToUnscaledLong(decimal))
+                .isInstanceOf(ArithmeticException.class)
+                .hasMessage("Decimal overflow");
+    }
+
+    private static void assertMultiplyOverflows(Slice left, Slice right)
+    {
+        assertThatThrownBy(() -> multiply(left, right))
+                .isInstanceOf(ArithmeticException.class)
+                .hasMessage("Decimal overflow");
+    }
+
+    private static void assertRescaleOverflows(Slice decimal, int rescaleFactor)
+    {
+        assertThatThrownBy(() -> rescale(decimal, rescaleFactor))
+                .isInstanceOf(ArithmeticException.class)
+                .hasMessage("Decimal overflow");
+    }
+
+    private static void assertCompare(Slice left, Slice right, int expectedResult)
+    {
+        assertEquals(compare(left, right), expectedResult);
+        assertEquals(compare(left.getLong(0), left.getLong(SIZE_OF_LONG), right.getLong(0), right.getLong(SIZE_OF_LONG)), expectedResult);
+    }
+
+    private static void assertConvertsUnscaledBigIntegerToDecimal(BigInteger value)
+    {
+        assertEquals(unscaledDecimalToBigInteger(unscaledDecimal(value)), value);
+    }
+
+    private static void assertConvertsUnscaledLongToDecimal(long value)
+    {
+        assertEquals(unscaledDecimalToUnscaledLong(unscaledDecimal(value)), value);
+        assertEquals(unscaledDecimal(value), unscaledDecimal(BigInteger.valueOf(value)));
+    }
+
+    private static void assertShiftRight(Slice decimal, int rightShifts, boolean roundUp, Slice expectedResult)
+    {
+        Slice result = unscaledDecimal();
+        shiftRight(decimal, rightShifts, roundUp, result);
+        assertEquals(result, expectedResult);
+    }
+
+    private static void assertDivideAllSigns(int[] dividend, int[] divisor)
+    {
+        assertDivideAllSigns(Slices.wrappedIntArray(dividend), 0, Slices.wrappedIntArray(divisor), 0);
+    }
+
+    private static void assertDivideAllSigns(String dividend, String divisor)
+    {
+        assertDivideAllSigns(dividend, 0, divisor, 0);
+    }
+
+    private static void assertDivideAllSigns(String dividend, int dividendRescaleFactor, String divisor, int divisorRescaleFactor)
+    {
+        assertDivideAllSigns(unscaledDecimal(dividend), dividendRescaleFactor, unscaledDecimal(divisor), divisorRescaleFactor);
+    }
+
+    private static void assertDivideAllSigns(Slice dividend, int dividendRescaleFactor, Slice divisor, int divisorRescaleFactor)
+    {
+        assertDivide(dividend, dividendRescaleFactor, divisor, divisorRescaleFactor);
+        if (!isZero(divisor)) {
+            assertDivide(dividend, dividendRescaleFactor, negate(divisor), divisorRescaleFactor);
+        }
+        if (!isZero(dividend)) {
+            assertDivide(negate(dividend), dividendRescaleFactor, divisor, divisorRescaleFactor);
+        }
+        if (!isZero(dividend) && !isZero(divisor)) {
+            assertDivide(negate(dividend), dividendRescaleFactor, negate(divisor), divisorRescaleFactor);
+        }
+    }
+
+    private static void assertDivide(Slice dividend, int dividendRescaleFactor, Slice divisor, int divisorRescaleFactor)
+    {
+        BigInteger dividendBigInteger = decodeUnscaledValue(dividend);
+        BigInteger divisorBigInteger = decodeUnscaledValue(divisor);
+        BigInteger rescaledDividend = dividendBigInteger.multiply(bigIntegerTenToNth(dividendRescaleFactor));
+        BigInteger rescaledDivisor = divisorBigInteger.multiply(bigIntegerTenToNth(divisorRescaleFactor));
+        BigInteger[] expectedQuotientAndRemainder = rescaledDividend.divideAndRemainder(rescaledDivisor);
+        BigInteger expectedQuotient = expectedQuotientAndRemainder[0];
+        BigInteger expectedRemainder = expectedQuotientAndRemainder[1];
+
+        boolean overflowIsExpected = expectedQuotient.abs().compareTo(bigIntegerTenToNth(38)) >= 0 || expectedRemainder.abs().compareTo(bigIntegerTenToNth(38)) >= 0;
+
+        Slice quotient = unscaledDecimal();
+        Slice remainder = unscaledDecimal();
+        try {
+            divide(dividend, dividendRescaleFactor, divisor, divisorRescaleFactor, quotient, remainder);
+            if (overflowIsExpected) {
+                fail("overflow is expected");
+            }
+        }
+        catch (ArithmeticException e) {
+            if (!overflowIsExpected) {
+                fail("overflow wasn't expected");
+            }
+            else {
+                return;
+            }
+        }
+
+        BigInteger actualQuotient = decodeUnscaledValue(quotient);
+        BigInteger actualRemainder = decodeUnscaledValue(remainder);
+
+        if (expectedQuotient.equals(actualQuotient) && expectedRemainder.equals(actualRemainder)) {
+            return;
+        }
+
+        fail(format("%s / %s ([%s * 2^%d] / [%s * 2^%d]) Expected: %s(%s). Actual: %s(%s)",
+                rescaledDividend, rescaledDivisor,
+                dividendBigInteger, dividendRescaleFactor,
+                divisorBigInteger, divisorRescaleFactor,
+                expectedQuotient, expectedRemainder,
+                actualQuotient, actualRemainder));
+    }
+
+    private static Slice negate(Slice slice)
+    {
+        Slice copy = unscaledDecimal(slice);
+        UnscaledDecimal128Arithmetic.negate(copy);
+        return copy;
+    }
+
+    private static int[] toInt8Array(BigInteger value)
+    {
+        byte[] bigIntegerBytes = value.toByteArray();
+        Collections.reverse(Bytes.asList(bigIntegerBytes));
+
+        byte[] bytes = new byte[8 * 4 + 1];
+        System.arraycopy(bigIntegerBytes, 0, bytes, 0, bigIntegerBytes.length);
+        return toInt8Array(bytes);
+    }
+
+    private static int[] toInt8Array(byte[] bytes)
+    {
+        Slice slice = Slices.wrappedBuffer(bytes);
+
+        int[] ints = new int[8];
+        for (int i = 0; i < ints.length; i++) {
+            ints[i] = slice.getInt(i * Integer.SIZE / Byte.SIZE);
+        }
+        return ints;
+    }
+
+    private static boolean isShort(BigInteger value)
+    {
+        return value.abs().shiftRight(63).equals(BigInteger.ZERO);
+    }
+
+    private static void assertMultiply(BigInteger a, long b, BigInteger result)
+    {
+        assertMultiply(a, BigInteger.valueOf(b), result);
+    }
+
+    private static void assertMultiply(BigInteger a, long b, long result)
+    {
+        assertMultiply(a, BigInteger.valueOf(b), BigInteger.valueOf(result));
+    }
+
+    private static void assertMultiply(long a, long b, BigInteger result)
+    {
+        assertMultiply(BigInteger.valueOf(a), b, result);
+    }
+
+    private static void assertMultiply(long a, long b, long result)
+    {
+        assertMultiply(a, b, BigInteger.valueOf(result));
+    }
+
+    private static void assertMultiply(BigInteger a, BigInteger b, BigInteger result)
+    {
+        assertEquals(unscaledDecimal(result), multiply(unscaledDecimal(a), unscaledDecimal(b)));
+        if (isShort(a) && isShort(b)) {
+            assertEquals(unscaledDecimal(result), multiply(a.longValue(), b.longValue()));
+        }
+        if (isShort(a) && !isShort(b)) {
+            assertEquals(unscaledDecimal(result), multiply(unscaledDecimal(b), a.longValue()));
+        }
+        if (!isShort(a) && isShort(b)) {
+            assertEquals(unscaledDecimal(result), multiply(unscaledDecimal(a), b.longValue()));
+        }
+    }
+
+    private static void assertRescale(Slice decimal, int rescale, Slice expected)
+    {
+        assertEquals(rescale(decimal, rescale), expected);
+        if (isShort(unscaledDecimalToBigInteger(decimal))) {
+            Slice actual = rescale(unscaledDecimalToUnscaledLong(decimal), rescale);
+            assertEquals(expected, actual);
+        }
+    }
+
     @Test
     public void testUnscaledBigIntegerToDecimal()
     {
@@ -211,18 +425,6 @@ public class TestUnscaledDecimal128Arithmetic
                 wrappedLongArray(0x0000000000000001L, 0xE000000000000000L, 0xFFFFFFFFFFFFFFFFL, 0x00FFFFFFFFFFFFFFL));
         assertMultiply256(wrappedLongArray(0x1234567890ABCDEFL, 0x0EDCBA0987654321L), wrappedLongArray(0xFEDCBA0987654321L, 0x1234567890ABCDEL),
                 wrappedLongArray(0xC24A442FE55618CFL, 0xAA71A60D0DA49DDAL, 0x7C163D5A13DF8695L, 0x0010E8EEF9BD1294L));
-    }
-
-    private static void assertMultiply256(Slice left, Slice right, Slice expected)
-    {
-        int[] leftArg = new int[8];
-        leftArg[0] = left.getInt(0);
-        leftArg[1] = left.getInt(4);
-        leftArg[2] = left.getInt(8);
-        leftArg[3] = left.getInt(12);
-
-        multiply256Destructive(leftArg, right);
-        assertEquals(wrappedIntArray(leftArg), expected);
     }
 
     @Test
@@ -434,38 +636,38 @@ public class TestUnscaledDecimal128Arithmetic
     public void testShiftLeftMultiPrecision()
     {
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 4, 0),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 4, 0),
                 new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
                         0b11111111000000011010101010101011, 0b00000000000000000000000000000000});
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 5, 1),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 5, 1),
                 new int[] {0b01000010100010110100001010001010, 0b10101101001011010110101010101011, 0b10100101111100011111000101010100,
                         0b11111110000000110101010101010110, 0b00000000000000000000000000000001});
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 5, 31),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 5, 31),
                 new int[] {0b10000000000000000000000000000000, 0b11010000101000101101000010100010, 0b00101011010010110101101010101010,
                         0b10101001011111000111110001010101, 0b1111111100000001101010101010101});
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 5, 32),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 5, 32),
                 new int[] {0b00000000000000000000000000000000, 0b10100001010001011010000101000101, 0b01010110100101101011010101010101,
                         0b01010010111110001111100010101010, 0b11111111000000011010101010101011});
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000}, 6, 33),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000}, 6, 33),
                 new int[] {0b00000000000000000000000000000000, 0b01000010100010110100001010001010, 0b10101101001011010110101010101011,
                         0b10100101111100011111000101010100, 0b11111110000000110101010101010110, 0b00000000000000000000000000000001});
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000}, 6, 37),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000}, 6, 37),
                 new int[] {0b00000000000000000000000000000000, 0b00101000101101000010100010100000, 0b11010010110101101010101010110100,
                         0b01011111000111110001010101001010, 0b11100000001101010101010101101010, 0b00000000000000000000000000011111});
         assertEquals(shiftLeftMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000}, 6, 64),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000}, 6, 64),
                 new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
                         0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011});
     }
@@ -474,33 +676,33 @@ public class TestUnscaledDecimal128Arithmetic
     public void testShiftRightMultiPrecision()
     {
         assertEquals(shiftRightMultiPrecision(
-                new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
-                        0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 4, 0),
+                        new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
+                                0b11111111000000011010101010101011, 0b00000000000000000000000000000000}, 4, 0),
                 new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
                         0b11111111000000011010101010101011, 0b00000000000000000000000000000000});
         assertEquals(shiftRightMultiPrecision(
-                new int[] {0b00000000000000000000000000000000, 0b10100001010001011010000101000101, 0b01010110100101101011010101010101,
-                        0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 5, 1),
+                        new int[] {0b00000000000000000000000000000000, 0b10100001010001011010000101000101, 0b01010110100101101011010101010101,
+                                0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 5, 1),
                 new int[] {0b10000000000000000000000000000000, 0b11010000101000101101000010100010, 0b00101011010010110101101010101010,
                         0b10101001011111000111110001010101, 0b1111111100000001101010101010101});
         assertEquals(shiftRightMultiPrecision(
-                new int[] {0b00000000000000000000000000000000, 0b10100001010001011010000101000101, 0b01010110100101101011010101010101,
-                        0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 5, 32),
+                        new int[] {0b00000000000000000000000000000000, 0b10100001010001011010000101000101, 0b01010110100101101011010101010101,
+                                0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 5, 32),
                 new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
                         0b11111111000000011010101010101011, 0b00000000000000000000000000000000});
         assertEquals(shiftRightMultiPrecision(
-                new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
-                        0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 6, 33),
+                        new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
+                                0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 6, 33),
                 new int[] {0b10000000000000000000000000000000, 0b11010000101000101101000010100010, 0b00101011010010110101101010101010,
                         0b10101001011111000111110001010101, 0b01111111100000001101010101010101, 0b00000000000000000000000000000000});
         assertEquals(shiftRightMultiPrecision(
-                new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
-                        0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 6, 37),
+                        new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
+                                0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 6, 37),
                 new int[] {0b00101000000000000000000000000000, 0b10101101000010100010110100001010, 0b01010010101101001011010110101010,
                         0b01011010100101111100011111000101, 0b00000111111110000000110101010101, 0b00000000000000000000000000000000});
         assertEquals(shiftRightMultiPrecision(
-                new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
-                        0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 6, 64),
+                        new int[] {0b00000000000000000000000000000000, 0b00000000000000000000000000000000, 0b10100001010001011010000101000101,
+                                0b01010110100101101011010101010101, 0b01010010111110001111100010101010, 0b11111111000000011010101010101011}, 6, 64),
                 new int[] {0b10100001010001011010000101000101, 0b01010110100101101011010101010101, 0b01010010111110001111100010101010,
                         0b11111111000000011010101010101011, 0b00000000000000000000000000000000, 0b00000000000000000000000000000000});
     }
@@ -553,64 +755,6 @@ public class TestUnscaledDecimal128Arithmetic
         assertEquals(overflow, expectedOverflow.longValueExact());
     }
 
-    private static void assertUnscaledBigIntegerToDecimalOverflows(BigInteger value)
-    {
-        assertThatThrownBy(() -> unscaledDecimal(value))
-                .isInstanceOf(ArithmeticException.class)
-                .hasMessage("Decimal overflow");
-    }
-
-    private static void assertDecimalToUnscaledLongOverflows(BigInteger value)
-    {
-        Slice decimal = unscaledDecimal(value);
-        assertThatThrownBy(() -> unscaledDecimalToUnscaledLong(decimal))
-                .isInstanceOf(ArithmeticException.class)
-                .hasMessage("Decimal overflow");
-    }
-
-    private static void assertMultiplyOverflows(Slice left, Slice right)
-    {
-        assertThatThrownBy(() -> multiply(left, right))
-                .isInstanceOf(ArithmeticException.class)
-                .hasMessage("Decimal overflow");
-    }
-
-    private static void assertRescaleOverflows(Slice decimal, int rescaleFactor)
-    {
-        assertThatThrownBy(() -> rescale(decimal, rescaleFactor))
-                .isInstanceOf(ArithmeticException.class)
-                .hasMessage("Decimal overflow");
-    }
-
-    private static void assertCompare(Slice left, Slice right, int expectedResult)
-    {
-        assertEquals(compare(left, right), expectedResult);
-        assertEquals(compare(left.getLong(0), left.getLong(SIZE_OF_LONG), right.getLong(0), right.getLong(SIZE_OF_LONG)), expectedResult);
-    }
-
-    private static void assertConvertsUnscaledBigIntegerToDecimal(BigInteger value)
-    {
-        assertEquals(unscaledDecimalToBigInteger(unscaledDecimal(value)), value);
-    }
-
-    private static void assertConvertsUnscaledLongToDecimal(long value)
-    {
-        assertEquals(unscaledDecimalToUnscaledLong(unscaledDecimal(value)), value);
-        assertEquals(unscaledDecimal(value), unscaledDecimal(BigInteger.valueOf(value)));
-    }
-
-    private static void assertShiftRight(Slice decimal, int rightShifts, boolean roundUp, Slice expectedResult)
-    {
-        Slice result = unscaledDecimal();
-        shiftRight(decimal, rightShifts, roundUp, result);
-        assertEquals(result, expectedResult);
-    }
-
-    private static void assertDivideAllSigns(int[] dividend, int[] divisor)
-    {
-        assertDivideAllSigns(Slices.wrappedIntArray(dividend), 0, Slices.wrappedIntArray(divisor), 0);
-    }
-
     private void assertShiftLeftOverflow(BigInteger value, int leftShifts)
     {
         assertThatThrownBy(() -> assertShiftLeft(value, leftShifts))
@@ -624,149 +768,5 @@ public class TestUnscaledDecimal128Arithmetic
         BigInteger expectedResult = value.multiply(TWO.pow(leftShifts));
         shiftLeftDestructive(decimal, leftShifts);
         assertEquals(decodeUnscaledValue(decimal), expectedResult);
-    }
-
-    private static void assertDivideAllSigns(String dividend, String divisor)
-    {
-        assertDivideAllSigns(dividend, 0, divisor, 0);
-    }
-
-    private static void assertDivideAllSigns(String dividend, int dividendRescaleFactor, String divisor, int divisorRescaleFactor)
-    {
-        assertDivideAllSigns(unscaledDecimal(dividend), dividendRescaleFactor, unscaledDecimal(divisor), divisorRescaleFactor);
-    }
-
-    private static void assertDivideAllSigns(Slice dividend, int dividendRescaleFactor, Slice divisor, int divisorRescaleFactor)
-    {
-        assertDivide(dividend, dividendRescaleFactor, divisor, divisorRescaleFactor);
-        if (!isZero(divisor)) {
-            assertDivide(dividend, dividendRescaleFactor, negate(divisor), divisorRescaleFactor);
-        }
-        if (!isZero(dividend)) {
-            assertDivide(negate(dividend), dividendRescaleFactor, divisor, divisorRescaleFactor);
-        }
-        if (!isZero(dividend) && !isZero(divisor)) {
-            assertDivide(negate(dividend), dividendRescaleFactor, negate(divisor), divisorRescaleFactor);
-        }
-    }
-
-    private static void assertDivide(Slice dividend, int dividendRescaleFactor, Slice divisor, int divisorRescaleFactor)
-    {
-        BigInteger dividendBigInteger = decodeUnscaledValue(dividend);
-        BigInteger divisorBigInteger = decodeUnscaledValue(divisor);
-        BigInteger rescaledDividend = dividendBigInteger.multiply(bigIntegerTenToNth(dividendRescaleFactor));
-        BigInteger rescaledDivisor = divisorBigInteger.multiply(bigIntegerTenToNth(divisorRescaleFactor));
-        BigInteger[] expectedQuotientAndRemainder = rescaledDividend.divideAndRemainder(rescaledDivisor);
-        BigInteger expectedQuotient = expectedQuotientAndRemainder[0];
-        BigInteger expectedRemainder = expectedQuotientAndRemainder[1];
-
-        boolean overflowIsExpected = expectedQuotient.abs().compareTo(bigIntegerTenToNth(38)) >= 0 || expectedRemainder.abs().compareTo(bigIntegerTenToNth(38)) >= 0;
-
-        Slice quotient = unscaledDecimal();
-        Slice remainder = unscaledDecimal();
-        try {
-            divide(dividend, dividendRescaleFactor, divisor, divisorRescaleFactor, quotient, remainder);
-            if (overflowIsExpected) {
-                fail("overflow is expected");
-            }
-        }
-        catch (ArithmeticException e) {
-            if (!overflowIsExpected) {
-                fail("overflow wasn't expected");
-            }
-            else {
-                return;
-            }
-        }
-
-        BigInteger actualQuotient = decodeUnscaledValue(quotient);
-        BigInteger actualRemainder = decodeUnscaledValue(remainder);
-
-        if (expectedQuotient.equals(actualQuotient) && expectedRemainder.equals(actualRemainder)) {
-            return;
-        }
-
-        fail(format("%s / %s ([%s * 2^%d] / [%s * 2^%d]) Expected: %s(%s). Actual: %s(%s)",
-                rescaledDividend, rescaledDivisor,
-                dividendBigInteger, dividendRescaleFactor,
-                divisorBigInteger, divisorRescaleFactor,
-                expectedQuotient, expectedRemainder,
-                actualQuotient, actualRemainder));
-    }
-
-    private static Slice negate(Slice slice)
-    {
-        Slice copy = unscaledDecimal(slice);
-        UnscaledDecimal128Arithmetic.negate(copy);
-        return copy;
-    }
-
-    private static int[] toInt8Array(BigInteger value)
-    {
-        byte[] bigIntegerBytes = value.toByteArray();
-        Collections.reverse(Bytes.asList(bigIntegerBytes));
-
-        byte[] bytes = new byte[8 * 4 + 1];
-        System.arraycopy(bigIntegerBytes, 0, bytes, 0, bigIntegerBytes.length);
-        return toInt8Array(bytes);
-    }
-
-    private static int[] toInt8Array(byte[] bytes)
-    {
-        Slice slice = Slices.wrappedBuffer(bytes);
-
-        int[] ints = new int[8];
-        for (int i = 0; i < ints.length; i++) {
-            ints[i] = slice.getInt(i * Integer.SIZE / Byte.SIZE);
-        }
-        return ints;
-    }
-
-    private static boolean isShort(BigInteger value)
-    {
-        return value.abs().shiftRight(63).equals(BigInteger.ZERO);
-    }
-
-    private static void assertMultiply(BigInteger a, long b, BigInteger result)
-    {
-        assertMultiply(a, BigInteger.valueOf(b), result);
-    }
-
-    private static void assertMultiply(BigInteger a, long b, long result)
-    {
-        assertMultiply(a, BigInteger.valueOf(b), BigInteger.valueOf(result));
-    }
-
-    private static void assertMultiply(long a, long b, BigInteger result)
-    {
-        assertMultiply(BigInteger.valueOf(a), b, result);
-    }
-
-    private static void assertMultiply(long a, long b, long result)
-    {
-        assertMultiply(a, b, BigInteger.valueOf(result));
-    }
-
-    private static void assertMultiply(BigInteger a, BigInteger b, BigInteger result)
-    {
-        assertEquals(unscaledDecimal(result), multiply(unscaledDecimal(a), unscaledDecimal(b)));
-        if (isShort(a) && isShort(b)) {
-            assertEquals(unscaledDecimal(result), multiply(a.longValue(), b.longValue()));
-        }
-        if (isShort(a) && !isShort(b)) {
-            assertEquals(unscaledDecimal(result), multiply(unscaledDecimal(b), a.longValue()));
-        }
-        if (!isShort(a) && isShort(b)) {
-            assertEquals(unscaledDecimal(result), multiply(unscaledDecimal(a), b.longValue()));
-        }
-    }
-
-    private static void assertRescale(Slice decimal, int rescale, Slice expected)
-    {
-        assertEquals(rescale(decimal, rescale), expected);
-        if (isShort(unscaledDecimalToBigInteger(decimal))) {
-            Slice actual = rescale(unscaledDecimalToUnscaledLong(decimal), rescale);
-            assertEquals(expected, actual);
-        }
     }
 }

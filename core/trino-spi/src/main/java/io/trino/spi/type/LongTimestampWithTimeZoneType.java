@@ -56,90 +56,6 @@ class LongTimestampWithTimeZoneType
         }
     }
 
-    @Override
-    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
-    {
-        return TYPE_OPERATOR_DECLARATION;
-    }
-
-    @Override
-    public int getFixedSize()
-    {
-        return Long.BYTES + Integer.BYTES;
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
-    {
-        int maxBlockSizeInBytes;
-        if (blockBuilderStatus == null) {
-            maxBlockSizeInBytes = PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
-        }
-        else {
-            maxBlockSizeInBytes = blockBuilderStatus.getMaxPageSizeInBytes();
-        }
-        return new Int96ArrayBlockBuilder(
-                blockBuilderStatus,
-                Math.min(expectedEntries, maxBlockSizeInBytes / getFixedSize()));
-    }
-
-    @Override
-    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
-    {
-        return createBlockBuilder(blockBuilderStatus, expectedEntries, getFixedSize());
-    }
-
-    @Override
-    public BlockBuilder createFixedSizeBlockBuilder(int positionCount)
-    {
-        return new Int96ArrayBlockBuilder(null, positionCount);
-    }
-
-    @Override
-    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
-    {
-        if (block.isNull(position)) {
-            blockBuilder.appendNull();
-        }
-        else {
-            blockBuilder.writeLong(getPackedEpochMillis(block, position));
-            blockBuilder.writeInt(getPicosOfMilli(block, position));
-            blockBuilder.closeEntry();
-        }
-    }
-
-    @Override
-    public Object getObject(Block block, int position)
-    {
-        long packedEpochMillis = getPackedEpochMillis(block, position);
-        int picosOfMilli = getPicosOfMilli(block, position);
-
-        return LongTimestampWithTimeZone.fromEpochMillisAndFraction(unpackMillisUtc(packedEpochMillis), picosOfMilli, unpackZoneKey(packedEpochMillis));
-    }
-
-    @Override
-    public void writeObject(BlockBuilder blockBuilder, Object value)
-    {
-        LongTimestampWithTimeZone timestamp = (LongTimestampWithTimeZone) value;
-
-        blockBuilder.writeLong(packDateTimeWithZone(timestamp.getEpochMillis(), timestamp.getTimeZoneKey()));
-        blockBuilder.writeInt(timestamp.getPicosOfMilli());
-        blockBuilder.closeEntry();
-    }
-
-    @Override
-    public Object getObjectValue(ConnectorSession session, Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return null;
-        }
-
-        long packedEpochMillis = getPackedEpochMillis(block, position);
-        int picosOfMilli = getPicosOfMilli(block, position);
-
-        return SqlTimestampWithTimeZone.newInstance(getPrecision(), unpackMillisUtc(packedEpochMillis), picosOfMilli, unpackZoneKey(packedEpochMillis));
-    }
-
     private static long getPackedEpochMillis(Block block, int position)
     {
         return block.getLong(position, 0);
@@ -267,5 +183,89 @@ class LongTimestampWithTimeZoneType
     {
         return (leftEpochMillis < rightEpochMillis) ||
                 ((leftEpochMillis == rightEpochMillis) && (leftPicosOfMilli <= rightPicosOfMilli));
+    }
+
+    @Override
+    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
+    {
+        return TYPE_OPERATOR_DECLARATION;
+    }
+
+    @Override
+    public int getFixedSize()
+    {
+        return Long.BYTES + Integer.BYTES;
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
+    {
+        int maxBlockSizeInBytes;
+        if (blockBuilderStatus == null) {
+            maxBlockSizeInBytes = PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
+        }
+        else {
+            maxBlockSizeInBytes = blockBuilderStatus.getMaxPageSizeInBytes();
+        }
+        return new Int96ArrayBlockBuilder(
+                blockBuilderStatus,
+                Math.min(expectedEntries, maxBlockSizeInBytes / getFixedSize()));
+    }
+
+    @Override
+    public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
+    {
+        return createBlockBuilder(blockBuilderStatus, expectedEntries, getFixedSize());
+    }
+
+    @Override
+    public BlockBuilder createFixedSizeBlockBuilder(int positionCount)
+    {
+        return new Int96ArrayBlockBuilder(null, positionCount);
+    }
+
+    @Override
+    public void appendTo(Block block, int position, BlockBuilder blockBuilder)
+    {
+        if (block.isNull(position)) {
+            blockBuilder.appendNull();
+        }
+        else {
+            blockBuilder.writeLong(getPackedEpochMillis(block, position));
+            blockBuilder.writeInt(getPicosOfMilli(block, position));
+            blockBuilder.closeEntry();
+        }
+    }
+
+    @Override
+    public Object getObject(Block block, int position)
+    {
+        long packedEpochMillis = getPackedEpochMillis(block, position);
+        int picosOfMilli = getPicosOfMilli(block, position);
+
+        return LongTimestampWithTimeZone.fromEpochMillisAndFraction(unpackMillisUtc(packedEpochMillis), picosOfMilli, unpackZoneKey(packedEpochMillis));
+    }
+
+    @Override
+    public void writeObject(BlockBuilder blockBuilder, Object value)
+    {
+        LongTimestampWithTimeZone timestamp = (LongTimestampWithTimeZone) value;
+
+        blockBuilder.writeLong(packDateTimeWithZone(timestamp.getEpochMillis(), timestamp.getTimeZoneKey()));
+        blockBuilder.writeInt(timestamp.getPicosOfMilli());
+        blockBuilder.closeEntry();
+    }
+
+    @Override
+    public Object getObjectValue(ConnectorSession session, Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return null;
+        }
+
+        long packedEpochMillis = getPackedEpochMillis(block, position);
+        int picosOfMilli = getPicosOfMilli(block, position);
+
+        return SqlTimestampWithTimeZone.newInstance(getPrecision(), unpackMillisUtc(packedEpochMillis), picosOfMilli, unpackZoneKey(packedEpochMillis));
     }
 }

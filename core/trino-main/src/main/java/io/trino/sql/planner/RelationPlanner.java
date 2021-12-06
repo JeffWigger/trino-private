@@ -173,6 +173,43 @@ class RelationPlanner
         this.recursiveSubqueries = recursiveSubqueries;
     }
 
+    private static IrLabel irLabel(Identifier identifier)
+    {
+        return new IrLabel(identifier.getCanonicalValue());
+    }
+
+    private static IrLabel irLabel(String label)
+    {
+        return new IrLabel(label);
+    }
+
+    private static Optional<Unnest> getUnnest(Relation relation)
+    {
+        if (relation instanceof AliasedRelation) {
+            return getUnnest(((AliasedRelation) relation).getRelation());
+        }
+        if (relation instanceof Unnest) {
+            return Optional.of((Unnest) relation);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<Lateral> getLateral(Relation relation)
+    {
+        if (relation instanceof AliasedRelation) {
+            return getLateral(((AliasedRelation) relation).getRelation());
+        }
+        if (relation instanceof Lateral) {
+            return Optional.of((Lateral) relation);
+        }
+        return Optional.empty();
+    }
+
+    private static boolean isEqualComparisonExpression(Expression conjunct)
+    {
+        return conjunct instanceof ComparisonExpression && ((ComparisonExpression) conjunct).getOperator() == ComparisonExpression.Operator.EQUAL;
+    }
+
     @Override
     protected RelationPlan visitNode(Node node, Void context)
     {
@@ -458,16 +495,6 @@ class RelationPlanner
                 searchMode.map(mode -> mode.getMode() == INITIAL).orElse(TRUE),
                 rewrittenPattern,
                 rewrittenVariableDefinitions.build());
-    }
-
-    private static IrLabel irLabel(Identifier identifier)
-    {
-        return new IrLabel(identifier.getCanonicalValue());
-    }
-
-    private static IrLabel irLabel(String label)
-    {
-        return new IrLabel(label);
     }
 
     @Override
@@ -807,28 +834,6 @@ class RelationPlanner
                 outerContext);
     }
 
-    private static Optional<Unnest> getUnnest(Relation relation)
-    {
-        if (relation instanceof AliasedRelation) {
-            return getUnnest(((AliasedRelation) relation).getRelation());
-        }
-        if (relation instanceof Unnest) {
-            return Optional.of((Unnest) relation);
-        }
-        return Optional.empty();
-    }
-
-    private static Optional<Lateral> getLateral(Relation relation)
-    {
-        if (relation instanceof AliasedRelation) {
-            return getLateral(((AliasedRelation) relation).getRelation());
-        }
-        if (relation instanceof Lateral) {
-            return Optional.of((Lateral) relation);
-        }
-        return Optional.empty();
-    }
-
     private RelationPlan planCorrelatedJoin(Join join, RelationPlan leftPlan, Lateral lateral)
     {
         PlanBuilder leftPlanBuilder = newPlanBuilder(leftPlan, analysis, lambdaDeclarationToSymbolMap);
@@ -869,11 +874,6 @@ class RelationPlanner
                 ImmutableMap.of());
 
         return new RelationPlan(planBuilder.getRoot(), analysis.getScope(join), outputSymbols, outerContext);
-    }
-
-    private static boolean isEqualComparisonExpression(Expression conjunct)
-    {
-        return conjunct instanceof ComparisonExpression && ((ComparisonExpression) conjunct).getOperator() == ComparisonExpression.Operator.EQUAL;
     }
 
     private RelationPlan planJoinUnnest(RelationPlan leftPlan, Join joinNode, Unnest node)

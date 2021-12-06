@@ -32,35 +32,25 @@ public class LongLong2LongOpenCustomBigHashMap
         implements Hash
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(LongLong2LongOpenCustomBigHashMap.class).instanceSize();
-
-    public interface HashStrategy
-    {
-        /**
-         * Returns the hash code of the specified element with respect to this hash
-         * strategy.
-         *
-         * @param e1 first half of the element.
-         * @param e2 second half of the element.
-         * @return the hash code of the given element with respect to this hash
-         * strategy.
-         */
-        long hashCode(long e1, long e2);
-
-        /**
-         * Returns true if the given elements are equal with respect to this hash
-         * strategy.
-         *
-         * @param a1 first half of an element.
-         * @param a2 second half an element.
-         * @param b1 first half of another element.
-         * @param b2 second half of another element.
-         * @return true if the two specified elements are equal with respect to this
-         * hash strategy.
-         */
-        boolean equals(long a1, long a2, long b1, long b2);
-    }
-
     private static final boolean ASSERTS = false;
+    /**
+     * The hash strategy of this custom map.
+     */
+    protected final HashStrategy strategy;
+    /**
+     * We never resize below this threshold, which is the construction-time {#n}.
+     */
+    protected final long minN;
+    /**
+     * The acceptable load factor.
+     */
+    protected final float f;
+    /**
+     * The two-part value denoting unmapped keys (or null keys). These values may be passed back via the HashStrategy callback
+     * during equality checks, even though no keys with these values have been added.
+     */
+    protected final long nullKey1;
+    protected final long nullKey2;
     /**
      * The array of keys.
      */
@@ -79,10 +69,6 @@ public class LongLong2LongOpenCustomBigHashMap
      */
     protected boolean containsNullKey;
     /**
-     * The hash strategy of this custom map.
-     */
-    protected final HashStrategy strategy;
-    /**
      * The current table size.
      */
     protected long n;
@@ -91,31 +77,14 @@ public class LongLong2LongOpenCustomBigHashMap
      */
     protected long maxFill;
     /**
-     * We never resize below this threshold, which is the construction-time {#n}.
-     */
-    protected final long minN;
-    /**
      * Number of entries in the set (including the key zero, if present).
      */
     protected long size;
-    /**
-     * The acceptable load factor.
-     */
-    protected final float f;
-
     /**
      * The default return value for {@code get()}, {@code put()} and
      * {@code remove()}.
      */
     protected long defRetValue;
-
-    /**
-     * The two-part value denoting unmapped keys (or null keys). These values may be passed back via the HashStrategy callback
-     * during equality checks, even though no keys with these values have been added.
-     */
-    protected final long nullKey1;
-    protected final long nullKey2;
-
     /**
      * Creates a new hash map.
      *
@@ -820,5 +789,32 @@ public class LongLong2LongOpenCustomBigHashMap
 
     private void checkTable()
     {
+    }
+
+    public interface HashStrategy
+    {
+        /**
+         * Returns the hash code of the specified element with respect to this hash
+         * strategy.
+         *
+         * @param e1 first half of the element.
+         * @param e2 second half of the element.
+         * @return the hash code of the given element with respect to this hash
+         * strategy.
+         */
+        long hashCode(long e1, long e2);
+
+        /**
+         * Returns true if the given elements are equal with respect to this hash
+         * strategy.
+         *
+         * @param a1 first half of an element.
+         * @param a2 second half an element.
+         * @param b1 first half of another element.
+         * @param b2 second half of another element.
+         * @return true if the two specified elements are equal with respect to this
+         * hash strategy.
+         */
+        boolean equals(long a1, long a2, long b1, long b2);
     }
 }

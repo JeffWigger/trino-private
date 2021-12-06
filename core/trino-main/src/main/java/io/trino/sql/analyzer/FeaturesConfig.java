@@ -61,10 +61,9 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 })
 public class FeaturesConfig
 {
+    public static final String SPILLER_SPILL_PATH = "spiller-spill-path";
     @VisibleForTesting
     static final String SPILL_ENABLED = "spill-enabled";
-    public static final String SPILLER_SPILL_PATH = "spiller-spill-path";
-
     private double cpuCostWeight = 75;
     private double memoryCostWeight = 10;
     private double networkCostWeight = 15;
@@ -142,38 +141,6 @@ public class FeaturesConfig
     private int maxGroupingSets = 2048;
 
     private boolean legacyCatalogRoles;
-
-    public enum JoinReorderingStrategy
-    {
-        NONE,
-        ELIMINATE_CROSS_JOINS,
-        AUTOMATIC,
-    }
-
-    public enum JoinDistributionType
-    {
-        BROADCAST,
-        PARTITIONED,
-        AUTOMATIC;
-
-        public boolean canPartition()
-        {
-            return this == PARTITIONED || this == AUTOMATIC;
-        }
-
-        public boolean canReplicate()
-        {
-            return this == BROADCAST || this == AUTOMATIC;
-        }
-    }
-
-    public enum DataIntegrityVerification
-    {
-        NONE,
-        ABORT,
-        RETRY,
-        /**/;
-    }
 
     public double getCpuCostWeight()
     {
@@ -658,16 +625,16 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isDefaultFilterFactorEnabled()
+    {
+        return defaultFilterFactorEnabled;
+    }
+
     @Config("optimizer.default-filter-factor-enabled")
     public FeaturesConfig setDefaultFilterFactorEnabled(boolean defaultFilterFactorEnabled)
     {
         this.defaultFilterFactorEnabled = defaultFilterFactorEnabled;
         return this;
-    }
-
-    public boolean isDefaultFilterFactorEnabled()
-    {
-        return defaultFilterFactorEnabled;
     }
 
     public boolean isEnableForcedExchangeBelowGroupId()
@@ -1102,5 +1069,37 @@ public class FeaturesConfig
     {
         this.legacyCatalogRoles = legacyCatalogRoles;
         return this;
+    }
+
+    public enum JoinReorderingStrategy
+    {
+        NONE,
+        ELIMINATE_CROSS_JOINS,
+        AUTOMATIC,
+    }
+
+    public enum JoinDistributionType
+    {
+        BROADCAST,
+        PARTITIONED,
+        AUTOMATIC;
+
+        public boolean canPartition()
+        {
+            return this == PARTITIONED || this == AUTOMATIC;
+        }
+
+        public boolean canReplicate()
+        {
+            return this == BROADCAST || this == AUTOMATIC;
+        }
+    }
+
+    public enum DataIntegrityVerification
+    {
+        NONE,
+        ABORT,
+        RETRY,
+        /**/;
     }
 }

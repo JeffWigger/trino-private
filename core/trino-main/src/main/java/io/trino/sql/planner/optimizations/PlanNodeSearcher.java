@@ -31,6 +31,16 @@ import static java.util.Objects.requireNonNull;
 
 public class PlanNodeSearcher
 {
+    private final PlanNode node;
+    private final Lookup lookup;
+    private Predicate<PlanNode> where = alwaysTrue();
+    private Predicate<PlanNode> recurseOnlyWhen = alwaysTrue();
+    private PlanNodeSearcher(PlanNode node, Lookup lookup)
+    {
+        this.node = requireNonNull(node, "node is null");
+        this.lookup = requireNonNull(lookup, "lookup is null");
+    }
+
     public static PlanNodeSearcher searchFrom(PlanNode node)
     {
         return searchFrom(node, noLookup());
@@ -44,17 +54,6 @@ public class PlanNodeSearcher
     public static PlanNodeSearcher searchFrom(PlanNode node, Lookup lookup)
     {
         return new PlanNodeSearcher(node, lookup);
-    }
-
-    private final PlanNode node;
-    private final Lookup lookup;
-    private Predicate<PlanNode> where = alwaysTrue();
-    private Predicate<PlanNode> recurseOnlyWhen = alwaysTrue();
-
-    private PlanNodeSearcher(PlanNode node, Lookup lookup)
-    {
-        this.node = requireNonNull(node, "node is null");
-        this.lookup = requireNonNull(lookup, "lookup is null");
     }
 
     public PlanNodeSearcher where(Predicate<PlanNode> where)

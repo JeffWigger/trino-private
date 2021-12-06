@@ -37,6 +37,37 @@ public class BooleanEncoding
         this.nullSequence = nullSequence;
     }
 
+    @SuppressWarnings("PointlessArithmeticExpression")
+    private static boolean isFalse(Slice slice, int start, int length)
+    {
+        return (length == 5) &&
+                (toUpperCase(slice.getByte(start + 0)) == 'F') &&
+                (toUpperCase(slice.getByte(start + 1)) == 'A') &&
+                (toUpperCase(slice.getByte(start + 2)) == 'L') &&
+                (toUpperCase(slice.getByte(start + 3)) == 'S') &&
+                (toUpperCase(slice.getByte(start + 4)) == 'E');
+    }
+
+    @SuppressWarnings("PointlessArithmeticExpression")
+    private static boolean isTrue(Slice slice, int start, int length)
+    {
+        return (length == 4) &&
+                (toUpperCase(slice.getByte(start + 0)) == 'T') &&
+                (toUpperCase(slice.getByte(start + 1)) == 'R') &&
+                (toUpperCase(slice.getByte(start + 2)) == 'U') &&
+                (toUpperCase(slice.getByte(start + 3)) == 'E');
+    }
+
+    private static byte toUpperCase(byte b)
+    {
+        return isLowerCase(b) ? ((byte) (b - 32)) : b;
+    }
+
+    private static boolean isLowerCase(byte b)
+    {
+        return (b >= 'a') && (b <= 'z');
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -94,36 +125,5 @@ public class BooleanEncoding
     public void decodeValueInto(int depth, BlockBuilder builder, Slice slice, int offset, int length)
     {
         type.writeBoolean(builder, isTrue(slice, offset, length));
-    }
-
-    @SuppressWarnings("PointlessArithmeticExpression")
-    private static boolean isFalse(Slice slice, int start, int length)
-    {
-        return (length == 5) &&
-                (toUpperCase(slice.getByte(start + 0)) == 'F') &&
-                (toUpperCase(slice.getByte(start + 1)) == 'A') &&
-                (toUpperCase(slice.getByte(start + 2)) == 'L') &&
-                (toUpperCase(slice.getByte(start + 3)) == 'S') &&
-                (toUpperCase(slice.getByte(start + 4)) == 'E');
-    }
-
-    @SuppressWarnings("PointlessArithmeticExpression")
-    private static boolean isTrue(Slice slice, int start, int length)
-    {
-        return (length == 4) &&
-                (toUpperCase(slice.getByte(start + 0)) == 'T') &&
-                (toUpperCase(slice.getByte(start + 1)) == 'R') &&
-                (toUpperCase(slice.getByte(start + 2)) == 'U') &&
-                (toUpperCase(slice.getByte(start + 3)) == 'E');
-    }
-
-    private static byte toUpperCase(byte b)
-    {
-        return isLowerCase(b) ? ((byte) (b - 32)) : b;
-    }
-
-    private static boolean isLowerCase(byte b)
-    {
-        return (b >= 'a') && (b <= 'z');
     }
 }

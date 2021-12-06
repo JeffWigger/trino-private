@@ -24,6 +24,19 @@ public final class LongTimestampWithTimeZone
     private final int picosOfMilli; // number of picoseconds of the millisecond corresponding to epochMillis
     private final short timeZoneKey;
 
+    private LongTimestampWithTimeZone(long epochMillis, int picosOfMilli, short timeZoneKey)
+    {
+        if (picosOfMilli < 0) {
+            throw new IllegalArgumentException("picosOfMilli must be >= 0");
+        }
+        if (picosOfMilli >= PICOSECONDS_PER_MILLISECOND) {
+            throw new IllegalArgumentException("picosOfMilli must be < " + PICOSECONDS_PER_MILLISECOND);
+        }
+        this.epochMillis = epochMillis;
+        this.picosOfMilli = picosOfMilli;
+        this.timeZoneKey = timeZoneKey;
+    }
+
     public static LongTimestampWithTimeZone fromEpochSecondsAndFraction(long epochSecond, long fractionInPicos, TimeZoneKey timeZoneKey)
     {
         return fromEpochMillisAndFraction(
@@ -40,19 +53,6 @@ public final class LongTimestampWithTimeZone
     public static LongTimestampWithTimeZone fromEpochMillisAndFraction(long epochMillis, int picosOfMilli, short timeZoneKey)
     {
         return new LongTimestampWithTimeZone(epochMillis, picosOfMilli, timeZoneKey);
-    }
-
-    private LongTimestampWithTimeZone(long epochMillis, int picosOfMilli, short timeZoneKey)
-    {
-        if (picosOfMilli < 0) {
-            throw new IllegalArgumentException("picosOfMilli must be >= 0");
-        }
-        if (picosOfMilli >= PICOSECONDS_PER_MILLISECOND) {
-            throw new IllegalArgumentException("picosOfMilli must be < " + PICOSECONDS_PER_MILLISECOND);
-        }
-        this.epochMillis = epochMillis;
-        this.picosOfMilli = picosOfMilli;
-        this.timeZoneKey = timeZoneKey;
     }
 
     public long getEpochMillis()

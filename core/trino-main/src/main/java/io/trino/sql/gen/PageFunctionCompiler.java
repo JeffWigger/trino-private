@@ -145,6 +145,167 @@ public class PageFunctionCompiler
         }
     }
 
+    private static ParameterizedType generateProjectionWorkClassName(Optional<String> classNameSuffix)
+    {
+        return makeClassName("PageProjectionWork", classNameSuffix);
+    }
+
+    private static MethodDefinition generateProcessMethod(
+            ClassDefinition classDefinition,
+            FieldDefinition blockBuilder,
+            FieldDefinition session,
+            FieldDefinition page,
+            FieldDefinition selectedPositions,
+            FieldDefinition nextIndexOrPosition,
+            FieldDefinition result)
+    {
+        MethodDefinition method = classDefinition.declareMethod(a(PUBLIC), "process", type(boolean.class), ImmutableList.of());
+
+        Scope scope = method.getScope();
+        Variable thisVariable = method.getThis();
+        BytecodeBlock body = method.getBody();
+
+        Variable from = scope.declareVariable("from", body, thisVariable.getField(nextIndexOrPosition));
+        Variable to = scope.declareVariable("to", body, add(thisVariable.getField(selectedPositions).invoke("getOffset", int.class), thisVariable.getField(selectedPositions).invoke("size", int.class)));
+        Variable positions = scope.declareVariable(int[].class, "positions");
+        Variable index = scope.declareVariable(int.class, "index");
+
+        IfStatement ifStatement = new IfStatement()
+                .condition(thisVariable.getField(selectedPositions).invoke("isList", boolean.class));
+        body.append(ifStatement);
+
+        ifStatement.ifTrue(new BytecodeBlock()
+                .append(positions.set(thisVariable.getField(selectedPositions).invoke("getPositions", int[].class)))
+                .append(new ForLoop("positions loop")
+                        .initialize(index.set(from))
+                        .condition(lessThan(index, to))
+                        .update(index.increment())
+                        .body(new BytecodeBlock()
+                                .append(thisVariable.invoke("evaluate", void.class, thisVariable.getField(session), thisVariable.getField(page), positions.getElement(index))))));
+
+        ifStatement.ifFalse(new ForLoop("range based loop")
+                .initialize(index.set(from))
+                .condition(lessThan(index, to))
+                .update(index.increment())
+                .body(new BytecodeBlock()
+                        .append(thisVariable.invoke("evaluate", void.class, thisVariable.getField(session), thisVariable.getField(page), index))));
+
+        body.comment("result = this.blockBuilder.build(); return true;")
+                .append(thisVariable.setField(result, thisVariable.getField(blockBuilder).invoke("build", Block.class)))
+                .push(true)
+                .retBoolean();
+
+        return method;
+    }
+
+    private static ParameterizedType generateFilterClassName(Optional<String> classNameSuffix)
+    {
+        return makeClassName(PageFilter.class.getSimpleName(), classNameSuffix);
+    }
+
+    private static MethodDefinition generatePageFilterMethod(ClassDefinition classDefinition, FieldDefinition selectedPositionsField)
+    {
+        Parameter session = arg("session", ConnectorSession.class);
+        Parameter page = arg("page", Page.class);
+
+        MethodDefinition method = classDefinition.declareMethod(
+                a(PUBLIC),
+                "filter",
+                type(SelectedPositions.class),
+                ImmutableList.<Parameter>builder()
+                        .add(session)
+                        .add(page)
+                        .build());
+
+        Scope scope = method.getScope();
+        Variable thisVariable = method.getThis();
+        BytecodeBlock body = method.getBody();
+
+        Variable positionCount = scope.declareVariable("positionCount", body, page.invoke("getPositionCount", int.class));
+
+        body.append(new IfStatement("grow selectedPositions if necessary")
+                .condition(lessThan(thisVariable.getField(selectedPositionsField).length(), positionCount))
+                .ifTrue(thisVariable.setField(selectedPositionsField, newArray(type(boolean[].class), positionCount))));
+
+        Variable selectedPositions = scope.declareVariable("selectedPositions", body, thisVariable.getField(selectedPositionsField));
+        Variable position = scope.declareVariable(int.class, "position");
+        body.append(new ForLoop()
+                .initialize(position.set(constantInt(0)))
+                .condition(lessThan(position, positionCount))
+                .update(position.increment())
+                .body(selectedPositions.setElement(position, thisVariable.invoke("filter", boolean.class, session, page, position))));
+
+        body.append(invokeStatic(
+                PageFilter.class,
+                "positionsArrayToSelectedPositions",
+                SelectedPositions.class,
+                selectedPositions,
+                positionCount)
+                .ret());
+
+        return method;
+    }
+
+    private static void generateConstructor(
+            ClassDefinition classDefinition,
+            CachedInstanceBinder cachedInstanceBinder,
+            Consumer<MethodDefinition> additionalStatements)
+    {
+        MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC));
+
+        BytecodeBlock body = constructorDefinition.getBody();
+        Variable thisVariable = constructorDefinition.getThis();
+
+        body.comment("super();")
+                .append(thisVariable)
+                .invokeConstructor(Object.class);
+
+        additionalStatements.accept(constructorDefinition);
+
+        cachedInstanceBinder.generateInitializations(thisVariable, body);
+        body.ret();
+    }
+
+    private static void declareBlockVariables(RowExpression expression, Parameter page, Scope scope, BytecodeBlock body)
+    {
+        for (int channel : getInputChannels(expression)) {
+            scope.declareVariable("block_" + channel, body, page.invoke("getBlock", Block.class, constantInt(channel)));
+        }
+    }
+
+    private static List<Integer> getInputChannels(Iterable<RowExpression> expressions)
+    {
+        TreeSet<Integer> channels = new TreeSet<>();
+        for (RowExpression expression : Expressions.subExpressions(expressions)) {
+            if (expression instanceof InputReferenceExpression) {
+                channels.add(((InputReferenceExpression) expression).getField());
+            }
+        }
+        return ImmutableList.copyOf(channels);
+    }
+
+    private static List<Integer> getInputChannels(RowExpression expression)
+    {
+        return getInputChannels(ImmutableList.of(expression));
+    }
+
+    private static List<Parameter> toBlockParameters(List<Integer> inputChannels)
+    {
+        ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
+        for (int channel : inputChannels) {
+            parameters.add(arg("block_" + channel, Block.class));
+        }
+        return parameters.build();
+    }
+
+    private static RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler(CallSiteBinder callSiteBinder)
+    {
+        return new InputReferenceCompiler(
+                (scope, field) -> scope.getVariable("block_" + field),
+                (scope, field) -> scope.getVariable("position"),
+                callSiteBinder);
+    }
+
     @Nullable
     @Managed
     @Nested
@@ -211,11 +372,6 @@ public class PageFunctionCompiler
                 constructorMethodHandle(pageProjectionWorkClass, BlockBuilder.class, ConnectorSession.class, Page.class, SelectedPositions.class));
     }
 
-    private static ParameterizedType generateProjectionWorkClassName(Optional<String> classNameSuffix)
-    {
-        return makeClassName("PageProjectionWork", classNameSuffix);
-    }
-
     private ClassDefinition definePageProjectWorkClass(RowExpression projection, CallSiteBinder callSiteBinder, Optional<String> classNameSuffix)
     {
         ClassDefinition classDefinition = new ClassDefinition(
@@ -269,54 +425,6 @@ public class PageFunctionCompiler
         body.ret();
 
         return classDefinition;
-    }
-
-    private static MethodDefinition generateProcessMethod(
-            ClassDefinition classDefinition,
-            FieldDefinition blockBuilder,
-            FieldDefinition session,
-            FieldDefinition page,
-            FieldDefinition selectedPositions,
-            FieldDefinition nextIndexOrPosition,
-            FieldDefinition result)
-    {
-        MethodDefinition method = classDefinition.declareMethod(a(PUBLIC), "process", type(boolean.class), ImmutableList.of());
-
-        Scope scope = method.getScope();
-        Variable thisVariable = method.getThis();
-        BytecodeBlock body = method.getBody();
-
-        Variable from = scope.declareVariable("from", body, thisVariable.getField(nextIndexOrPosition));
-        Variable to = scope.declareVariable("to", body, add(thisVariable.getField(selectedPositions).invoke("getOffset", int.class), thisVariable.getField(selectedPositions).invoke("size", int.class)));
-        Variable positions = scope.declareVariable(int[].class, "positions");
-        Variable index = scope.declareVariable(int.class, "index");
-
-        IfStatement ifStatement = new IfStatement()
-                .condition(thisVariable.getField(selectedPositions).invoke("isList", boolean.class));
-        body.append(ifStatement);
-
-        ifStatement.ifTrue(new BytecodeBlock()
-                .append(positions.set(thisVariable.getField(selectedPositions).invoke("getPositions", int[].class)))
-                .append(new ForLoop("positions loop")
-                        .initialize(index.set(from))
-                        .condition(lessThan(index, to))
-                        .update(index.increment())
-                        .body(new BytecodeBlock()
-                                .append(thisVariable.invoke("evaluate", void.class, thisVariable.getField(session), thisVariable.getField(page), positions.getElement(index))))));
-
-        ifStatement.ifFalse(new ForLoop("range based loop")
-                .initialize(index.set(from))
-                .condition(lessThan(index, to))
-                .update(index.increment())
-                .body(new BytecodeBlock()
-                        .append(thisVariable.invoke("evaluate", void.class, thisVariable.getField(session), thisVariable.getField(page), index))));
-
-        body.comment("result = this.blockBuilder.build(); return true;")
-                .append(thisVariable.setField(result, thisVariable.getField(blockBuilder).invoke("build", Block.class)))
-                .push(true)
-                .retBoolean();
-
-        return method;
     }
 
     private MethodDefinition generateEvaluateMethod(
@@ -403,11 +511,6 @@ public class PageFunctionCompiler
         };
     }
 
-    private static ParameterizedType generateFilterClassName(Optional<String> classNameSuffix)
-    {
-        return makeClassName(PageFilter.class.getSimpleName(), classNameSuffix);
-    }
-
     private ClassDefinition defineFilterClass(RowExpression filter, InputChannels inputChannels, CallSiteBinder callSiteBinder, Optional<String> classNameSuffix)
     {
         ClassDefinition classDefinition = new ClassDefinition(
@@ -454,49 +557,6 @@ public class PageFunctionCompiler
         });
 
         return classDefinition;
-    }
-
-    private static MethodDefinition generatePageFilterMethod(ClassDefinition classDefinition, FieldDefinition selectedPositionsField)
-    {
-        Parameter session = arg("session", ConnectorSession.class);
-        Parameter page = arg("page", Page.class);
-
-        MethodDefinition method = classDefinition.declareMethod(
-                a(PUBLIC),
-                "filter",
-                type(SelectedPositions.class),
-                ImmutableList.<Parameter>builder()
-                        .add(session)
-                        .add(page)
-                        .build());
-
-        Scope scope = method.getScope();
-        Variable thisVariable = method.getThis();
-        BytecodeBlock body = method.getBody();
-
-        Variable positionCount = scope.declareVariable("positionCount", body, page.invoke("getPositionCount", int.class));
-
-        body.append(new IfStatement("grow selectedPositions if necessary")
-                .condition(lessThan(thisVariable.getField(selectedPositionsField).length(), positionCount))
-                .ifTrue(thisVariable.setField(selectedPositionsField, newArray(type(boolean[].class), positionCount))));
-
-        Variable selectedPositions = scope.declareVariable("selectedPositions", body, thisVariable.getField(selectedPositionsField));
-        Variable position = scope.declareVariable(int.class, "position");
-        body.append(new ForLoop()
-                .initialize(position.set(constantInt(0)))
-                .condition(lessThan(position, positionCount))
-                .update(position.increment())
-                .body(selectedPositions.setElement(position, thisVariable.invoke("filter", boolean.class, session, page, position))));
-
-        body.append(invokeStatic(
-                PageFilter.class,
-                "positionsArrayToSelectedPositions",
-                SelectedPositions.class,
-                selectedPositions,
-                positionCount)
-                .ret());
-
-        return method;
     }
 
     private MethodDefinition generateFilterMethod(
@@ -567,65 +627,5 @@ public class PageFunctionCompiler
         }
 
         return compiledLambdaMap.build();
-    }
-
-    private static void generateConstructor(
-            ClassDefinition classDefinition,
-            CachedInstanceBinder cachedInstanceBinder,
-            Consumer<MethodDefinition> additionalStatements)
-    {
-        MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC));
-
-        BytecodeBlock body = constructorDefinition.getBody();
-        Variable thisVariable = constructorDefinition.getThis();
-
-        body.comment("super();")
-                .append(thisVariable)
-                .invokeConstructor(Object.class);
-
-        additionalStatements.accept(constructorDefinition);
-
-        cachedInstanceBinder.generateInitializations(thisVariable, body);
-        body.ret();
-    }
-
-    private static void declareBlockVariables(RowExpression expression, Parameter page, Scope scope, BytecodeBlock body)
-    {
-        for (int channel : getInputChannels(expression)) {
-            scope.declareVariable("block_" + channel, body, page.invoke("getBlock", Block.class, constantInt(channel)));
-        }
-    }
-
-    private static List<Integer> getInputChannels(Iterable<RowExpression> expressions)
-    {
-        TreeSet<Integer> channels = new TreeSet<>();
-        for (RowExpression expression : Expressions.subExpressions(expressions)) {
-            if (expression instanceof InputReferenceExpression) {
-                channels.add(((InputReferenceExpression) expression).getField());
-            }
-        }
-        return ImmutableList.copyOf(channels);
-    }
-
-    private static List<Integer> getInputChannels(RowExpression expression)
-    {
-        return getInputChannels(ImmutableList.of(expression));
-    }
-
-    private static List<Parameter> toBlockParameters(List<Integer> inputChannels)
-    {
-        ImmutableList.Builder<Parameter> parameters = ImmutableList.builder();
-        for (int channel : inputChannels) {
-            parameters.add(arg("block_" + channel, Block.class));
-        }
-        return parameters.build();
-    }
-
-    private static RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler(CallSiteBinder callSiteBinder)
-    {
-        return new InputReferenceCompiler(
-                (scope, field) -> scope.getVariable("block_" + field),
-                (scope, field) -> scope.getVariable("position"),
-                callSiteBinder);
     }
 }

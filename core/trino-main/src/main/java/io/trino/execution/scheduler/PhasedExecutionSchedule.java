@@ -78,52 +78,9 @@ public class PhasedExecutionSchedule
         }
     }
 
-    @Override
-    public Set<SqlStageExecution> getStagesToSchedule()
-    {
-        removeCompletedStages();
-        addPhasesIfNecessary();
-        if (isFinished()) {
-            return ImmutableSet.of();
-        }
-        return activeSources;
-    }
-
-    private void removeCompletedStages()
-    {
-        for (Iterator<SqlStageExecution> stageIterator = activeSources.iterator(); stageIterator.hasNext(); ) {
-            StageState state = stageIterator.next().getState();
-            if (state == SCHEDULED || state == RUNNING || state == FLUSHING || state.isDone()) {
-                stageIterator.remove();
-            }
-        }
-    }
-
-    private void addPhasesIfNecessary()
-    {
-        // we want at least one source distributed phase in the active sources
-        if (hasSourceDistributedStage(activeSources)) {
-            return;
-        }
-
-        while (!schedulePhases.isEmpty()) {
-            Set<SqlStageExecution> phase = schedulePhases.remove(0);
-            activeSources.addAll(phase);
-            if (hasSourceDistributedStage(phase)) {
-                return;
-            }
-        }
-    }
-
     private static boolean hasSourceDistributedStage(Set<SqlStageExecution> phase)
     {
         return phase.stream().anyMatch(stage -> !stage.getFragment().getPartitionedSources().isEmpty());
-    }
-
-    @Override
-    public boolean isFinished()
-    {
-        return activeSources.isEmpty() && schedulePhases.isEmpty();
     }
 
     @VisibleForTesting
@@ -168,6 +125,49 @@ public class PhasedExecutionSchedule
 
         List<Set<PlanFragmentId>> schedulePhases = ImmutableList.copyOf(new TopologicalOrderIterator<>(componentGraph));
         return schedulePhases;
+    }
+
+    @Override
+    public Set<SqlStageExecution> getStagesToSchedule()
+    {
+        removeCompletedStages();
+        addPhasesIfNecessary();
+        if (isFinished()) {
+            return ImmutableSet.of();
+        }
+        return activeSources;
+    }
+
+    private void removeCompletedStages()
+    {
+        for (Iterator<SqlStageExecution> stageIterator = activeSources.iterator(); stageIterator.hasNext(); ) {
+            StageState state = stageIterator.next().getState();
+            if (state == SCHEDULED || state == RUNNING || state == FLUSHING || state.isDone()) {
+                stageIterator.remove();
+            }
+        }
+    }
+
+    private void addPhasesIfNecessary()
+    {
+        // we want at least one source distributed phase in the active sources
+        if (hasSourceDistributedStage(activeSources)) {
+            return;
+        }
+
+        while (!schedulePhases.isEmpty()) {
+            Set<SqlStageExecution> phase = schedulePhases.remove(0);
+            activeSources.addAll(phase);
+            if (hasSourceDistributedStage(phase)) {
+                return;
+            }
+        }
+    }
+
+    @Override
+    public boolean isFinished()
+    {
+        return activeSources.isEmpty() && schedulePhases.isEmpty();
     }
 
     private static class Visitor

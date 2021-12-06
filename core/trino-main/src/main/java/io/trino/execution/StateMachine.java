@@ -49,14 +49,11 @@ public class StateMachine<T>
     private final Executor executor;
     private final Object lock = new Object();
     private final Set<T> terminalStates;
-
-    @GuardedBy("lock")
-    private volatile T state;
-
     @GuardedBy("lock")
     private final List<StateChangeListener<T>> stateChangeListeners = new ArrayList<>();
-
     private final AtomicReference<FutureStateChange<T>> futureStateChange = new AtomicReference<>(new FutureStateChange<>());
+    @GuardedBy("lock")
+    private volatile T state;
 
     /**
      * Creates a state machine with the specified initial state and no terminal states.
@@ -304,11 +301,6 @@ public class StateMachine<T>
         }
     }
 
-    public interface StateChangeListener<T>
-    {
-        void stateChanged(T newState);
-    }
-
     @Override
     public String toString()
     {
@@ -326,5 +318,10 @@ public class StateMachine<T>
             }
             throw e;
         }
+    }
+
+    public interface StateChangeListener<T>
+    {
+        void stateChanged(T newState);
     }
 }

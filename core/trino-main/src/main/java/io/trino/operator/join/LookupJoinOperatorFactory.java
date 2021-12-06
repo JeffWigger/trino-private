@@ -49,14 +49,6 @@ import static java.util.Objects.requireNonNull;
 public class LookupJoinOperatorFactory
         implements JoinOperatorFactory, AdapterWorkProcessorOperatorFactory
 {
-    public enum JoinType
-    {
-        INNER,
-        PROBE_OUTER, // the Probe is the outer side of the join
-        LOOKUP_OUTER, // The LookupSource is the outer side of the join
-        FULL_OUTER,
-    }
-
     private final int operatorId;
     private final PlanNodeId planNodeId;
     private final List<Type> probeTypes;
@@ -70,7 +62,6 @@ public class LookupJoinOperatorFactory
     private final OptionalInt totalOperatorsCount;
     private final HashGenerator probeHashGenerator;
     private final PartitioningSpillerFactory partitioningSpillerFactory;
-
     private boolean closed;
 
     public LookupJoinOperatorFactory(
@@ -161,14 +152,14 @@ public class LookupJoinOperatorFactory
         return outerOperatorFactoryResult;
     }
 
-    // Methods from OperatorFactory
-
     @Override
     public Operator createOperator(DriverContext driverContext)
     {
         OperatorContext operatorContext = driverContext.addOperatorContext(getOperatorId(), getPlanNodeId(), getOperatorType());
         return new WorkProcessorOperatorAdapter(operatorContext, this);
     }
+
+    // Methods from OperatorFactory
 
     @Override
     public void noMoreOperators()
@@ -182,13 +173,13 @@ public class LookupJoinOperatorFactory
         lifespanFinished(lifespan);
     }
 
-    // Methods from AdapterWorkProcessorOperatorFactory
-
     @Override
     public int getOperatorId()
     {
         return operatorId;
     }
+
+    // Methods from AdapterWorkProcessorOperatorFactory
 
     @Override
     public PlanNodeId getPlanNodeId()
@@ -266,5 +257,13 @@ public class LookupJoinOperatorFactory
     public LookupJoinOperatorFactory duplicate()
     {
         return new LookupJoinOperatorFactory(this);
+    }
+
+    public enum JoinType
+    {
+        INNER,
+        PROBE_OUTER, // the Probe is the outer side of the join
+        LOOKUP_OUTER, // The LookupSource is the outer side of the join
+        FULL_OUTER,
     }
 }

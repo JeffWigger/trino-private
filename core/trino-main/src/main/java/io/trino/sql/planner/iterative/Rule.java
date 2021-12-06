@@ -62,6 +62,13 @@ public interface Rule<T>
 
     final class Result
     {
+        private final Optional<PlanNode> transformedPlan;
+
+        private Result(Optional<PlanNode> transformedPlan)
+        {
+            this.transformedPlan = requireNonNull(transformedPlan, "transformedPlan is null");
+        }
+
         public static Result empty()
         {
             return new Result(Optional.empty());
@@ -70,13 +77,6 @@ public interface Rule<T>
         public static Result ofPlanNode(PlanNode transformedPlan)
         {
             return new Result(Optional.of(transformedPlan));
-        }
-
-        private final Optional<PlanNode> transformedPlan;
-
-        private Result(Optional<PlanNode> transformedPlan)
-        {
-            this.transformedPlan = requireNonNull(transformedPlan, "transformedPlan is null");
         }
 
         public Optional<PlanNode> getTransformedPlan()

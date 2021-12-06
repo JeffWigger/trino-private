@@ -80,18 +80,14 @@ public final class DiscoveryNodeManager
     private final ExecutorService nodeStateEventExecutor;
     private final boolean httpsRequired;
     private final InternalNode currentNode;
-
-    @GuardedBy("this")
-    private SetMultimap<CatalogName, InternalNode> activeNodesByCatalogName;
-
-    @GuardedBy("this")
-    private AllNodes allNodes;
-
-    @GuardedBy("this")
-    private Set<InternalNode> coordinators;
-
     @GuardedBy("this")
     private final List<Consumer<AllNodes>> listeners = new ArrayList<>();
+    @GuardedBy("this")
+    private SetMultimap<CatalogName, InternalNode> activeNodesByCatalogName;
+    @GuardedBy("this")
+    private AllNodes allNodes;
+    @GuardedBy("this")
+    private Set<InternalNode> coordinators;
 
     @Inject
     public DiscoveryNodeManager(
@@ -138,6 +134,30 @@ public final class DiscoveryNodeManager
             }
         }
         throw new IllegalStateException("INVARIANT: current node not returned from service selector");
+    }
+
+    private static URI getHttpUri(ServiceDescriptor descriptor, boolean httpsRequired)
+    {
+        String url = descriptor.getProperties().get(httpsRequired ? "https" : "http");
+        if (url != null) {
+            try {
+                return new URI(url);
+            }
+            catch (URISyntaxException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static NodeVersion getNodeVersion(ServiceDescriptor descriptor)
+    {
+        String nodeVersion = descriptor.getProperties().get("node_version");
+        return nodeVersion == null ? null : new NodeVersion(nodeVersion);
+    }
+
+    private static boolean isCoordinator(ServiceDescriptor service)
+    {
+        return Boolean.parseBoolean(service.getProperties().get("coordinator"));
     }
 
     @PostConstruct
@@ -364,29 +384,5 @@ public final class DiscoveryNodeManager
     public synchronized void removeNodeChangeListener(Consumer<AllNodes> listener)
     {
         listeners.remove(requireNonNull(listener, "listener is null"));
-    }
-
-    private static URI getHttpUri(ServiceDescriptor descriptor, boolean httpsRequired)
-    {
-        String url = descriptor.getProperties().get(httpsRequired ? "https" : "http");
-        if (url != null) {
-            try {
-                return new URI(url);
-            }
-            catch (URISyntaxException ignored) {
-            }
-        }
-        return null;
-    }
-
-    private static NodeVersion getNodeVersion(ServiceDescriptor descriptor)
-    {
-        String nodeVersion = descriptor.getProperties().get("node_version");
-        return nodeVersion == null ? null : new NodeVersion(nodeVersion);
-    }
-
-    private static boolean isCoordinator(ServiceDescriptor service)
-    {
-        return Boolean.parseBoolean(service.getProperties().get("coordinator"));
     }
 }

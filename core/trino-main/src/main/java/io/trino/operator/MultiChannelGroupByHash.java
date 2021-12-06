@@ -67,26 +67,21 @@ public class MultiChannelGroupByHash
     private final HashGenerator hashGenerator;
     private final OptionalInt precomputedHashChannel;
     private final boolean processDictionary;
+    private final LongBigArray groupAddressByGroupId;
+    // reserve enough memory before rehash
+    private final UpdateMemory updateMemory;
     private PageBuilder currentPageBuilder;
-
     private long completedPagesMemorySize;
-
     private int hashCapacity;
     private int maxFill;
     private int mask;
     private long[] groupAddressByHash;
     private int[] groupIdsByHash;
     private byte[] rawHashByHashPosition;
-
-    private final LongBigArray groupAddressByGroupId;
-
     private int nextGroupId;
     private DictionaryLookBack dictionaryLookBack;
     private long hashCollisions;
     private double expectedHashCollisions;
-
-    // reserve enough memory before rehash
-    private final UpdateMemory updateMemory;
     private long preallocatedMemoryInBytes;
     private long currentPageSizeInBytes;
 
@@ -154,6 +149,22 @@ public class MultiChannelGroupByHash
         // This interface is used for actively reserving memory (push model) for rehash.
         // The caller can also query memory usage on this object (pull model)
         this.updateMemory = requireNonNull(updateMemory, "updateMemory is null");
+    }
+
+    private static long getHashPosition(long rawHash, int mask)
+    {
+        return murmurHash3(rawHash) & mask;
+    }
+
+    private static int calculateMaxFill(int hashSize)
+    {
+        checkArgument(hashSize > 0, "hashSize must be greater than 0");
+        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
+        if (maxFill == hashSize) {
+            maxFill--;
+        }
+        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
+        return maxFill;
     }
 
     @Override
@@ -444,22 +455,6 @@ public class MultiChannelGroupByHash
             return false;
         }
         return hashStrategy.positionNotDistinctFromRow(decodeSliceIndex(address), decodePosition(address), position, page, hashChannels);
-    }
-
-    private static long getHashPosition(long rawHash, int mask)
-    {
-        return murmurHash3(rawHash) & mask;
-    }
-
-    private static int calculateMaxFill(int hashSize)
-    {
-        checkArgument(hashSize > 0, "hashSize must be greater than 0");
-        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
-        if (maxFill == hashSize) {
-            maxFill--;
-        }
-        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
-        return maxFill;
     }
 
     private void updateDictionaryLookBack(Block dictionary)

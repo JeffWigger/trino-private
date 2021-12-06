@@ -16,9 +16,8 @@ package io.trino.operator.aggregation;
 public class MaxAggregationFunction
         extends AbstractMinMaxAggregationFunction
 {
-    private static final String NAME = "max";
-
     public static final MaxAggregationFunction MAX_AGGREGATION = new MaxAggregationFunction();
+    private static final String NAME = "max";
 
     public MaxAggregationFunction()
     {

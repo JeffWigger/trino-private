@@ -48,16 +48,14 @@ public class DynamicLifespanScheduler
     private final OptionalInt concurrentLifespansPerTask;
 
     private final IntListIterator driverGroups;
-
+    @GuardedBy("this")
+    private final List<Lifespan> recentlyCompletedDriverGroups = new ArrayList<>();
     // initialScheduled does not need to be guarded because this object
     // is safely published after its mutation.
     private boolean initialScheduled;
     // Write to newDriverGroupReady field is guarded. Read of the reference
     // is either guarded, or is guaranteed to happen in the same thread as the write.
     private SettableFuture<Void> newDriverGroupReady = SettableFuture.create();
-
-    @GuardedBy("this")
-    private final List<Lifespan> recentlyCompletedDriverGroups = new ArrayList<>();
 
     public DynamicLifespanScheduler(BucketNodeMap bucketNodeMap, List<InternalNode> allNodes, List<ConnectorPartitionHandle> partitionHandles, OptionalInt concurrentLifespansPerTask)
     {

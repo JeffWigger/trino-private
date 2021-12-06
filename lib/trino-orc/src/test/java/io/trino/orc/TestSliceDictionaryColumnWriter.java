@@ -35,6 +35,11 @@ import static org.testng.Assert.assertFalse;
 
 public class TestSliceDictionaryColumnWriter
 {
+    private static int megabytes(int size)
+    {
+        return toIntExact(DataSize.of(size, MEGABYTE).toBytes());
+    }
+
     @Test
     public void testDirectConversion()
     {
@@ -54,10 +59,5 @@ public class TestSliceDictionaryColumnWriter
         writer.finishRowGroup();
 
         assertFalse(writer.tryConvertToDirect(megabytes(64)).isPresent());
-    }
-
-    private static int megabytes(int size)
-    {
-        return toIntExact(DataSize.of(size, MEGABYTE).toBytes());
     }
 }

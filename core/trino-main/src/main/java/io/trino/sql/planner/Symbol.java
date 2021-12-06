@@ -26,17 +26,17 @@ public class Symbol
 {
     private final String name;
 
-    public static Symbol from(Expression expression)
-    {
-        checkArgument(expression instanceof SymbolReference, "Unexpected expression: %s", expression);
-        return new Symbol(((SymbolReference) expression).getName());
-    }
-
     @JsonCreator
     public Symbol(String name)
     {
         requireNonNull(name, "name is null");
         this.name = name;
+    }
+
+    public static Symbol from(Expression expression)
+    {
+        checkArgument(expression instanceof SymbolReference, "Unexpected expression: %s", expression);
+        return new Symbol(((SymbolReference) expression).getName());
     }
 
     @JsonValue

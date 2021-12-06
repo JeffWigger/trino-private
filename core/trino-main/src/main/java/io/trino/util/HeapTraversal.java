@@ -41,15 +41,8 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class HeapTraversal
 {
-    public enum Child
-    {
-        LEFT,
-        RIGHT
-    }
-
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(HeapTraversal.class).instanceSize();
     private static final long TOP_BIT_MASK = 1L << (Long.SIZE - 1);
-
     private long shifted;
     private int treeDepthToNode;
 
@@ -79,5 +72,11 @@ public class HeapTraversal
     public long sizeOf()
     {
         return INSTANCE_SIZE;
+    }
+
+    public enum Child
+    {
+        LEFT,
+        RIGHT
     }
 }

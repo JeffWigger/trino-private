@@ -50,217 +50,6 @@ public class HashAggregationOperator
         implements Operator
 {
     private static final double MERGE_WITH_MEMORY_RATIO = 0.9;
-
-    public static class HashAggregationOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final List<Type> groupByTypes;
-        private final List<Integer> groupByChannels;
-        private final List<Integer> globalAggregationGroupIds;
-        private final Step step;
-        private final boolean produceDefaultOutput;
-        private final List<AccumulatorFactory> accumulatorFactories;
-        private final Optional<Integer> hashChannel;
-        private final Optional<Integer> groupIdChannel;
-
-        private final int expectedGroups;
-        private final Optional<DataSize> maxPartialMemory;
-        private final boolean spillEnabled;
-        private final DataSize memoryLimitForMerge;
-        private final DataSize memoryLimitForMergeWithMemory;
-        private final SpillerFactory spillerFactory;
-        private final JoinCompiler joinCompiler;
-        private final BlockTypeOperators blockTypeOperators;
-        private final boolean useSystemMemory;
-
-        private boolean closed;
-
-        @VisibleForTesting
-        public HashAggregationOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> groupByTypes,
-                List<Integer> groupByChannels,
-                List<Integer> globalAggregationGroupIds,
-                Step step,
-                List<AccumulatorFactory> accumulatorFactories,
-                Optional<Integer> hashChannel,
-                Optional<Integer> groupIdChannel,
-                int expectedGroups,
-                Optional<DataSize> maxPartialMemory,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators,
-                boolean useSystemMemory)
-        {
-            this(operatorId,
-                    planNodeId,
-                    groupByTypes,
-                    groupByChannels,
-                    globalAggregationGroupIds,
-                    step,
-                    false,
-                    accumulatorFactories,
-                    hashChannel,
-                    groupIdChannel,
-                    expectedGroups,
-                    maxPartialMemory,
-                    false,
-                    DataSize.of(0, MEGABYTE),
-                    DataSize.of(0, MEGABYTE),
-                    (types, spillContext, memoryContext) -> {
-                        throw new UnsupportedOperationException();
-                    },
-                    joinCompiler,
-                    blockTypeOperators,
-                    useSystemMemory);
-        }
-
-        public HashAggregationOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> groupByTypes,
-                List<Integer> groupByChannels,
-                List<Integer> globalAggregationGroupIds,
-                Step step,
-                boolean produceDefaultOutput,
-                List<AccumulatorFactory> accumulatorFactories,
-                Optional<Integer> hashChannel,
-                Optional<Integer> groupIdChannel,
-                int expectedGroups,
-                Optional<DataSize> maxPartialMemory,
-                boolean spillEnabled,
-                DataSize unspillMemoryLimit,
-                SpillerFactory spillerFactory,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators,
-                boolean useSystemMemory)
-        {
-            this(operatorId,
-                    planNodeId,
-                    groupByTypes,
-                    groupByChannels,
-                    globalAggregationGroupIds,
-                    step,
-                    produceDefaultOutput,
-                    accumulatorFactories,
-                    hashChannel,
-                    groupIdChannel,
-                    expectedGroups,
-                    maxPartialMemory,
-                    spillEnabled,
-                    unspillMemoryLimit,
-                    DataSize.succinctBytes((long) (unspillMemoryLimit.toBytes() * MERGE_WITH_MEMORY_RATIO)),
-                    spillerFactory,
-                    joinCompiler,
-                    blockTypeOperators,
-                    useSystemMemory);
-        }
-
-        @VisibleForTesting
-        HashAggregationOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> groupByTypes,
-                List<Integer> groupByChannels,
-                List<Integer> globalAggregationGroupIds,
-                Step step,
-                boolean produceDefaultOutput,
-                List<AccumulatorFactory> accumulatorFactories,
-                Optional<Integer> hashChannel,
-                Optional<Integer> groupIdChannel,
-                int expectedGroups,
-                Optional<DataSize> maxPartialMemory,
-                boolean spillEnabled,
-                DataSize memoryLimitForMerge,
-                DataSize memoryLimitForMergeWithMemory,
-                SpillerFactory spillerFactory,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators,
-                boolean useSystemMemory)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-            this.groupIdChannel = requireNonNull(groupIdChannel, "groupIdChannel is null");
-            this.groupByTypes = ImmutableList.copyOf(groupByTypes);
-            this.groupByChannels = ImmutableList.copyOf(groupByChannels);
-            this.globalAggregationGroupIds = ImmutableList.copyOf(globalAggregationGroupIds);
-            this.step = step;
-            this.produceDefaultOutput = produceDefaultOutput;
-            this.accumulatorFactories = ImmutableList.copyOf(accumulatorFactories);
-            this.expectedGroups = expectedGroups;
-            this.maxPartialMemory = requireNonNull(maxPartialMemory, "maxPartialMemory is null");
-            this.spillEnabled = spillEnabled;
-            this.memoryLimitForMerge = requireNonNull(memoryLimitForMerge, "memoryLimitForMerge is null");
-            this.memoryLimitForMergeWithMemory = requireNonNull(memoryLimitForMergeWithMemory, "memoryLimitForMergeWithMemory is null");
-            this.spillerFactory = requireNonNull(spillerFactory, "spillerFactory is null");
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-            this.useSystemMemory = useSystemMemory;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, HashAggregationOperator.class.getSimpleName());
-            HashAggregationOperator hashAggregationOperator = new HashAggregationOperator(
-                    operatorContext,
-                    groupByTypes,
-                    groupByChannels,
-                    globalAggregationGroupIds,
-                    step,
-                    produceDefaultOutput,
-                    accumulatorFactories,
-                    hashChannel,
-                    groupIdChannel,
-                    expectedGroups,
-                    maxPartialMemory,
-                    spillEnabled,
-                    memoryLimitForMerge,
-                    memoryLimitForMergeWithMemory,
-                    spillerFactory,
-                    joinCompiler,
-                    blockTypeOperators,
-                    useSystemMemory);
-            return hashAggregationOperator;
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new HashAggregationOperatorFactory(
-                    operatorId,
-                    planNodeId,
-                    groupByTypes,
-                    groupByChannels,
-                    globalAggregationGroupIds,
-                    step,
-                    produceDefaultOutput,
-                    accumulatorFactories,
-                    hashChannel,
-                    groupIdChannel,
-                    expectedGroups,
-                    maxPartialMemory,
-                    spillEnabled,
-                    memoryLimitForMerge,
-                    memoryLimitForMergeWithMemory,
-                    spillerFactory,
-                    joinCompiler,
-                    blockTypeOperators,
-                    useSystemMemory);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final List<Type> groupByTypes;
     private final List<Integer> groupByChannels;
@@ -279,17 +68,14 @@ public class HashAggregationOperator
     private final JoinCompiler joinCompiler;
     private final BlockTypeOperators blockTypeOperators;
     private final boolean useSystemMemory;
-
     private final List<Type> types;
     private final HashCollisionsCounter hashCollisionsCounter;
-
     private HashAggregationBuilder aggregationBuilder;
     private LocalMemoryContext memoryContext;
     private WorkProcessor<Page> outputPages;
     private boolean inputProcessed;
     private boolean finishing;
     private boolean finished;
-
     // for yield when memory is not available
     private Work<?> unfinishedWork;
 
@@ -343,6 +129,21 @@ public class HashAggregationOperator
         if (useSystemMemory) {
             this.memoryContext = operatorContext.localSystemMemoryContext();
         }
+    }
+
+    private static long calculateDefaultOutputHash(List<Type> groupByChannels, int groupIdChannel, int groupId)
+    {
+        // Default output has NULLs on all columns except of groupIdChannel
+        long result = INITIAL_HASH_VALUE;
+        for (int channel = 0; channel < groupByChannels.size(); channel++) {
+            if (channel != groupIdChannel) {
+                result = CombineHashFunction.getHash(result, NULL_HASH_CODE);
+            }
+            else {
+                result = CombineHashFunction.getHash(result, BigintType.hash(groupId));
+            }
+        }
+        return result;
     }
 
     @Override
@@ -586,18 +387,213 @@ public class HashAggregationOperator
         return output.build();
     }
 
-    private static long calculateDefaultOutputHash(List<Type> groupByChannels, int groupIdChannel, int groupId)
+    public static class HashAggregationOperatorFactory
+            implements OperatorFactory
     {
-        // Default output has NULLs on all columns except of groupIdChannel
-        long result = INITIAL_HASH_VALUE;
-        for (int channel = 0; channel < groupByChannels.size(); channel++) {
-            if (channel != groupIdChannel) {
-                result = CombineHashFunction.getHash(result, NULL_HASH_CODE);
-            }
-            else {
-                result = CombineHashFunction.getHash(result, BigintType.hash(groupId));
-            }
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final List<Type> groupByTypes;
+        private final List<Integer> groupByChannels;
+        private final List<Integer> globalAggregationGroupIds;
+        private final Step step;
+        private final boolean produceDefaultOutput;
+        private final List<AccumulatorFactory> accumulatorFactories;
+        private final Optional<Integer> hashChannel;
+        private final Optional<Integer> groupIdChannel;
+
+        private final int expectedGroups;
+        private final Optional<DataSize> maxPartialMemory;
+        private final boolean spillEnabled;
+        private final DataSize memoryLimitForMerge;
+        private final DataSize memoryLimitForMergeWithMemory;
+        private final SpillerFactory spillerFactory;
+        private final JoinCompiler joinCompiler;
+        private final BlockTypeOperators blockTypeOperators;
+        private final boolean useSystemMemory;
+
+        private boolean closed;
+
+        @VisibleForTesting
+        public HashAggregationOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> groupByTypes,
+                List<Integer> groupByChannels,
+                List<Integer> globalAggregationGroupIds,
+                Step step,
+                List<AccumulatorFactory> accumulatorFactories,
+                Optional<Integer> hashChannel,
+                Optional<Integer> groupIdChannel,
+                int expectedGroups,
+                Optional<DataSize> maxPartialMemory,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators,
+                boolean useSystemMemory)
+        {
+            this(operatorId,
+                    planNodeId,
+                    groupByTypes,
+                    groupByChannels,
+                    globalAggregationGroupIds,
+                    step,
+                    false,
+                    accumulatorFactories,
+                    hashChannel,
+                    groupIdChannel,
+                    expectedGroups,
+                    maxPartialMemory,
+                    false,
+                    DataSize.of(0, MEGABYTE),
+                    DataSize.of(0, MEGABYTE),
+                    (types, spillContext, memoryContext) -> {
+                        throw new UnsupportedOperationException();
+                    },
+                    joinCompiler,
+                    blockTypeOperators,
+                    useSystemMemory);
         }
-        return result;
+
+        public HashAggregationOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> groupByTypes,
+                List<Integer> groupByChannels,
+                List<Integer> globalAggregationGroupIds,
+                Step step,
+                boolean produceDefaultOutput,
+                List<AccumulatorFactory> accumulatorFactories,
+                Optional<Integer> hashChannel,
+                Optional<Integer> groupIdChannel,
+                int expectedGroups,
+                Optional<DataSize> maxPartialMemory,
+                boolean spillEnabled,
+                DataSize unspillMemoryLimit,
+                SpillerFactory spillerFactory,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators,
+                boolean useSystemMemory)
+        {
+            this(operatorId,
+                    planNodeId,
+                    groupByTypes,
+                    groupByChannels,
+                    globalAggregationGroupIds,
+                    step,
+                    produceDefaultOutput,
+                    accumulatorFactories,
+                    hashChannel,
+                    groupIdChannel,
+                    expectedGroups,
+                    maxPartialMemory,
+                    spillEnabled,
+                    unspillMemoryLimit,
+                    DataSize.succinctBytes((long) (unspillMemoryLimit.toBytes() * MERGE_WITH_MEMORY_RATIO)),
+                    spillerFactory,
+                    joinCompiler,
+                    blockTypeOperators,
+                    useSystemMemory);
+        }
+
+        @VisibleForTesting
+        HashAggregationOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> groupByTypes,
+                List<Integer> groupByChannels,
+                List<Integer> globalAggregationGroupIds,
+                Step step,
+                boolean produceDefaultOutput,
+                List<AccumulatorFactory> accumulatorFactories,
+                Optional<Integer> hashChannel,
+                Optional<Integer> groupIdChannel,
+                int expectedGroups,
+                Optional<DataSize> maxPartialMemory,
+                boolean spillEnabled,
+                DataSize memoryLimitForMerge,
+                DataSize memoryLimitForMergeWithMemory,
+                SpillerFactory spillerFactory,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators,
+                boolean useSystemMemory)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            this.groupIdChannel = requireNonNull(groupIdChannel, "groupIdChannel is null");
+            this.groupByTypes = ImmutableList.copyOf(groupByTypes);
+            this.groupByChannels = ImmutableList.copyOf(groupByChannels);
+            this.globalAggregationGroupIds = ImmutableList.copyOf(globalAggregationGroupIds);
+            this.step = step;
+            this.produceDefaultOutput = produceDefaultOutput;
+            this.accumulatorFactories = ImmutableList.copyOf(accumulatorFactories);
+            this.expectedGroups = expectedGroups;
+            this.maxPartialMemory = requireNonNull(maxPartialMemory, "maxPartialMemory is null");
+            this.spillEnabled = spillEnabled;
+            this.memoryLimitForMerge = requireNonNull(memoryLimitForMerge, "memoryLimitForMerge is null");
+            this.memoryLimitForMergeWithMemory = requireNonNull(memoryLimitForMergeWithMemory, "memoryLimitForMergeWithMemory is null");
+            this.spillerFactory = requireNonNull(spillerFactory, "spillerFactory is null");
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+            this.useSystemMemory = useSystemMemory;
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, HashAggregationOperator.class.getSimpleName());
+            HashAggregationOperator hashAggregationOperator = new HashAggregationOperator(
+                    operatorContext,
+                    groupByTypes,
+                    groupByChannels,
+                    globalAggregationGroupIds,
+                    step,
+                    produceDefaultOutput,
+                    accumulatorFactories,
+                    hashChannel,
+                    groupIdChannel,
+                    expectedGroups,
+                    maxPartialMemory,
+                    spillEnabled,
+                    memoryLimitForMerge,
+                    memoryLimitForMergeWithMemory,
+                    spillerFactory,
+                    joinCompiler,
+                    blockTypeOperators,
+                    useSystemMemory);
+            return hashAggregationOperator;
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new HashAggregationOperatorFactory(
+                    operatorId,
+                    planNodeId,
+                    groupByTypes,
+                    groupByChannels,
+                    globalAggregationGroupIds,
+                    step,
+                    produceDefaultOutput,
+                    accumulatorFactories,
+                    hashChannel,
+                    groupIdChannel,
+                    expectedGroups,
+                    maxPartialMemory,
+                    spillEnabled,
+                    memoryLimitForMerge,
+                    memoryLimitForMergeWithMemory,
+                    spillerFactory,
+                    joinCompiler,
+                    blockTypeOperators,
+                    useSystemMemory);
+        }
     }
 }

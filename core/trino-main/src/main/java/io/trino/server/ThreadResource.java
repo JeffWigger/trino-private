@@ -40,21 +40,6 @@ import static java.util.Comparator.comparing;
 @Path("/v1/thread")
 public class ThreadResource
 {
-    @ResourceSecurity(MANAGEMENT_READ)
-    @GET
-    @Produces(MediaType.APPLICATION_JSON)
-    public List<Info> getThreadInfo()
-    {
-        ThreadMXBean mbean = ManagementFactory.getThreadMXBean();
-
-        List<Info> threads = Arrays.stream(mbean.getThreadInfo(mbean.getAllThreadIds(), Integer.MAX_VALUE))
-                .filter(Objects::nonNull)
-                .map(ThreadResource::toInfo)
-                .collect(Collectors.toUnmodifiableList());
-
-        return Ordering.from(byName()).sortedCopy(threads);
-    }
-
     private static Info toInfo(ThreadInfo info)
     {
         return new Info(
@@ -80,6 +65,21 @@ public class ThreadResource
         return builder.build();
     }
 
+    @ResourceSecurity(MANAGEMENT_READ)
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<Info> getThreadInfo()
+    {
+        ThreadMXBean mbean = ManagementFactory.getThreadMXBean();
+
+        List<Info> threads = Arrays.stream(mbean.getThreadInfo(mbean.getAllThreadIds(), Integer.MAX_VALUE))
+                .filter(Objects::nonNull)
+                .map(ThreadResource::toInfo)
+                .collect(Collectors.toUnmodifiableList());
+
+        return Ordering.from(byName()).sortedCopy(threads);
+    }
+
     public static class Info
     {
         private final long id;
@@ -101,6 +101,11 @@ public class ThreadResource
             this.state = state;
             this.lockOwnerId = lockOwnerId;
             this.stackTrace = stackTrace;
+        }
+
+        public static Comparator<Info> byName()
+        {
+            return comparing(Info::getName);
         }
 
         @JsonProperty
@@ -131,11 +136,6 @@ public class ThreadResource
         public List<StackLine> getStackTrace()
         {
             return stackTrace;
-        }
-
-        public static Comparator<Info> byName()
-        {
-            return comparing(Info::getName);
         }
     }
 

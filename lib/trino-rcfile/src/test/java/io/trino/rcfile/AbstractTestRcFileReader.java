@@ -66,6 +66,40 @@ public abstract class AbstractTestRcFileReader
         this.tester = tester;
     }
 
+    private static List<Double> doubleSequence(double start, double step, int items)
+    {
+        List<Double> values = new ArrayList<>();
+        double nextValue = start;
+        for (int i = 0; i < items; i++) {
+            values.add(nextValue);
+            nextValue += step;
+        }
+        return values;
+    }
+
+    private static Set<Long> longsBetween(long lowerExclusive, long upperInclusive)
+    {
+        return ContiguousSet.create(Range.openClosed(lowerExclusive, upperInclusive), DiscreteDomain.longs());
+    }
+
+    private static Set<Integer> intsBetween(int lowerExclusive, int upperInclusive)
+    {
+        return ContiguousSet.create(Range.openClosed(lowerExclusive, upperInclusive), DiscreteDomain.integers());
+    }
+
+    private static List<SqlDecimal> decimalSequence(String start, String step, int items, int precision, int scale)
+    {
+        BigInteger decimalStep = new BigInteger(step);
+
+        List<SqlDecimal> values = new ArrayList<>();
+        BigInteger nextValue = new BigInteger(start);
+        for (int i = 0; i < items; i++) {
+            values.add(new SqlDecimal(nextValue, precision, scale));
+            nextValue = nextValue.add(decimalStep);
+        }
+        return values;
+    }
+
     @BeforeClass
     public void setUp()
     {
@@ -240,39 +274,5 @@ public abstract class AbstractTestRcFileReader
     {
         // Binary serde cannot serialize an empty binary sequence
         tester.testRoundTrip(VARBINARY, nCopies(3_000, new SqlVarbinary(new byte[0])), BINARY);
-    }
-
-    private static List<Double> doubleSequence(double start, double step, int items)
-    {
-        List<Double> values = new ArrayList<>();
-        double nextValue = start;
-        for (int i = 0; i < items; i++) {
-            values.add(nextValue);
-            nextValue += step;
-        }
-        return values;
-    }
-
-    private static Set<Long> longsBetween(long lowerExclusive, long upperInclusive)
-    {
-        return ContiguousSet.create(Range.openClosed(lowerExclusive, upperInclusive), DiscreteDomain.longs());
-    }
-
-    private static Set<Integer> intsBetween(int lowerExclusive, int upperInclusive)
-    {
-        return ContiguousSet.create(Range.openClosed(lowerExclusive, upperInclusive), DiscreteDomain.integers());
-    }
-
-    private static List<SqlDecimal> decimalSequence(String start, String step, int items, int precision, int scale)
-    {
-        BigInteger decimalStep = new BigInteger(step);
-
-        List<SqlDecimal> values = new ArrayList<>();
-        BigInteger nextValue = new BigInteger(start);
-        for (int i = 0; i < items; i++) {
-            values.add(new SqlDecimal(nextValue, precision, scale));
-            nextValue = nextValue.add(decimalStep);
-        }
-        return values;
     }
 }

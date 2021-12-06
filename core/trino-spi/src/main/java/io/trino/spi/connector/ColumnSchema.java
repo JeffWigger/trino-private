@@ -37,6 +37,16 @@ public final class ColumnSchema
         this.hidden = hidden;
     }
 
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static Builder builder(ColumnMetadata columnMetadata)
+    {
+        return new Builder(columnMetadata);
+    }
+
     public String getName()
     {
         return name;
@@ -82,16 +92,6 @@ public final class ColumnSchema
                 .append(", hidden=").append(hidden)
                 .append('}')
                 .toString();
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
-    public static Builder builder(ColumnMetadata columnMetadata)
-    {
-        return new Builder(columnMetadata);
     }
 
     public static class Builder

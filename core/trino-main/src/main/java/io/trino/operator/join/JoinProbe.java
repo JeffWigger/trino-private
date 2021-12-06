@@ -27,26 +27,6 @@ import static io.trino.spi.type.BigintType.BIGINT;
 
 public class JoinProbe
 {
-    public static class JoinProbeFactory
-    {
-        private final int[] probeOutputChannels;
-        private final int[] probeJoinChannels;
-        private final int probeHashChannel; // only valid when >= 0
-
-        public JoinProbeFactory(int[] probeOutputChannels, List<Integer> probeJoinChannels, OptionalInt probeHashChannel)
-        {
-            this.probeOutputChannels = probeOutputChannels;
-            this.probeJoinChannels = Ints.toArray(probeJoinChannels);
-            this.probeHashChannel = probeHashChannel.orElse(-1);
-        }
-
-        public JoinProbe createJoinProbe(Page page)
-        {
-            Page probePage = page.getLoadedPage(probeJoinChannels);
-            return new JoinProbe(probeOutputChannels, page, probePage, probeHashChannel >= 0 ? page.getBlock(probeHashChannel).getLoadedBlock() : null);
-        }
-    }
-
     private final int[] probeOutputChannels;
     private final int positionCount;
     private final Page page;
@@ -55,7 +35,6 @@ public class JoinProbe
     private final Block probeHashBlock;
     private final boolean probeMayHaveNull;
     private int position = -1;
-
     private JoinProbe(int[] probeOutputChannels, Page page, Page probePage, @Nullable Block probeHashBlock)
     {
         this.probeOutputChannels = probeOutputChannels;
@@ -64,6 +43,16 @@ public class JoinProbe
         this.probePage = probePage;
         this.probeHashBlock = probeHashBlock;
         this.probeMayHaveNull = probeMayHaveNull(probePage);
+    }
+
+    private static boolean probeMayHaveNull(Page probePage)
+    {
+        for (int i = 0; i < probePage.getChannelCount(); i++) {
+            if (probePage.getBlock(i).mayHaveNull()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int[] getOutputChannels()
@@ -114,13 +103,23 @@ public class JoinProbe
         return false;
     }
 
-    private static boolean probeMayHaveNull(Page probePage)
+    public static class JoinProbeFactory
     {
-        for (int i = 0; i < probePage.getChannelCount(); i++) {
-            if (probePage.getBlock(i).mayHaveNull()) {
-                return true;
-            }
+        private final int[] probeOutputChannels;
+        private final int[] probeJoinChannels;
+        private final int probeHashChannel; // only valid when >= 0
+
+        public JoinProbeFactory(int[] probeOutputChannels, List<Integer> probeJoinChannels, OptionalInt probeHashChannel)
+        {
+            this.probeOutputChannels = probeOutputChannels;
+            this.probeJoinChannels = Ints.toArray(probeJoinChannels);
+            this.probeHashChannel = probeHashChannel.orElse(-1);
         }
-        return false;
+
+        public JoinProbe createJoinProbe(Page page)
+        {
+            Page probePage = page.getLoadedPage(probeJoinChannels);
+            return new JoinProbe(probeOutputChannels, page, probePage, probeHashChannel >= 0 ? page.getBlock(probeHashChannel).getLoadedBlock() : null);
+        }
     }
 }

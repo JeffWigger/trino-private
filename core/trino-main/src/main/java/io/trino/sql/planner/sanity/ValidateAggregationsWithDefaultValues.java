@@ -72,6 +72,18 @@ public class ValidateAggregationsWithDefaultValues
         planNode.accept(new Visitor(session, metadata, typeOperators, typeAnalyzer, types), null);
     }
 
+    private static class SeenExchanges
+    {
+        final boolean localRepartitionExchange;
+        final boolean remoteRepartitionExchange;
+
+        SeenExchanges(boolean localRepartitionExchange, boolean remoteRepartitionExchange)
+        {
+            this.localRepartitionExchange = localRepartitionExchange;
+            this.remoteRepartitionExchange = remoteRepartitionExchange;
+        }
+    }
+
     private class Visitor
             extends PlanVisitor<Optional<SeenExchanges>, Void>
     {
@@ -169,18 +181,6 @@ public class ValidateAggregationsWithDefaultValues
                                     accumulator.localRepartitionExchange && seenExchanges.localRepartitionExchange,
                                     accumulator.remoteRepartitionExchange && seenExchanges.remoteRepartitionExchange)))
                     .orElse(Optional.empty());
-        }
-    }
-
-    private static class SeenExchanges
-    {
-        final boolean localRepartitionExchange;
-        final boolean remoteRepartitionExchange;
-
-        SeenExchanges(boolean localRepartitionExchange, boolean remoteRepartitionExchange)
-        {
-            this.localRepartitionExchange = localRepartitionExchange;
-            this.remoteRepartitionExchange = remoteRepartitionExchange;
         }
     }
 }

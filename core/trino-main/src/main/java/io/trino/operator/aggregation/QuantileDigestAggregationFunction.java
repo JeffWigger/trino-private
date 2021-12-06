@@ -93,21 +93,6 @@ public final class QuantileDigestAggregationFunction
                 true);
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type valueType = functionBinding.getTypeVariable("V");
-        return ImmutableList.of(new QuantileDigestType(valueType).getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type valueType = functionBinding.getTypeVariable("V");
-        QuantileDigestType outputType = (QuantileDigestType) functionBinding.getBoundSignature().getReturnType();
-        return generateAggregation(valueType, outputType, functionBinding.getArity());
-    }
-
     private static InternalAggregationFunction generateAggregation(Type valueType, QuantileDigestType outputType, int arity)
     {
         DynamicClassLoader classLoader = new DynamicClassLoader(QuantileDigestAggregationFunction.class.getClassLoader());
@@ -237,5 +222,20 @@ public final class QuantileDigestAggregationFunction
     public static void evaluateFinal(QuantileDigestStateSerializer serializer, QuantileDigestState state, BlockBuilder out)
     {
         serializer.serialize(state, out);
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type valueType = functionBinding.getTypeVariable("V");
+        return ImmutableList.of(new QuantileDigestType(valueType).getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type valueType = functionBinding.getTypeVariable("V");
+        QuantileDigestType outputType = (QuantileDigestType) functionBinding.getBoundSignature().getReturnType();
+        return generateAggregation(valueType, outputType, functionBinding.getArity());
     }
 }

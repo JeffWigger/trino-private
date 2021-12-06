@@ -77,90 +77,6 @@ public class TestScalarFunctionAdapter
     private static final List<Type> ARGUMENT_TYPES = ImmutableList.of(BOOLEAN, BIGINT, DOUBLE, VARCHAR, ARRAY_TYPE);
     private static final List<Type> OBJECTS_ARGUMENT_TYPES = ImmutableList.of(VARCHAR, ARRAY_TYPE, CHAR_TYPE, TIMESTAMP_TYPE);
 
-    @Test
-    public void testAdaptFromNeverNull()
-            throws Throwable
-    {
-        InvocationConvention actualConvention = new InvocationConvention(
-                nCopies(ARGUMENT_TYPES.size(), NEVER_NULL),
-                FAIL_ON_NULL,
-                false,
-                true);
-        String methodName = "neverNull";
-        verifyAllAdaptations(actualConvention, methodName, RETURN_NULL_ON_NULL, ARGUMENT_TYPES);
-        verifyAllAdaptations(actualConvention, methodName, UNDEFINED_VALUE_FOR_NULL, ARGUMENT_TYPES);
-        verifyAllAdaptations(actualConvention, methodName, THROW_ON_NULL, ARGUMENT_TYPES);
-        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, ARGUMENT_TYPES);
-    }
-
-    @Test
-    public void testAdaptFromNeverNullObjects()
-            throws Throwable
-    {
-        InvocationConvention actualConvention = new InvocationConvention(
-                nCopies(OBJECTS_ARGUMENT_TYPES.size(), NEVER_NULL),
-                FAIL_ON_NULL,
-                false,
-                true);
-        String methodName = "neverNullObjects";
-        verifyAllAdaptations(actualConvention, methodName, RETURN_NULL_ON_NULL, OBJECTS_ARGUMENT_TYPES);
-        verifyAllAdaptations(actualConvention, methodName, UNDEFINED_VALUE_FOR_NULL, OBJECTS_ARGUMENT_TYPES);
-        verifyAllAdaptations(actualConvention, methodName, THROW_ON_NULL, OBJECTS_ARGUMENT_TYPES);
-        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, OBJECTS_ARGUMENT_TYPES);
-    }
-
-    @Test
-    public void testAdaptFromBoxedNull()
-            throws Throwable
-    {
-        InvocationConvention actualConvention = new InvocationConvention(
-                nCopies(ARGUMENT_TYPES.size(), BOXED_NULLABLE),
-                FAIL_ON_NULL,
-                false,
-                true);
-        String methodName = "boxedNull";
-        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, ARGUMENT_TYPES);
-    }
-
-    @Test
-    public void testAdaptFromBoxedNullObjects()
-            throws Throwable
-    {
-        InvocationConvention actualConvention = new InvocationConvention(
-                nCopies(OBJECTS_ARGUMENT_TYPES.size(), BOXED_NULLABLE),
-                FAIL_ON_NULL,
-                false,
-                true);
-        String methodName = "boxedNullObjects";
-        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, OBJECTS_ARGUMENT_TYPES);
-    }
-
-    @Test
-    public void testAdaptFromNullFlag()
-            throws Throwable
-    {
-        InvocationConvention actualConvention = new InvocationConvention(
-                nCopies(ARGUMENT_TYPES.size(), NULL_FLAG),
-                FAIL_ON_NULL,
-                false,
-                true);
-        String methodName = "nullFlag";
-        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, ARGUMENT_TYPES);
-    }
-
-    @Test
-    public void testAdaptFromNullFlagObjects()
-            throws Throwable
-    {
-        InvocationConvention actualConvention = new InvocationConvention(
-                nCopies(OBJECTS_ARGUMENT_TYPES.size(), NULL_FLAG),
-                FAIL_ON_NULL,
-                false,
-                true);
-        String methodName = "nullFlagObjects";
-        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, OBJECTS_ARGUMENT_TYPES);
-    }
-
     private static void verifyAllAdaptations(
             InvocationConvention actualConvention,
             String methodName,
@@ -428,6 +344,90 @@ public class TestScalarFunctionAdapter
         return combinations.build();
     }
 
+    @Test
+    public void testAdaptFromNeverNull()
+            throws Throwable
+    {
+        InvocationConvention actualConvention = new InvocationConvention(
+                nCopies(ARGUMENT_TYPES.size(), NEVER_NULL),
+                FAIL_ON_NULL,
+                false,
+                true);
+        String methodName = "neverNull";
+        verifyAllAdaptations(actualConvention, methodName, RETURN_NULL_ON_NULL, ARGUMENT_TYPES);
+        verifyAllAdaptations(actualConvention, methodName, UNDEFINED_VALUE_FOR_NULL, ARGUMENT_TYPES);
+        verifyAllAdaptations(actualConvention, methodName, THROW_ON_NULL, ARGUMENT_TYPES);
+        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, ARGUMENT_TYPES);
+    }
+
+    @Test
+    public void testAdaptFromNeverNullObjects()
+            throws Throwable
+    {
+        InvocationConvention actualConvention = new InvocationConvention(
+                nCopies(OBJECTS_ARGUMENT_TYPES.size(), NEVER_NULL),
+                FAIL_ON_NULL,
+                false,
+                true);
+        String methodName = "neverNullObjects";
+        verifyAllAdaptations(actualConvention, methodName, RETURN_NULL_ON_NULL, OBJECTS_ARGUMENT_TYPES);
+        verifyAllAdaptations(actualConvention, methodName, UNDEFINED_VALUE_FOR_NULL, OBJECTS_ARGUMENT_TYPES);
+        verifyAllAdaptations(actualConvention, methodName, THROW_ON_NULL, OBJECTS_ARGUMENT_TYPES);
+        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, OBJECTS_ARGUMENT_TYPES);
+    }
+
+    @Test
+    public void testAdaptFromBoxedNull()
+            throws Throwable
+    {
+        InvocationConvention actualConvention = new InvocationConvention(
+                nCopies(ARGUMENT_TYPES.size(), BOXED_NULLABLE),
+                FAIL_ON_NULL,
+                false,
+                true);
+        String methodName = "boxedNull";
+        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, ARGUMENT_TYPES);
+    }
+
+    @Test
+    public void testAdaptFromBoxedNullObjects()
+            throws Throwable
+    {
+        InvocationConvention actualConvention = new InvocationConvention(
+                nCopies(OBJECTS_ARGUMENT_TYPES.size(), BOXED_NULLABLE),
+                FAIL_ON_NULL,
+                false,
+                true);
+        String methodName = "boxedNullObjects";
+        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, OBJECTS_ARGUMENT_TYPES);
+    }
+
+    @Test
+    public void testAdaptFromNullFlag()
+            throws Throwable
+    {
+        InvocationConvention actualConvention = new InvocationConvention(
+                nCopies(ARGUMENT_TYPES.size(), NULL_FLAG),
+                FAIL_ON_NULL,
+                false,
+                true);
+        String methodName = "nullFlag";
+        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, ARGUMENT_TYPES);
+    }
+
+    @Test
+    public void testAdaptFromNullFlagObjects()
+            throws Throwable
+    {
+        InvocationConvention actualConvention = new InvocationConvention(
+                nCopies(OBJECTS_ARGUMENT_TYPES.size(), NULL_FLAG),
+                FAIL_ON_NULL,
+                false,
+                true);
+        String methodName = "nullFlagObjects";
+        verifyAllAdaptations(actualConvention, methodName, UNSUPPORTED, OBJECTS_ARGUMENT_TYPES);
+    }
+
     private static class Target
     {
         private boolean invoked;
@@ -439,6 +439,70 @@ public class TestScalarFunctionAdapter
         private Block blockValue;
         private Object objectCharValue;
         private Object objectTimestampValue;
+
+        private static boolean shouldFunctionBeInvoked(InvocationConvention actualConvention, BitSet nullArguments, NullAdaptationPolicy nullAdaptationPolicy)
+        {
+            if (nullAdaptationPolicy == UNDEFINED_VALUE_FOR_NULL) {
+                return true;
+            }
+
+            for (int i = 0; i < actualConvention.getArgumentConventions().size(); i++) {
+                if (actualConvention.getArgumentConvention(i) == NEVER_NULL && nullArguments.get(i)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static void assertArgumentValue(
+                Object actualValue,
+                int index,
+                InvocationConvention actualConvention,
+                BitSet nullArguments,
+                List<Type> argumentTypes)
+        {
+            assertArgumentValue(actualValue, actualConvention.getArgumentConvention(index), argumentTypes.get(index), nullArguments.get(index));
+        }
+
+        private static void assertArgumentValue(
+                Object actualValue,
+                InvocationArgumentConvention argumentConvention,
+                Type argumentType,
+                boolean isNull)
+        {
+            if (!isNull) {
+                assertArgumentValue(actualValue, getTestValue(argumentType));
+                return;
+            }
+
+            if (argumentConvention != NEVER_NULL) {
+                assertNull(actualValue);
+                return;
+            }
+
+            // the only way for a never null to be called with a null is for the undefined value null convention
+            // Currently, for primitives, the value is the java default, but for all other types it could be anything
+            if (argumentType.getJavaType().isPrimitive()) {
+                assertArgumentValue(actualValue, Defaults.defaultValue(argumentType.getJavaType()));
+            }
+        }
+
+        private static void assertArgumentValue(Object actual, Object expected)
+        {
+            if (actual instanceof Block && expected instanceof Block) {
+                assertBlockEquals(BIGINT, (Block) actual, (Block) expected);
+            }
+            else {
+                assertEquals(actual, expected);
+            }
+        }
+
+        private static void assertBlockEquals(Type type, Block actual, Block expected)
+        {
+            for (int position = 0; position < actual.getPositionCount(); position++) {
+                assertEquals(type.getObjectValue(SESSION, actual, position), type.getObjectValue(SESSION, expected, position));
+            }
+        }
 
         public boolean neverNull(boolean booleanValue, long longValue, double doubleValue, Slice sliceValue, Block blockValue)
         {
@@ -633,70 +697,6 @@ public class TestScalarFunctionAdapter
             this.blockValue = null;
             this.objectCharValue = null;
             this.objectTimestampValue = null;
-        }
-
-        private static boolean shouldFunctionBeInvoked(InvocationConvention actualConvention, BitSet nullArguments, NullAdaptationPolicy nullAdaptationPolicy)
-        {
-            if (nullAdaptationPolicy == UNDEFINED_VALUE_FOR_NULL) {
-                return true;
-            }
-
-            for (int i = 0; i < actualConvention.getArgumentConventions().size(); i++) {
-                if (actualConvention.getArgumentConvention(i) == NEVER_NULL && nullArguments.get(i)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private static void assertArgumentValue(
-                Object actualValue,
-                int index,
-                InvocationConvention actualConvention,
-                BitSet nullArguments,
-                List<Type> argumentTypes)
-        {
-            assertArgumentValue(actualValue, actualConvention.getArgumentConvention(index), argumentTypes.get(index), nullArguments.get(index));
-        }
-
-        private static void assertArgumentValue(
-                Object actualValue,
-                InvocationArgumentConvention argumentConvention,
-                Type argumentType,
-                boolean isNull)
-        {
-            if (!isNull) {
-                assertArgumentValue(actualValue, getTestValue(argumentType));
-                return;
-            }
-
-            if (argumentConvention != NEVER_NULL) {
-                assertNull(actualValue);
-                return;
-            }
-
-            // the only way for a never null to be called with a null is for the undefined value null convention
-            // Currently, for primitives, the value is the java default, but for all other types it could be anything
-            if (argumentType.getJavaType().isPrimitive()) {
-                assertArgumentValue(actualValue, Defaults.defaultValue(argumentType.getJavaType()));
-            }
-        }
-
-        private static void assertArgumentValue(Object actual, Object expected)
-        {
-            if (actual instanceof Block && expected instanceof Block) {
-                assertBlockEquals(BIGINT, (Block) actual, (Block) expected);
-            }
-            else {
-                assertEquals(actual, expected);
-            }
-        }
-
-        private static void assertBlockEquals(Type type, Block actual, Block expected)
-        {
-            for (int position = 0; position < actual.getPositionCount(); position++) {
-                assertEquals(type.getObjectValue(SESSION, actual, position), type.getObjectValue(SESSION, expected, position));
-            }
         }
     }
 }

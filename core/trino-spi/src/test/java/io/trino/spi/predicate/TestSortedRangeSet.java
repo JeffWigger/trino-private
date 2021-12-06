@@ -45,6 +45,11 @@ import static org.testng.Assert.assertTrue;
 
 public class TestSortedRangeSet
 {
+    private static SortedRangeSetAssert assertSortedRangeSet(SortedRangeSet sortedRangeSet)
+    {
+        return assertThat((AssertProvider<SortedRangeSetAssert>) () -> new SortedRangeSetAssert(sortedRangeSet));
+    }
+
     @Test
     public void testEmptySet()
     {
@@ -602,11 +607,6 @@ public class TestSortedRangeSet
     {
         assertEquals(first.union(second), expected);
         assertEquals(first.union(ImmutableList.of(first, second)), expected);
-    }
-
-    private static SortedRangeSetAssert assertSortedRangeSet(SortedRangeSet sortedRangeSet)
-    {
-        return assertThat((AssertProvider<SortedRangeSetAssert>) () -> new SortedRangeSetAssert(sortedRangeSet));
     }
 
     private static class SortedRangeSetAssert

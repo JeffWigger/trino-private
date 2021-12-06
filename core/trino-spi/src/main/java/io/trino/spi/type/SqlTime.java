@@ -34,6 +34,12 @@ public final class SqlTime
     private final int precision;
     private final long picos;
 
+    private SqlTime(int precision, long picos)
+    {
+        this.precision = precision;
+        this.picos = picos;
+    }
+
     public static SqlTime newInstance(int precision, long picos)
     {
         if (precision < 0 || precision > 12) {
@@ -47,12 +53,6 @@ public final class SqlTime
         }
 
         return new SqlTime(precision, picos);
-    }
-
-    private SqlTime(int precision, long picos)
-    {
-        this.precision = precision;
-        this.picos = picos;
     }
 
     public long getPicos()

@@ -33,39 +33,6 @@ import static java.util.Objects.requireNonNull;
 public class SpatialJoinNode
         extends PlanNode
 {
-    public enum Type
-    {
-        INNER("SpatialInnerJoin"),
-        LEFT("SpatialLeftJoin");
-
-        private final String joinLabel;
-
-        Type(String joinLabel)
-        {
-            this.joinLabel = joinLabel;
-        }
-
-        public String getJoinLabel()
-        {
-            return joinLabel;
-        }
-
-        public static Type fromJoinNodeType(JoinNode.Type joinNodeType)
-        {
-            switch (joinNodeType) {
-                case INNER:
-                    return Type.INNER;
-                case LEFT:
-                    return Type.LEFT;
-                case RIGHT:
-                case FULL:
-                    // unsupported
-                    break;
-            }
-            throw new IllegalArgumentException("Unsupported spatial join type: " + joinNodeType);
-        }
-    }
-
     private final Type type;
     private final PlanNode left;
     private final PlanNode right;
@@ -75,13 +42,6 @@ public class SpatialJoinNode
     private final Optional<Symbol> rightPartitionSymbol;
     private final Optional<String> kdbTree;
     private final DistributionType distributionType;
-
-    public enum DistributionType
-    {
-        PARTITIONED,
-        REPLICATED
-    }
-
     @JsonCreator
     public SpatialJoinNode(
             @JsonProperty("id") PlanNodeId id,
@@ -197,5 +157,44 @@ public class SpatialJoinNode
     {
         checkArgument(newChildren.size() == 2, "expected newChildren to contain 2 nodes");
         return new SpatialJoinNode(getId(), type, newChildren.get(0), newChildren.get(1), outputSymbols, filter, leftPartitionSymbol, rightPartitionSymbol, kdbTree);
+    }
+
+    public enum Type
+    {
+        INNER("SpatialInnerJoin"),
+        LEFT("SpatialLeftJoin");
+
+        private final String joinLabel;
+
+        Type(String joinLabel)
+        {
+            this.joinLabel = joinLabel;
+        }
+
+        public static Type fromJoinNodeType(JoinNode.Type joinNodeType)
+        {
+            switch (joinNodeType) {
+                case INNER:
+                    return Type.INNER;
+                case LEFT:
+                    return Type.LEFT;
+                case RIGHT:
+                case FULL:
+                    // unsupported
+                    break;
+            }
+            throw new IllegalArgumentException("Unsupported spatial join type: " + joinNodeType);
+        }
+
+        public String getJoinLabel()
+        {
+            return joinLabel;
+        }
+    }
+
+    public enum DistributionType
+    {
+        PARTITIONED,
+        REPLICATED
     }
 }

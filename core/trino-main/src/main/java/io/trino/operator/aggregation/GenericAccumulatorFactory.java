@@ -111,6 +111,34 @@ public class GenericAccumulatorFactory
         this.distinct = distinct;
     }
 
+    private static Page filter(Page page, Block mask)
+    {
+        int positions = mask.getPositionCount();
+        if (positions > 0 && mask instanceof RunLengthEncodedBlock) {
+            // must have at least 1 position to be able to check the value at position 0
+            if (!mask.isNull(0) && BOOLEAN.getBoolean(mask, 0)) {
+                return page;
+            }
+            else {
+                return page.getPositions(new int[0], 0, 0);
+            }
+        }
+        boolean mayHaveNull = mask.mayHaveNull();
+        int[] ids = new int[positions];
+        int next = 0;
+        for (int i = 0; i < ids.length; ++i) {
+            boolean isNull = mayHaveNull && mask.isNull(i);
+            if (!isNull && BOOLEAN.getBoolean(mask, i)) {
+                ids[next++] = i;
+            }
+        }
+
+        if (next == ids.length) {
+            return page; // no rows were eliminated by the filter
+        }
+        return page.getPositions(ids, 0, next);
+    }
+
     @Override
     public List<Integer> getInputChannels()
     {
@@ -332,34 +360,6 @@ public class GenericAccumulatorFactory
         {
             accumulator.evaluateFinal(blockBuilder);
         }
-    }
-
-    private static Page filter(Page page, Block mask)
-    {
-        int positions = mask.getPositionCount();
-        if (positions > 0 && mask instanceof RunLengthEncodedBlock) {
-            // must have at least 1 position to be able to check the value at position 0
-            if (!mask.isNull(0) && BOOLEAN.getBoolean(mask, 0)) {
-                return page;
-            }
-            else {
-                return page.getPositions(new int[0], 0, 0);
-            }
-        }
-        boolean mayHaveNull = mask.mayHaveNull();
-        int[] ids = new int[positions];
-        int next = 0;
-        for (int i = 0; i < ids.length; ++i) {
-            boolean isNull = mayHaveNull && mask.isNull(i);
-            if (!isNull && BOOLEAN.getBoolean(mask, i)) {
-                ids[next++] = i;
-            }
-        }
-
-        if (next == ids.length) {
-            return page; // no rows were eliminated by the filter
-        }
-        return page.getPositions(ids, 0, next);
     }
 
     private static class DistinctingGroupedAccumulator

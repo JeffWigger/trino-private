@@ -30,16 +30,9 @@ import static com.google.common.base.Preconditions.checkArgument;
 public class LegacyResourceGroupConfigurationManager
         implements ResourceGroupConfigurationManager<VoidContext>
 {
-    enum VoidContext
-    {
-        NONE
-    }
-
     private static final ResourceGroupId GLOBAL = new ResourceGroupId("global");
-
     private final int hardConcurrencyLimit;
     private final int maxQueued;
-
     @Inject
     public LegacyResourceGroupConfigurationManager(QueryManagerConfig config)
     {
@@ -67,5 +60,10 @@ public class LegacyResourceGroupConfigurationManager
         return new SelectionContext<>(
                 context.getResourceGroupId().getParent().orElseThrow(() -> new IllegalArgumentException("Group has no parent group: " + context.getResourceGroupId())),
                 VoidContext.NONE);
+    }
+
+    enum VoidContext
+    {
+        NONE
     }
 }

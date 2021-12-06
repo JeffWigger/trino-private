@@ -21,17 +21,6 @@ import static org.testng.Assert.assertEquals;
 
 public class TestObjectBigArray
 {
-    @Test
-    public void testFill()
-    {
-        ObjectBigArray<String> array = new ObjectBigArray<>();
-        assertFillCapacity(array, 0, "a");
-        assertFillCapacity(array, 1, "b");
-        assertFillCapacity(array, 1000, "c");
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, "d");
-        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, "e");
-    }
-
     private static <T> void assertFillCapacity(ObjectBigArray<T> array, long capacity, T value)
     {
         array.ensureCapacity(capacity);
@@ -39,21 +28,6 @@ public class TestObjectBigArray
 
         for (int i = 0; i < capacity; i++) {
             assertEquals(array.get(i), value);
-        }
-    }
-
-    @Test
-    public void testCopyTo()
-    {
-        ObjectBigArray<String> source = new ObjectBigArray<>();
-        ObjectBigArray<String> destination = new ObjectBigArray<>();
-
-        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
-                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
-                }
-            }
         }
     }
 
@@ -82,6 +56,32 @@ public class TestObjectBigArray
         }
         for (long i = destinationIndex + length; i < destinationCapacity; i++) {
             assertEquals(destination.get(i), destinationFillValue);
+        }
+    }
+
+    @Test
+    public void testFill()
+    {
+        ObjectBigArray<String> array = new ObjectBigArray<>();
+        assertFillCapacity(array, 0, "a");
+        assertFillCapacity(array, 1, "b");
+        assertFillCapacity(array, 1000, "c");
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE, "d");
+        assertFillCapacity(array, BigArrays.SEGMENT_SIZE + 1, "e");
+    }
+
+    @Test
+    public void testCopyTo()
+    {
+        ObjectBigArray<String> source = new ObjectBigArray<>();
+        ObjectBigArray<String> destination = new ObjectBigArray<>();
+
+        for (long sourceIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+            for (long destinationIndex : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                for (long length : Arrays.asList(0, 1, BigArrays.SEGMENT_SIZE, BigArrays.SEGMENT_SIZE + 1)) {
+                    assertCopyTo(source, sourceIndex, destination, destinationIndex, length);
+                }
+            }
         }
     }
 }

@@ -25,6 +25,16 @@ public class TestSelectedRole
 {
     private static final JsonCodec<SelectedRole> SELECTED_ROLE_JSON_CODEC = jsonCodec(SelectedRole.class);
 
+    private static void assertJsonRoundTrip(SelectedRole expected)
+    {
+        assertEquals(SELECTED_ROLE_JSON_CODEC.fromJson(SELECTED_ROLE_JSON_CODEC.toJson(expected)), expected);
+    }
+
+    private static void assertToStringRoundTrip(SelectedRole expected)
+    {
+        assertEquals(SelectedRole.valueOf(expected.toString()), expected);
+    }
+
     @Test
     public void testJsonSerialization()
     {
@@ -33,21 +43,11 @@ public class TestSelectedRole
         assertJsonRoundTrip(new SelectedRole(SelectedRole.Type.ROLE, Optional.of("role")));
     }
 
-    private static void assertJsonRoundTrip(SelectedRole expected)
-    {
-        assertEquals(SELECTED_ROLE_JSON_CODEC.fromJson(SELECTED_ROLE_JSON_CODEC.toJson(expected)), expected);
-    }
-
     @Test
     public void testToStringSerialization()
     {
         assertToStringRoundTrip(new SelectedRole(SelectedRole.Type.ALL, Optional.empty()));
         assertToStringRoundTrip(new SelectedRole(SelectedRole.Type.NONE, Optional.empty()));
         assertToStringRoundTrip(new SelectedRole(SelectedRole.Type.ROLE, Optional.of("role")));
-    }
-
-    private static void assertToStringRoundTrip(SelectedRole expected)
-    {
-        assertEquals(SelectedRole.valueOf(expected.toString()), expected);
     }
 }

@@ -81,6 +81,16 @@ public class ActualProperties
         this.constants = ImmutableMap.copyOf(constants);
     }
 
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static Builder builderFrom(ActualProperties properties)
+    {
+        return new Builder(properties.global, properties.localProperties, properties.constants);
+    }
+
     public boolean isCoordinatorOnly()
     {
         return global.isCoordinatorOnly();
@@ -193,16 +203,6 @@ public class ActualProperties
                 .build();
     }
 
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
-    public static Builder builderFrom(ActualProperties properties)
-    {
-        return new Builder(properties.global, properties.localProperties, properties.constants);
-    }
-
     private Map<Symbol, NullableValue> translateConstants(Function<Symbol, Optional<Symbol>> translator)
     {
         Map<Symbol, NullableValue> translatedConstants = new HashMap<>();
@@ -211,6 +211,37 @@ public class ActualProperties
             translatedKey.ifPresent(symbol -> translatedConstants.put(symbol, entry.getValue()));
         }
         return translatedConstants;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(global, localProperties, constants.keySet());
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        ActualProperties other = (ActualProperties) obj;
+        return Objects.equals(this.global, other.global)
+                && Objects.equals(this.localProperties, other.localProperties)
+                && Objects.equals(this.constants.keySet(), other.constants.keySet());
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("globalProperties", global)
+                .add("localProperties", localProperties)
+                .add("constants", constants)
+                .toString();
     }
 
     public static class Builder
@@ -270,37 +301,6 @@ public class ActualProperties
             }
             return new ActualProperties(global, localProperties, constants);
         }
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(global, localProperties, constants.keySet());
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null || getClass() != obj.getClass()) {
-            return false;
-        }
-        ActualProperties other = (ActualProperties) obj;
-        return Objects.equals(this.global, other.global)
-                && Objects.equals(this.localProperties, other.localProperties)
-                && Objects.equals(this.constants.keySet(), other.constants.keySet());
-    }
-
-    @Override
-    public String toString()
-    {
-        return toStringHelper(this)
-                .add("globalProperties", global)
-                .add("localProperties", localProperties)
-                .add("constants", constants)
-                .toString();
     }
 
     @Immutable

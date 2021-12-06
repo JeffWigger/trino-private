@@ -88,54 +88,6 @@ public abstract class AbstractMinMaxNAggregationFunction
         this.typeToComparator = typeToComparison;
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type type = functionBinding.getTypeVariable("E");
-        return ImmutableList.of(new MinMaxNStateSerializer(typeToComparator.apply(type), type).getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type type = functionBinding.getTypeVariable("E");
-        return generateAggregation(type);
-    }
-
-    protected InternalAggregationFunction generateAggregation(Type type)
-    {
-        DynamicClassLoader classLoader = new DynamicClassLoader(AbstractMinMaxNAggregationFunction.class.getClassLoader());
-
-        BlockPositionComparison comparison = typeToComparator.apply(type);
-        List<Type> inputTypes = ImmutableList.of(type, BIGINT);
-        MinMaxNStateSerializer stateSerializer = new MinMaxNStateSerializer(comparison, type);
-        Type intermediateType = stateSerializer.getSerializedType();
-        ArrayType outputType = new ArrayType(type);
-
-        List<ParameterMetadata> inputParameterMetadata = ImmutableList.of(
-                new ParameterMetadata(STATE),
-                new ParameterMetadata(BLOCK_INPUT_CHANNEL, type),
-                new ParameterMetadata(INPUT_CHANNEL, BIGINT),
-                new ParameterMetadata(BLOCK_INDEX));
-
-        String name = getFunctionMetadata().getSignature().getName();
-        AggregationMetadata metadata = new AggregationMetadata(
-                generateAggregationName(name, type.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
-                inputParameterMetadata,
-                INPUT_FUNCTION.bindTo(comparison).bindTo(type),
-                Optional.empty(),
-                COMBINE_FUNCTION,
-                OUTPUT_FUNCTION.bindTo(outputType),
-                ImmutableList.of(new AccumulatorStateDescriptor(
-                        MinMaxNState.class,
-                        stateSerializer,
-                        new MinMaxNStateFactory())),
-                outputType);
-
-        GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
-        return new InternalAggregationFunction(name, inputTypes, ImmutableList.of(intermediateType), outputType, factory);
-    }
-
     public static void input(BlockPositionComparison comparison, Type type, MinMaxNState state, Block block, long n, int blockIndex)
     {
         TypedHeap heap = state.getTypedHeap();
@@ -188,5 +140,53 @@ public abstract class AbstractMinMaxNAggregationFunction
             elementType.appendTo(reversedBlockBuilder, i, arrayBlockBuilder);
         }
         out.closeEntry();
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type type = functionBinding.getTypeVariable("E");
+        return ImmutableList.of(new MinMaxNStateSerializer(typeToComparator.apply(type), type).getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type type = functionBinding.getTypeVariable("E");
+        return generateAggregation(type);
+    }
+
+    protected InternalAggregationFunction generateAggregation(Type type)
+    {
+        DynamicClassLoader classLoader = new DynamicClassLoader(AbstractMinMaxNAggregationFunction.class.getClassLoader());
+
+        BlockPositionComparison comparison = typeToComparator.apply(type);
+        List<Type> inputTypes = ImmutableList.of(type, BIGINT);
+        MinMaxNStateSerializer stateSerializer = new MinMaxNStateSerializer(comparison, type);
+        Type intermediateType = stateSerializer.getSerializedType();
+        ArrayType outputType = new ArrayType(type);
+
+        List<ParameterMetadata> inputParameterMetadata = ImmutableList.of(
+                new ParameterMetadata(STATE),
+                new ParameterMetadata(BLOCK_INPUT_CHANNEL, type),
+                new ParameterMetadata(INPUT_CHANNEL, BIGINT),
+                new ParameterMetadata(BLOCK_INDEX));
+
+        String name = getFunctionMetadata().getSignature().getName();
+        AggregationMetadata metadata = new AggregationMetadata(
+                generateAggregationName(name, type.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
+                inputParameterMetadata,
+                INPUT_FUNCTION.bindTo(comparison).bindTo(type),
+                Optional.empty(),
+                COMBINE_FUNCTION,
+                OUTPUT_FUNCTION.bindTo(outputType),
+                ImmutableList.of(new AccumulatorStateDescriptor(
+                        MinMaxNState.class,
+                        stateSerializer,
+                        new MinMaxNStateFactory())),
+                outputType);
+
+        GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
+        return new InternalAggregationFunction(name, inputTypes, ImmutableList.of(intermediateType), outputType, factory);
     }
 }

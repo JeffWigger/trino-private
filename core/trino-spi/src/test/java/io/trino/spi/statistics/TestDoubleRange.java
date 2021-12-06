@@ -21,6 +21,13 @@ import static org.testng.Assert.assertEquals;
 
 public class TestDoubleRange
 {
+    private static void assertRange(double min, double max)
+    {
+        DoubleRange range = new DoubleRange(min, max);
+        assertEquals(range.getMin(), min);
+        assertEquals(range.getMax(), max);
+    }
+
     @Test
     public void testRange()
     {
@@ -66,12 +73,5 @@ public class TestDoubleRange
         assertEquals(union(new DoubleRange(4, 5), new DoubleRange(1, 2)), new DoubleRange(1, 5));
         assertEquals(union(new DoubleRange(Double.NEGATIVE_INFINITY, 0), new DoubleRange(0, Double.POSITIVE_INFINITY)), new DoubleRange(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY));
         assertEquals(union(new DoubleRange(0, Double.POSITIVE_INFINITY), new DoubleRange(Double.NEGATIVE_INFINITY, 0)), new DoubleRange(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY));
-    }
-
-    private static void assertRange(double min, double max)
-    {
-        DoubleRange range = new DoubleRange(min, max);
-        assertEquals(range.getMin(), min);
-        assertEquals(range.getMax(), max);
     }
 }

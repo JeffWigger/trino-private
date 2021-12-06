@@ -117,6 +117,12 @@ public final class MapTransformKeysFunction
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
+    @UsedByGeneratedCode
+    public static Object createState(MapType mapType)
+    {
+        return new PageBuilder(ImmutableList.of(mapType));
+    }
+
     @Override
     protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -131,12 +137,6 @@ public final class MapTransformKeysFunction
                 ImmutableList.of(BinaryFunctionInterface.class),
                 generateTransformKey(keyType, transformedKeyType, valueType, resultMapType),
                 Optional.of(STATE_FACTORY.bindTo(resultMapType)));
-    }
-
-    @UsedByGeneratedCode
-    public static Object createState(MapType mapType)
-    {
-        return new PageBuilder(ImmutableList.of(mapType));
     }
 
     private MethodHandle generateTransformKey(Type keyType, Type transformedKeyType, Type valueType, Type resultMapType)

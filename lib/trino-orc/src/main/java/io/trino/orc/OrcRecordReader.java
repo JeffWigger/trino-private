@@ -82,44 +82,36 @@ public class OrcRecordReader
     private final ColumnReader[] columnReaders;
     private final long[] currentBytesPerCell;
     private final long[] maxBytesPerCell;
-    private long maxCombinedBytesPerRow;
-
     private final long totalRowCount;
     private final long splitLength;
     private final long maxBlockBytes;
     private final ColumnMetadata<OrcType> orcTypes;
-    private long currentPosition;
-    private long currentStripePosition;
-    private int currentBatchSize;
-    private int nextBatchSize;
-    private int maxBatchSize = MAX_BATCH_SIZE;
-
     private final List<StripeInformation> stripes;
     private final StripeReader stripeReader;
-    private int currentStripe = -1;
-    private AggregatedMemoryContext currentStripeSystemMemoryContext;
-
     private final long fileRowCount;
     private final List<Long> stripeFilePositions;
-    private long filePosition;
-
-    private Iterator<RowGroup> rowGroups = ImmutableList.<RowGroup>of().iterator();
-    private int currentRowGroup = -1;
-    private long currentGroupRowCount;
-    private long nextRowInGroup;
-
     private final Map<String, Slice> userMetadata;
-
     private final AggregatedMemoryContext systemMemoryUsage;
     private final LocalMemoryContext orcDataSourceMemoryUsage;
-
     private final OrcBlockFactory blockFactory;
-
     private final Optional<OrcWriteValidation> writeValidation;
     private final Optional<WriteChecksumBuilder> writeChecksumBuilder;
     private final Optional<StatisticsValidation> rowGroupStatisticsValidation;
     private final Optional<StatisticsValidation> stripeStatisticsValidation;
     private final Optional<StatisticsValidation> fileStatisticsValidation;
+    private long maxCombinedBytesPerRow;
+    private long currentPosition;
+    private long currentStripePosition;
+    private int currentBatchSize;
+    private int nextBatchSize;
+    private int maxBatchSize = MAX_BATCH_SIZE;
+    private int currentStripe = -1;
+    private AggregatedMemoryContext currentStripeSystemMemoryContext;
+    private long filePosition;
+    private Iterator<RowGroup> rowGroups = ImmutableList.<RowGroup>of().iterator();
+    private int currentRowGroup = -1;
+    private long currentGroupRowCount;
+    private long nextRowInGroup;
 
     public OrcRecordReader(
             List<OrcColumn> readColumns,
@@ -284,6 +276,25 @@ public class OrcRecordReader
             }
         }
         return new CachingOrcDataSource(dataSource, createTinyStripesRangeFinder(stripes, maxMergeDistance, tinyStripeThreshold));
+    }
+
+    private static ColumnReader[] createColumnReaders(
+            List<OrcColumn> columns,
+            List<Type> readTypes,
+            List<OrcReader.ProjectedLayout> readLayouts,
+            AggregatedMemoryContext systemMemoryContext,
+            OrcBlockFactory blockFactory,
+            FieldMapperFactory fieldMapperFactory)
+            throws OrcCorruptionException
+    {
+        ColumnReader[] columnReaders = new ColumnReader[columns.size()];
+        for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
+            Type readType = readTypes.get(columnIndex);
+            OrcColumn column = columns.get(columnIndex);
+            OrcReader.ProjectedLayout projectedLayout = readLayouts.get(columnIndex);
+            columnReaders[columnIndex] = createColumnReader(readType, column, projectedLayout, systemMemoryContext, blockFactory, fieldMapperFactory);
+        }
+        return columnReaders;
     }
 
     /**
@@ -562,25 +573,6 @@ public class OrcRecordReader
         }
     }
 
-    private static ColumnReader[] createColumnReaders(
-            List<OrcColumn> columns,
-            List<Type> readTypes,
-            List<OrcReader.ProjectedLayout> readLayouts,
-            AggregatedMemoryContext systemMemoryContext,
-            OrcBlockFactory blockFactory,
-            FieldMapperFactory fieldMapperFactory)
-            throws OrcCorruptionException
-    {
-        ColumnReader[] columnReaders = new ColumnReader[columns.size()];
-        for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
-            Type readType = readTypes.get(columnIndex);
-            OrcColumn column = columns.get(columnIndex);
-            OrcReader.ProjectedLayout projectedLayout = readLayouts.get(columnIndex);
-            columnReaders[columnIndex] = createColumnReader(readType, column, projectedLayout, systemMemoryContext, blockFactory, fieldMapperFactory);
-        }
-        return columnReaders;
-    }
-
     /**
      * @return The size of memory retained by all the stream readers (local buffers + object overhead)
      */
@@ -657,6 +649,20 @@ public class OrcRecordReader
             this.diskRanges = diskRanges;
         }
 
+        public static LinearProbeRangeFinder createTinyStripesRangeFinder(List<StripeInformation> stripes, DataSize maxMergeDistance, DataSize tinyStripeThreshold)
+        {
+            if (stripes.isEmpty()) {
+                return new LinearProbeRangeFinder(ImmutableList.of());
+            }
+
+            List<DiskRange> scratchDiskRanges = stripes.stream()
+                    .map(stripe -> new DiskRange(stripe.getOffset(), toIntExact(stripe.getTotalLength())))
+                    .collect(Collectors.toList());
+            List<DiskRange> diskRanges = mergeAdjacentDiskRanges(scratchDiskRanges, maxMergeDistance, tinyStripeThreshold);
+
+            return new LinearProbeRangeFinder(diskRanges);
+        }
+
         @Override
         public DiskRange getRangeFor(long desiredOffset)
         {
@@ -671,20 +677,6 @@ public class OrcRecordReader
                 index++;
             }
             throw new IllegalArgumentException("Invalid desiredOffset " + desiredOffset);
-        }
-
-        public static LinearProbeRangeFinder createTinyStripesRangeFinder(List<StripeInformation> stripes, DataSize maxMergeDistance, DataSize tinyStripeThreshold)
-        {
-            if (stripes.isEmpty()) {
-                return new LinearProbeRangeFinder(ImmutableList.of());
-            }
-
-            List<DiskRange> scratchDiskRanges = stripes.stream()
-                    .map(stripe -> new DiskRange(stripe.getOffset(), toIntExact(stripe.getTotalLength())))
-                    .collect(Collectors.toList());
-            List<DiskRange> diskRanges = mergeAdjacentDiskRanges(scratchDiskRanges, maxMergeDistance, tinyStripeThreshold);
-
-            return new LinearProbeRangeFinder(diskRanges);
         }
     }
 }

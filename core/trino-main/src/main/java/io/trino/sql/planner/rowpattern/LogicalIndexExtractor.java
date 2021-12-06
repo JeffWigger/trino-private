@@ -63,6 +63,8 @@ import static java.util.Objects.requireNonNull;
  */
 public class LogicalIndexExtractor
 {
+    private LogicalIndexExtractor() {}
+
     public static ExpressionAndValuePointers rewrite(Expression expression, Map<IrLabel, Set<IrLabel>> subsets, SymbolAllocator symbolAllocator)
     {
         ImmutableList.Builder<Symbol> layout = ImmutableList.builder();
@@ -75,8 +77,6 @@ public class LogicalIndexExtractor
 
         return new ExpressionAndValuePointers(rewritten, layout.build(), valuePointers.build(), classifierSymbols.build(), matchNumberSymbols.build());
     }
-
-    private LogicalIndexExtractor() {}
 
     private static class Visitor
             extends ExpressionRewriter<LogicalIndexContext>

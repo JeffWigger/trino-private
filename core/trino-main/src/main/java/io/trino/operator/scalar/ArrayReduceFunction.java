@@ -73,6 +73,22 @@ public final class ArrayReduceFunction
                 SCALAR));
     }
 
+    public static Object reduce(
+            Type inputType,
+            Block block,
+            Object initialIntermediateValue,
+            BinaryFunctionInterface inputFunction,
+            UnaryFunctionInterface outputFunction)
+    {
+        int positionCount = block.getPositionCount();
+        Object intermediateValue = initialIntermediateValue;
+        for (int position = 0; position < positionCount; position++) {
+            Object input = readNativeValue(inputType, block, position);
+            intermediateValue = inputFunction.apply(intermediateValue, input);
+        }
+        return outputFunction.apply(intermediateValue);
+    }
+
     @Override
     protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -90,21 +106,5 @@ public final class ArrayReduceFunction
                                 .changeParameterType(1, Primitives.wrap(intermediateType.getJavaType()))
                                 .changeReturnType(Primitives.wrap(outputType.getJavaType()))),
                 Optional.empty());
-    }
-
-    public static Object reduce(
-            Type inputType,
-            Block block,
-            Object initialIntermediateValue,
-            BinaryFunctionInterface inputFunction,
-            UnaryFunctionInterface outputFunction)
-    {
-        int positionCount = block.getPositionCount();
-        Object intermediateValue = initialIntermediateValue;
-        for (int position = 0; position < positionCount; position++) {
-            Object input = readNativeValue(inputType, block, position);
-            intermediateValue = inputFunction.apply(intermediateValue, input);
-        }
-        return outputFunction.apply(intermediateValue);
     }
 }

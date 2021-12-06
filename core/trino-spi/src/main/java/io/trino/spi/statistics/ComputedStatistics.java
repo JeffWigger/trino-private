@@ -54,6 +54,11 @@ public class ComputedStatistics
         return block.getPositionCount() == 1;
     }
 
+    public static Builder builder(List<String> groupingColumns, List<Block> groupingValues)
+    {
+        return new Builder(groupingColumns, groupingValues);
+    }
+
     public List<String> getGroupingColumns()
     {
         return groupingColumns;
@@ -72,11 +77,6 @@ public class ComputedStatistics
     public Map<ColumnStatisticMetadata, Block> getColumnStatistics()
     {
         return columnStatistics;
-    }
-
-    public static Builder builder(List<String> groupingColumns, List<Block> groupingValues)
-    {
-        return new Builder(groupingColumns, groupingValues);
     }
 
     public static class Builder

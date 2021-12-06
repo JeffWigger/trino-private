@@ -109,6 +109,13 @@ class TranslationMap
                 .forEach(TranslationMap::verifyAstExpression);
     }
 
+    private static void verifyAstExpression(Expression astExpression)
+    {
+        verify(AstUtils.preOrder(astExpression).noneMatch(expression ->
+                expression instanceof SymbolReference ||
+                        expression instanceof FunctionCall && ResolvedFunction.isResolved(((FunctionCall) expression).getName())));
+    }
+
     public TranslationMap withScope(Scope scope, List<Symbol> fields)
     {
         return new TranslationMap(outerContext, scope, analysis, lambdaArguments, fields.toArray(new Symbol[0]), astToSymbols);
@@ -377,13 +384,6 @@ class TranslationMap
         }
 
         return Optional.of(Symbol.from(outerContext.get().rewrite(expression)));
-    }
-
-    private static void verifyAstExpression(Expression astExpression)
-    {
-        verify(AstUtils.preOrder(astExpression).noneMatch(expression ->
-                expression instanceof SymbolReference ||
-                        expression instanceof FunctionCall && ResolvedFunction.isResolved(((FunctionCall) expression).getName())));
     }
 
     public Scope getScope()

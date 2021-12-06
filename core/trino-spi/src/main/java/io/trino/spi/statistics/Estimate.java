@@ -31,6 +31,11 @@ public final class Estimate
 
     private final double value;
 
+    private Estimate(double value)
+    {
+        this.value = value;
+    }
+
     public static Estimate unknown()
     {
         return UNKNOWN;
@@ -50,11 +55,6 @@ public final class Estimate
             throw new IllegalArgumentException("value is infinite");
         }
         return new Estimate(value);
-    }
-
-    private Estimate(double value)
-    {
-        this.value = value;
     }
 
     public boolean isUnknown()

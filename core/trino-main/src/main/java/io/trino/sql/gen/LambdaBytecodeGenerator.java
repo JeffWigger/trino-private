@@ -274,11 +274,11 @@ public final class LambdaBytecodeGenerator
                 metadata);
 
         body.append(
-                generateLambda(
-                        generatorContext,
-                        ImmutableList.of(),
-                        compiledLambdaMap.get(lambdaExpression),
-                        lambdaInterface))
+                        generateLambda(
+                                generatorContext,
+                                ImmutableList.of(),
+                                compiledLambdaMap.get(lambdaExpression),
+                                lambdaInterface))
                 .retObject();
 
         // constructor

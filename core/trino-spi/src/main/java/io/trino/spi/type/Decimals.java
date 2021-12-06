@@ -40,33 +40,18 @@ import static java.math.RoundingMode.UNNECESSARY;
 
 public final class Decimals
 {
-    private Decimals() {}
-
     public static final int MAX_PRECISION = 38;
     public static final int MAX_SHORT_PRECISION = 18;
-
     public static final BigInteger MAX_DECIMAL_UNSCALED_VALUE = new BigInteger(
             // repeat digit '9' MAX_PRECISION times
             new String(new char[MAX_PRECISION]).replace("\0", "9"));
     public static final BigInteger MIN_DECIMAL_UNSCALED_VALUE = MAX_DECIMAL_UNSCALED_VALUE.negate();
-
     private static final Pattern DECIMAL_PATTERN = Pattern.compile("(\\+?|-?)((0*)(\\d*))(\\.(\\d*))?");
-
     private static final int LONG_POWERS_OF_TEN_TABLE_LENGTH = 19;
     private static final int BIG_INTEGER_POWERS_OF_TEN_TABLE_LENGTH = 100;
     private static final long[] LONG_POWERS_OF_TEN = new long[LONG_POWERS_OF_TEN_TABLE_LENGTH];
     private static final BigInteger[] BIG_INTEGER_POWERS_OF_TEN = new BigInteger[BIG_INTEGER_POWERS_OF_TEN_TABLE_LENGTH];
-
-    static {
-        for (int i = 0; i < LONG_POWERS_OF_TEN.length; ++i) {
-            // Although this computes using doubles, incidentally, this is exact for all powers of 10 that fit in a long.
-            LONG_POWERS_OF_TEN[i] = round(pow(10, i));
-        }
-
-        for (int i = 0; i < BIG_INTEGER_POWERS_OF_TEN.length; ++i) {
-            BIG_INTEGER_POWERS_OF_TEN[i] = TEN.pow(i);
-        }
-    }
+    private Decimals() {}
 
     public static long longTenToNth(int n)
     {
@@ -322,6 +307,17 @@ public final class Decimals
     {
         if (!condition) {
             throw new IllegalArgumentException();
+        }
+    }
+
+    static {
+        for (int i = 0; i < LONG_POWERS_OF_TEN.length; ++i) {
+            // Although this computes using doubles, incidentally, this is exact for all powers of 10 that fit in a long.
+            LONG_POWERS_OF_TEN[i] = round(pow(10, i));
+        }
+
+        for (int i = 0; i < BIG_INTEGER_POWERS_OF_TEN.length; ++i) {
+            BIG_INTEGER_POWERS_OF_TEN[i] = TEN.pow(i);
         }
     }
 }

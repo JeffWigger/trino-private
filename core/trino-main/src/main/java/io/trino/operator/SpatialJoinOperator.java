@@ -42,98 +42,6 @@ import static java.util.Objects.requireNonNull;
 public class SpatialJoinOperator
         implements Operator
 {
-    public static final class SpatialJoinOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final SpatialJoinNode.Type joinType;
-        private final List<Type> probeTypes;
-        private final List<Integer> probeOutputChannels;
-        private final int probeGeometryChannel;
-        private final Optional<Integer> partitionChannel;
-        private final PagesSpatialIndexFactory pagesSpatialIndexFactory;
-        private final ReferenceCount referenceCount;
-
-        private boolean closed;
-
-        public SpatialJoinOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                SpatialJoinNode.Type joinType,
-                List<Type> probeTypes,
-                List<Integer> probeOutputChannels,
-                int probeGeometryChannel,
-                Optional<Integer> partitionChannel,
-                PagesSpatialIndexFactory pagesSpatialIndexFactory)
-        {
-            checkArgument(joinType == INNER || joinType == LEFT, "unsupported join type: %s", joinType);
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.joinType = joinType;
-            this.probeTypes = ImmutableList.copyOf(probeTypes);
-            this.probeOutputChannels = ImmutableList.copyOf(probeOutputChannels);
-            this.probeGeometryChannel = probeGeometryChannel;
-            this.partitionChannel = requireNonNull(partitionChannel, "partitionChannel is null");
-            this.pagesSpatialIndexFactory = requireNonNull(pagesSpatialIndexFactory, "pagesSpatialIndexFactory is null");
-            this.referenceCount = new ReferenceCount(1);
-            this.referenceCount.getFreeFuture().addListener(pagesSpatialIndexFactory::destroy, directExecutor());
-        }
-
-        private SpatialJoinOperatorFactory(SpatialJoinOperatorFactory other)
-        {
-            this.operatorId = other.operatorId;
-            this.planNodeId = other.planNodeId;
-            this.joinType = other.joinType;
-            this.probeTypes = other.probeTypes;
-            this.probeOutputChannels = other.probeOutputChannels;
-            this.probeGeometryChannel = other.probeGeometryChannel;
-            this.partitionChannel = other.partitionChannel;
-            this.pagesSpatialIndexFactory = other.pagesSpatialIndexFactory;
-            this.referenceCount = other.referenceCount;
-            this.closed = false;
-            referenceCount.retain();
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(
-                    operatorId,
-                    planNodeId,
-                    SpatialJoinOperator.class.getSimpleName());
-            referenceCount.retain();
-            return new SpatialJoinOperator(
-                    operatorContext,
-                    joinType,
-                    probeTypes,
-                    probeOutputChannels,
-                    probeGeometryChannel,
-                    partitionChannel,
-                    pagesSpatialIndexFactory,
-                    referenceCount::release);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            if (closed) {
-                return;
-            }
-
-            referenceCount.release();
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            checkState(!closed, "Factory is already closed");
-            return new SpatialJoinOperatorFactory(this);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext localUserMemoryContext;
     private final SpatialJoinNode.Type joinType;
@@ -143,12 +51,10 @@ public class SpatialJoinOperator
     private final Optional<Integer> partitionChannel;
     private final PagesSpatialIndexFactory pagesSpatialIndexFactory;
     private final Runnable onClose;
-
-    private ListenableFuture<PagesSpatialIndex> pagesSpatialIndexFuture;
     private final PageBuilder pageBuilder;
+    private ListenableFuture<PagesSpatialIndex> pagesSpatialIndexFuture;
     @Nullable
     private Page probe;
-
     // The following fields represent the state of the operator in case when processProbe yielded or
     // filled up pageBuilder before processing all records in a probe page.
     private int probePosition;
@@ -156,11 +62,9 @@ public class SpatialJoinOperator
     private int[] joinPositions;
     private int nextJoinPositionIndex;
     private boolean matchFound;
-
     private boolean finishing;
     private boolean finished;
     private boolean closed;
-
     public SpatialJoinOperator(
             OperatorContext operatorContext,
             SpatialJoinNode.Type joinType,
@@ -332,5 +236,97 @@ public class SpatialJoinOperator
 
         pagesSpatialIndexFuture = null;
         onClose.run();
+    }
+
+    public static final class SpatialJoinOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final SpatialJoinNode.Type joinType;
+        private final List<Type> probeTypes;
+        private final List<Integer> probeOutputChannels;
+        private final int probeGeometryChannel;
+        private final Optional<Integer> partitionChannel;
+        private final PagesSpatialIndexFactory pagesSpatialIndexFactory;
+        private final ReferenceCount referenceCount;
+
+        private boolean closed;
+
+        public SpatialJoinOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                SpatialJoinNode.Type joinType,
+                List<Type> probeTypes,
+                List<Integer> probeOutputChannels,
+                int probeGeometryChannel,
+                Optional<Integer> partitionChannel,
+                PagesSpatialIndexFactory pagesSpatialIndexFactory)
+        {
+            checkArgument(joinType == INNER || joinType == LEFT, "unsupported join type: %s", joinType);
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.joinType = joinType;
+            this.probeTypes = ImmutableList.copyOf(probeTypes);
+            this.probeOutputChannels = ImmutableList.copyOf(probeOutputChannels);
+            this.probeGeometryChannel = probeGeometryChannel;
+            this.partitionChannel = requireNonNull(partitionChannel, "partitionChannel is null");
+            this.pagesSpatialIndexFactory = requireNonNull(pagesSpatialIndexFactory, "pagesSpatialIndexFactory is null");
+            this.referenceCount = new ReferenceCount(1);
+            this.referenceCount.getFreeFuture().addListener(pagesSpatialIndexFactory::destroy, directExecutor());
+        }
+
+        private SpatialJoinOperatorFactory(SpatialJoinOperatorFactory other)
+        {
+            this.operatorId = other.operatorId;
+            this.planNodeId = other.planNodeId;
+            this.joinType = other.joinType;
+            this.probeTypes = other.probeTypes;
+            this.probeOutputChannels = other.probeOutputChannels;
+            this.probeGeometryChannel = other.probeGeometryChannel;
+            this.partitionChannel = other.partitionChannel;
+            this.pagesSpatialIndexFactory = other.pagesSpatialIndexFactory;
+            this.referenceCount = other.referenceCount;
+            this.closed = false;
+            referenceCount.retain();
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(
+                    operatorId,
+                    planNodeId,
+                    SpatialJoinOperator.class.getSimpleName());
+            referenceCount.retain();
+            return new SpatialJoinOperator(
+                    operatorContext,
+                    joinType,
+                    probeTypes,
+                    probeOutputChannels,
+                    probeGeometryChannel,
+                    partitionChannel,
+                    pagesSpatialIndexFactory,
+                    referenceCount::release);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            if (closed) {
+                return;
+            }
+
+            referenceCount.release();
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            checkState(!closed, "Factory is already closed");
+            return new SpatialJoinOperatorFactory(this);
+        }
     }
 }

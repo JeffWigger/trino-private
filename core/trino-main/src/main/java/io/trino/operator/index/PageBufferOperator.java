@@ -27,44 +27,10 @@ import static java.util.Objects.requireNonNull;
 public class PageBufferOperator
         implements Operator
 {
-    public static class PageBufferOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final PageBuffer pageBuffer;
-
-        public PageBufferOperatorFactory(int operatorId, PlanNodeId planNodeId, PageBuffer pageBuffer)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.pageBuffer = requireNonNull(pageBuffer, "pageBuffer is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PageBufferOperator.class.getSimpleName());
-            return new PageBufferOperator(operatorContext, pageBuffer);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new PageBufferOperatorFactory(operatorId, planNodeId, pageBuffer);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final PageBuffer pageBuffer;
     private ListenableFuture<Void> blocked = NOT_BLOCKED;
     private boolean finished;
-
     public PageBufferOperator(OperatorContext operatorContext, PageBuffer pageBuffer)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -127,5 +93,38 @@ public class PageBufferOperator
     public Page getOutput()
     {
         return null;
+    }
+
+    public static class PageBufferOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final PageBuffer pageBuffer;
+
+        public PageBufferOperatorFactory(int operatorId, PlanNodeId planNodeId, PageBuffer pageBuffer)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.pageBuffer = requireNonNull(pageBuffer, "pageBuffer is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, PageBufferOperator.class.getSimpleName());
+            return new PageBufferOperator(operatorContext, pageBuffer);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new PageBufferOperatorFactory(operatorId, planNodeId, pageBuffer);
+        }
     }
 }

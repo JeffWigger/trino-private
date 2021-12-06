@@ -36,68 +36,11 @@ import static java.util.Objects.requireNonNull;
 public class MarkDistinctOperator
         implements Operator
 {
-    public static class MarkDistinctOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Optional<Integer> hashChannel;
-        private final List<Integer> markDistinctChannels;
-        private final List<Type> types;
-        private final JoinCompiler joinCompiler;
-        private final BlockTypeOperators blockTypeOperators;
-        private boolean closed;
-
-        public MarkDistinctOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> sourceTypes,
-                Collection<Integer> markDistinctChannels,
-                Optional<Integer> hashChannel,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.markDistinctChannels = ImmutableList.copyOf(requireNonNull(markDistinctChannels, "markDistinctChannels is null"));
-            checkArgument(!markDistinctChannels.isEmpty(), "markDistinctChannels is empty");
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-            this.types = ImmutableList.<Type>builder()
-                    .addAll(sourceTypes)
-                    .add(BOOLEAN)
-                    .build();
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, MarkDistinctOperator.class.getSimpleName());
-            return new MarkDistinctOperator(operatorContext, types, markDistinctChannels, hashChannel, joinCompiler, blockTypeOperators);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new MarkDistinctOperatorFactory(operatorId, planNodeId, types.subList(0, types.size() - 1), markDistinctChannels, hashChannel, joinCompiler, blockTypeOperators);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final MarkDistinctHash markDistinctHash;
     private final LocalMemoryContext localUserMemoryContext;
-
     private Page inputPage;
     private boolean finishing;
-
     // for yield when memory is not available
     private Work<Block> unfinishedWork;
 
@@ -199,5 +142,60 @@ public class MarkDistinctOperator
     public int getCapacity()
     {
         return markDistinctHash.getCapacity();
+    }
+
+    public static class MarkDistinctOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Optional<Integer> hashChannel;
+        private final List<Integer> markDistinctChannels;
+        private final List<Type> types;
+        private final JoinCompiler joinCompiler;
+        private final BlockTypeOperators blockTypeOperators;
+        private boolean closed;
+
+        public MarkDistinctOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> sourceTypes,
+                Collection<Integer> markDistinctChannels,
+                Optional<Integer> hashChannel,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.markDistinctChannels = ImmutableList.copyOf(requireNonNull(markDistinctChannels, "markDistinctChannels is null"));
+            checkArgument(!markDistinctChannels.isEmpty(), "markDistinctChannels is empty");
+            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+            this.types = ImmutableList.<Type>builder()
+                    .addAll(sourceTypes)
+                    .add(BOOLEAN)
+                    .build();
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, MarkDistinctOperator.class.getSimpleName());
+            return new MarkDistinctOperator(operatorContext, types, markDistinctChannels, hashChannel, joinCompiler, blockTypeOperators);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new MarkDistinctOperatorFactory(operatorId, planNodeId, types.subList(0, types.size() - 1), markDistinctChannels, hashChannel, joinCompiler, blockTypeOperators);
+        }
     }
 }

@@ -82,18 +82,6 @@ public class PushAggregationIntoTableScan
         this.metadata = metadata;
     }
 
-    @Override
-    public Pattern<AggregationNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public boolean isEnabled(Session session)
-    {
-        return isAllowPushdownIntoConnectors(session);
-    }
-
     private static boolean allArgumentsAreSimpleReferences(AggregationNode node)
     {
         return node.getAggregations()
@@ -107,14 +95,6 @@ public class PushAggregationIntoTableScan
         return node.getAggregations()
                 .values().stream()
                 .allMatch(aggregation -> aggregation.getMask().isEmpty());
-    }
-
-    @Override
-    public Result apply(AggregationNode node, Captures captures, Context context)
-    {
-        return pushAggregationIntoTableScan(metadata, context, node, captures.get(TABLE_SCAN), node.getAggregations(), node.getGroupingSets().getGroupingKeys())
-                .map(Rule.Result::ofPlanNode)
-                .orElseGet(Rule.Result::empty);
     }
 
     public static Optional<PlanNode> pushAggregationIntoTableScan(
@@ -237,5 +217,25 @@ public class PushAggregationIntoTableScan
                 sortBy.orElse(ImmutableList.of()),
                 aggregation.isDistinct(),
                 filter);
+    }
+
+    @Override
+    public Pattern<AggregationNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public boolean isEnabled(Session session)
+    {
+        return isAllowPushdownIntoConnectors(session);
+    }
+
+    @Override
+    public Result apply(AggregationNode node, Captures captures, Context context)
+    {
+        return pushAggregationIntoTableScan(metadata, context, node, captures.get(TABLE_SCAN), node.getAggregations(), node.getGroupingSets().getGroupingKeys())
+                .map(Rule.Result::ofPlanNode)
+                .orElseGet(Rule.Result::empty);
     }
 }

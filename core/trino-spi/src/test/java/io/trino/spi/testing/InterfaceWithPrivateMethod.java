@@ -16,15 +16,15 @@ package io.trino.spi.testing;
 // Must be defined in separate compilation unit from the test to effectively test private methods access
 public interface InterfaceWithPrivateMethod
 {
+    private static void defaultBar()
+    {
+        throw new UnsupportedOperationException("bar not implemented");
+    }
+
     void foo();
 
     default void bar()
     {
         defaultBar();
-    }
-
-    private static void defaultBar()
-    {
-        throw new UnsupportedOperationException("bar not implemented");
     }
 }

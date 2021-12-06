@@ -56,6 +56,27 @@ public class DictionaryAwarePageProjection
         verify(projection.getInputChannels().size() == 1, "projection must have only one input");
     }
 
+    private static int[] filterDictionaryIds(DictionaryBlock dictionaryBlock, SelectedPositions selectedPositions)
+    {
+        int[] outputIds = new int[selectedPositions.size()];
+        if (selectedPositions.isList()) {
+            int[] positions = selectedPositions.getPositions();
+            int endPosition = selectedPositions.getOffset() + selectedPositions.size();
+            int outputIndex = 0;
+            for (int position = selectedPositions.getOffset(); position < endPosition; position++) {
+                outputIds[outputIndex++] = dictionaryBlock.getId(positions[position]);
+            }
+        }
+        else {
+            int endPosition = selectedPositions.getOffset() + selectedPositions.size();
+            int outputIndex = 0;
+            for (int position = selectedPositions.getOffset(); position < endPosition; position++) {
+                outputIds[outputIndex++] = dictionaryBlock.getId(position);
+            }
+        }
+        return outputIds;
+    }
+
     @Override
     public Type getType()
     {
@@ -250,26 +271,5 @@ public class DictionaryAwarePageProjection
             }
             return null;
         }
-    }
-
-    private static int[] filterDictionaryIds(DictionaryBlock dictionaryBlock, SelectedPositions selectedPositions)
-    {
-        int[] outputIds = new int[selectedPositions.size()];
-        if (selectedPositions.isList()) {
-            int[] positions = selectedPositions.getPositions();
-            int endPosition = selectedPositions.getOffset() + selectedPositions.size();
-            int outputIndex = 0;
-            for (int position = selectedPositions.getOffset(); position < endPosition; position++) {
-                outputIds[outputIndex++] = dictionaryBlock.getId(positions[position]);
-            }
-        }
-        else {
-            int endPosition = selectedPositions.getOffset() + selectedPositions.size();
-            int outputIndex = 0;
-            for (int position = selectedPositions.getOffset(); position < endPosition; position++) {
-                outputIds[outputIndex++] = dictionaryBlock.getId(position);
-            }
-        }
-        return outputIds;
     }
 }

@@ -35,6 +35,17 @@ public class DoubleEncoding
         this.nullSequence = nullSequence;
     }
 
+    private static double parseDouble(Slice slice, int start, int length)
+            throws RcFileCorruptionException
+    {
+        try {
+            return Double.parseDouble(slice.toStringAscii(start, length));
+        }
+        catch (NumberFormatException e) {
+            throw new RcFileCorruptionException(e, "Invalid double value");
+        }
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -91,16 +102,5 @@ public class DoubleEncoding
             throws RcFileCorruptionException
     {
         type.writeDouble(builder, parseDouble(slice, offset, length));
-    }
-
-    private static double parseDouble(Slice slice, int start, int length)
-            throws RcFileCorruptionException
-    {
-        try {
-            return Double.parseDouble(slice.toStringAscii(start, length));
-        }
-        catch (NumberFormatException e) {
-            throw new RcFileCorruptionException(e, "Invalid double value");
-        }
     }
 }

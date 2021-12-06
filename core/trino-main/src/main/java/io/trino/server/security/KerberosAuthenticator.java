@@ -124,6 +124,28 @@ public class KerberosAuthenticator
         }
     }
 
+    private static <T> T doAs(Subject subject, GssSupplier<T> action)
+    {
+        return Subject.doAs(subject, (PrivilegedAction<T>) () -> {
+            try {
+                return action.get();
+            }
+            catch (GSSException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private static InetAddress getLocalHost()
+    {
+        try {
+            return InetAddress.getLocalHost();
+        }
+        catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @PreDestroy
     public void shutdown()
     {
@@ -210,27 +232,5 @@ public class KerberosAuthenticator
     {
         T get()
                 throws GSSException;
-    }
-
-    private static <T> T doAs(Subject subject, GssSupplier<T> action)
-    {
-        return Subject.doAs(subject, (PrivilegedAction<T>) () -> {
-            try {
-                return action.get();
-            }
-            catch (GSSException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    private static InetAddress getLocalHost()
-    {
-        try {
-            return InetAddress.getLocalHost();
-        }
-        catch (UnknownHostException e) {
-            throw new RuntimeException(e);
-        }
     }
 }

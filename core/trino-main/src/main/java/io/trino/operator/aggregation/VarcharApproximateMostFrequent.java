@@ -50,15 +50,6 @@ public final class VarcharApproximateMostFrequent
 {
     private VarcharApproximateMostFrequent() {}
 
-    @AccumulatorStateMetadata(stateSerializerClass = StringApproximateMostFrequentStateSerializer.class, stateFactoryClass = StringApproximateMostFrequentStateFactory.class)
-    public interface State
-            extends AccumulatorState
-    {
-        ApproximateMostFrequentHistogram<Slice> get();
-
-        void set(ApproximateMostFrequentHistogram<Slice> value);
-    }
-
     @InputFunction
     public static void input(@AggregationState State state, @SqlType(BIGINT) long buckets, @SqlType(VARCHAR) Slice value, @SqlType(BIGINT) long capacity)
     {
@@ -104,5 +95,14 @@ public final class VarcharApproximateMostFrequent
             });
             out.closeEntry();
         }
+    }
+
+    @AccumulatorStateMetadata(stateSerializerClass = StringApproximateMostFrequentStateSerializer.class, stateFactoryClass = StringApproximateMostFrequentStateFactory.class)
+    public interface State
+            extends AccumulatorState
+    {
+        ApproximateMostFrequentHistogram<Slice> get();
+
+        void set(ApproximateMostFrequentHistogram<Slice> value);
     }
 }

@@ -22,10 +22,10 @@ import static io.trino.sql.parser.ParsingOptions.DecimalLiteralTreatment.AS_DOUB
 
 public final class ParsingUtil
 {
+    private ParsingUtil() {}
+
     public static ParsingOptions createParsingOptions(Session session)
     {
         return new ParsingOptions(isParseDecimalLiteralsAsDouble(session) ? AS_DOUBLE : AS_DECIMAL);
     }
-
-    private ParsingUtil() {}
 }

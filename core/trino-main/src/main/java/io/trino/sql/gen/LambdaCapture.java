@@ -25,15 +25,6 @@ public final class LambdaCapture
 {
     public static final Method LAMBDA_CAPTURE_METHOD;
 
-    static {
-        try {
-            LAMBDA_CAPTURE_METHOD = LambdaCapture.class.getMethod("lambdaCapture", MethodHandles.Lookup.class, String.class, MethodType.class, MethodType.class, MethodHandle.class, MethodType.class);
-        }
-        catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private LambdaCapture()
     {
     }
@@ -57,6 +48,15 @@ public final class LambdaCapture
                     instantiatedMethodType);
         }
         catch (LambdaConversionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static {
+        try {
+            LAMBDA_CAPTURE_METHOD = LambdaCapture.class.getMethod("lambdaCapture", MethodHandles.Lookup.class, String.class, MethodType.class, MethodType.class, MethodHandle.class, MethodType.class);
+        }
+        catch (NoSuchMethodException e) {
             throw new RuntimeException(e);
         }
     }

@@ -37,6 +37,11 @@ import static java.util.Objects.requireNonNull;
 public class SimplifyExpressions
         extends ExpressionRewriteRuleSet
 {
+    public SimplifyExpressions(Metadata metadata, TypeAnalyzer typeAnalyzer)
+    {
+        super(createRewrite(metadata, typeAnalyzer));
+    }
+
     public static Expression rewrite(Expression expression, Session session, SymbolAllocator symbolAllocator, Metadata metadata, LiteralEncoder literalEncoder, TypeAnalyzer typeAnalyzer)
     {
         requireNonNull(metadata, "metadata is null");
@@ -53,9 +58,13 @@ public class SimplifyExpressions
         return literalEncoder.toExpression(optimized, expressionTypes.get(NodeRef.of(expression)));
     }
 
-    public SimplifyExpressions(Metadata metadata, TypeAnalyzer typeAnalyzer)
+    private static ExpressionRewriter createRewrite(Metadata metadata, TypeAnalyzer typeAnalyzer)
     {
-        super(createRewrite(metadata, typeAnalyzer));
+        requireNonNull(metadata, "metadata is null");
+        requireNonNull(typeAnalyzer, "typeAnalyzer is null");
+        LiteralEncoder literalEncoder = new LiteralEncoder(metadata);
+
+        return (expression, context) -> rewrite(expression, context.getSession(), context.getSymbolAllocator(), metadata, literalEncoder, typeAnalyzer);
     }
 
     @Override
@@ -66,14 +75,5 @@ public class SimplifyExpressions
                 filterExpressionRewrite(),
                 joinExpressionRewrite(),
                 valuesExpressionRewrite()); // ApplyNode and AggregationNode are not supported, because ExpressionInterpreter doesn't support them
-    }
-
-    private static ExpressionRewriter createRewrite(Metadata metadata, TypeAnalyzer typeAnalyzer)
-    {
-        requireNonNull(metadata, "metadata is null");
-        requireNonNull(typeAnalyzer, "typeAnalyzer is null");
-        LiteralEncoder literalEncoder = new LiteralEncoder(metadata);
-
-        return (expression, context) -> rewrite(expression, context.getSession(), context.getSymbolAllocator(), metadata, literalEncoder, typeAnalyzer);
     }
 }

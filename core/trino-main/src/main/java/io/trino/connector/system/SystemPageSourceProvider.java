@@ -55,6 +55,28 @@ public class SystemPageSourceProvider
         this.tables = requireNonNull(tables, "tables is null");
     }
 
+    private static RecordSet toRecordSet(ConnectorTransactionHandle sourceTransaction, SystemTable table, ConnectorSession session, TupleDomain<Integer> constraint)
+    {
+        return new RecordSet()
+        {
+            private final List<Type> types = table.getTableMetadata().getColumns().stream()
+                    .map(ColumnMetadata::getType)
+                    .collect(toImmutableList());
+
+            @Override
+            public List<Type> getColumnTypes()
+            {
+                return types;
+            }
+
+            @Override
+            public RecordCursor cursor()
+            {
+                return table.cursor(sourceTransaction, session, constraint);
+            }
+        };
+    }
+
     @Override
     public ConnectorPageSource createPageSource(
             ConnectorTransactionHandle transaction,
@@ -107,27 +129,5 @@ public class SystemPageSourceProvider
         catch (UnsupportedOperationException e) {
             return new RecordPageSource(new MappedRecordSet(toRecordSet(systemTransaction.getConnectorTransactionHandle(), systemTable, session, newConstraint), userToSystemFieldIndex.build()));
         }
-    }
-
-    private static RecordSet toRecordSet(ConnectorTransactionHandle sourceTransaction, SystemTable table, ConnectorSession session, TupleDomain<Integer> constraint)
-    {
-        return new RecordSet()
-        {
-            private final List<Type> types = table.getTableMetadata().getColumns().stream()
-                    .map(ColumnMetadata::getType)
-                    .collect(toImmutableList());
-
-            @Override
-            public List<Type> getColumnTypes()
-            {
-                return types;
-            }
-
-            @Override
-            public RecordCursor cursor()
-            {
-                return table.cursor(sourceTransaction, session, constraint);
-            }
-        };
     }
 }

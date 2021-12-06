@@ -63,22 +63,6 @@ public class JsonToArrayCast
                 true);
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        ArrayType arrayType = (ArrayType) functionBinding.getBoundSignature().getReturnType();
-        checkCondition(canCastFromJson(arrayType), INVALID_CAST_ARGUMENT, "Cannot cast JSON to %s", arrayType);
-
-        BlockBuilderAppender arrayAppender = BlockBuilderAppender.createBlockBuilderAppender(arrayType);
-        MethodHandle methodHandle = METHOD_HANDLE.bindTo(arrayType).bindTo(arrayAppender);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                NULLABLE_RETURN,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Block toArray(ArrayType arrayType, BlockBuilderAppender arrayAppender, ConnectorSession connectorSession, Slice json)
     {
@@ -101,5 +85,21 @@ public class JsonToArrayCast
         catch (Exception e) {
             throw new TrinoException(INVALID_CAST_ARGUMENT, format("Cannot cast to %s.\n%s", arrayType, truncateIfNecessaryForErrorMessage(json)), e);
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        ArrayType arrayType = (ArrayType) functionBinding.getBoundSignature().getReturnType();
+        checkCondition(canCastFromJson(arrayType), INVALID_CAST_ARGUMENT, "Cannot cast JSON to %s", arrayType);
+
+        BlockBuilderAppender arrayAppender = BlockBuilderAppender.createBlockBuilderAppender(arrayType);
+        MethodHandle methodHandle = METHOD_HANDLE.bindTo(arrayType).bindTo(arrayAppender);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                NULLABLE_RETURN,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

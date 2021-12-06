@@ -58,24 +58,6 @@ public class IndexJoinNode
         this.indexHashSymbol = requireNonNull(indexHashSymbol, "indexHashSymbol is null");
     }
 
-    public enum Type
-    {
-        INNER("Inner"),
-        SOURCE_OUTER("SourceOuter");
-
-        private final String joinLabel;
-
-        Type(String joinLabel)
-        {
-            this.joinLabel = joinLabel;
-        }
-
-        public String getJoinLabel()
-        {
-            return joinLabel;
-        }
-    }
-
     @JsonProperty("type")
     public Type getType()
     {
@@ -138,6 +120,24 @@ public class IndexJoinNode
     {
         checkArgument(newChildren.size() == 2, "expected newChildren to contain 2 nodes");
         return new IndexJoinNode(getId(), type, newChildren.get(0), newChildren.get(1), criteria, probeHashSymbol, indexHashSymbol);
+    }
+
+    public enum Type
+    {
+        INNER("Inner"),
+        SOURCE_OUTER("SourceOuter");
+
+        private final String joinLabel;
+
+        Type(String joinLabel)
+        {
+            this.joinLabel = joinLabel;
+        }
+
+        public String getJoinLabel()
+        {
+            return joinLabel;
+        }
     }
 
     public static class EquiJoinClause

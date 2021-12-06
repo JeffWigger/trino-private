@@ -17,11 +17,10 @@ import static java.lang.String.format;
 
 final class UnnestOperatorBlockUtil
 {
-    private UnnestOperatorBlockUtil() {}
-
-    private static final int DEFAULT_CAPACITY = 64;
     // See java.util.ArrayList for an explanation
     static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
+    private static final int DEFAULT_CAPACITY = 64;
+    private UnnestOperatorBlockUtil() {}
 
     // Copied from io.trino.spi.block.BlockUtil#calculateNewArraySize
     static int calculateNewArraySize(int currentSize)

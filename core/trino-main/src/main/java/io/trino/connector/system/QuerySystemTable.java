@@ -89,6 +89,34 @@ public class QuerySystemTable
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
     }
 
+    private static Block resourceGroupIdToBlock(ResourceGroupId resourceGroupId)
+    {
+        requireNonNull(resourceGroupId, "resourceGroupId is null");
+        List<String> segments = resourceGroupId.getSegments();
+        BlockBuilder blockBuilder = createUnboundedVarcharType().createBlockBuilder(null, segments.size());
+        for (String segment : segments) {
+            createUnboundedVarcharType().writeSlice(blockBuilder, utf8Slice(segment));
+        }
+        return blockBuilder.build();
+    }
+
+    private static Long toMillis(Duration duration)
+    {
+        if (duration == null) {
+            return null;
+        }
+        return duration.toMillis();
+    }
+
+    private static Long toTimestampWithTimeZoneMillis(DateTime dateTime)
+    {
+        if (dateTime == null) {
+            return null;
+        }
+        // dateTime.getZone() is the server zone, should be of no interest to the user
+        return packDateTimeWithZone(dateTime.getMillis(), UTC_KEY);
+    }
+
     @Override
     public Distribution getDistribution()
     {
@@ -137,33 +165,5 @@ public class QuerySystemTable
                     Optional.ofNullable(queryInfo.getErrorCode()).map(ErrorCode::getName).orElse(null));
         }
         return table.build().cursor();
-    }
-
-    private static Block resourceGroupIdToBlock(ResourceGroupId resourceGroupId)
-    {
-        requireNonNull(resourceGroupId, "resourceGroupId is null");
-        List<String> segments = resourceGroupId.getSegments();
-        BlockBuilder blockBuilder = createUnboundedVarcharType().createBlockBuilder(null, segments.size());
-        for (String segment : segments) {
-            createUnboundedVarcharType().writeSlice(blockBuilder, utf8Slice(segment));
-        }
-        return blockBuilder.build();
-    }
-
-    private static Long toMillis(Duration duration)
-    {
-        if (duration == null) {
-            return null;
-        }
-        return duration.toMillis();
-    }
-
-    private static Long toTimestampWithTimeZoneMillis(DateTime dateTime)
-    {
-        if (dateTime == null) {
-            return null;
-        }
-        // dateTime.getZone() is the server zone, should be of no interest to the user
-        return packDateTimeWithZone(dateTime.getMillis(), UTC_KEY);
     }
 }

@@ -72,194 +72,226 @@ import static org.testng.internal.junit.ArrayAsserts.assertArrayEquals;
 
 public class TestColumnIndexBuilder
 {
-    public static class BinaryDecimalIsNullOrZeroUdp
-            extends UserDefinedPredicate<Binary>
+    private static List<ByteBuffer> toBBList(Binary... values)
     {
-        private static final Binary ZERO = decimalBinary("0.0");
-
-        @Override
-        public boolean keep(Binary value)
-        {
-            return value == null || value.equals(ZERO);
+        List<ByteBuffer> buffers = new ArrayList<>(values.length);
+        for (Binary value : values) {
+            if (value == null) {
+                buffers.add(ByteBuffer.allocate(0));
+            }
+            else {
+                buffers.add(value.toByteBuffer());
+            }
         }
+        return buffers;
+    }
 
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
-        {
-            Comparator<Binary> cmp = statistics.getComparator();
-            return cmp.compare(statistics.getMin(), ZERO) > 0 || cmp.compare(statistics.getMax(), ZERO) < 0;
+    private static List<ByteBuffer> toBBList(Boolean... values)
+    {
+        List<ByteBuffer> buffers = new ArrayList<>(values.length);
+        for (Boolean value : values) {
+            if (value == null) {
+                buffers.add(ByteBuffer.allocate(0));
+            }
+            else {
+                buffers.add(ByteBuffer.wrap(BytesUtils.booleanToBytes(value)));
+            }
         }
+        return buffers;
+    }
 
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
-        {
-            Comparator<Binary> cmp = statistics.getComparator();
-            return cmp.compare(statistics.getMin(), ZERO) == 0 && cmp.compare(statistics.getMax(), ZERO) == 0;
+    private static List<ByteBuffer> toBBList(Double... values)
+    {
+        List<ByteBuffer> buffers = new ArrayList<>(values.length);
+        for (Double value : values) {
+            if (value == null) {
+                buffers.add(ByteBuffer.allocate(0));
+            }
+            else {
+                buffers.add(ByteBuffer.wrap(BytesUtils.longToBytes(Double.doubleToLongBits(value))));
+            }
+        }
+        return buffers;
+    }
+
+    private static List<ByteBuffer> toBBList(Float... values)
+    {
+        List<ByteBuffer> buffers = new ArrayList<>(values.length);
+        for (Float value : values) {
+            if (value == null) {
+                buffers.add(ByteBuffer.allocate(0));
+            }
+            else {
+                buffers.add(ByteBuffer.wrap(BytesUtils.intToBytes(Float.floatToIntBits(value))));
+            }
+        }
+        return buffers;
+    }
+
+    private static List<ByteBuffer> toBBList(Integer... values)
+    {
+        List<ByteBuffer> buffers = new ArrayList<>(values.length);
+        for (Integer value : values) {
+            if (value == null) {
+                buffers.add(ByteBuffer.allocate(0));
+            }
+            else {
+                buffers.add(ByteBuffer.wrap(BytesUtils.intToBytes(value)));
+            }
+        }
+        return buffers;
+    }
+
+    private static List<ByteBuffer> toBBList(Long... values)
+    {
+        List<ByteBuffer> buffers = new ArrayList<>(values.length);
+        for (Long value : values) {
+            if (value == null) {
+                buffers.add(ByteBuffer.allocate(0));
+            }
+            else {
+                buffers.add(ByteBuffer.wrap(BytesUtils.longToBytes(value)));
+            }
+        }
+        return buffers;
+    }
+
+    private static Binary decimalBinary(String num)
+    {
+        return Binary.fromConstantByteArray(new BigDecimal(num).unscaledValue().toByteArray());
+    }
+
+    private static Binary stringBinary(String str)
+    {
+        return Binary.fromString(str);
+    }
+
+    private static void assertCorrectValues(List<ByteBuffer> values, Binary... expectedValues)
+    {
+        assertEquals(expectedValues.length, values.size());
+        for (int i = 0; i < expectedValues.length; ++i) {
+            Binary expectedValue = expectedValues[i];
+            ByteBuffer value = values.get(i);
+            if (expectedValue == null) {
+                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
+            }
+            else {
+                assertArrayEquals("Invalid value for page " + i, expectedValue.getBytesUnsafe(), value.array());
+            }
         }
     }
 
-    public static class BinaryUtf8StartsWithB
-            extends UserDefinedPredicate<Binary>
+    private static void assertCorrectValues(List<ByteBuffer> values, Boolean... expectedValues)
     {
-        private static final Binary B = stringBinary("B");
-        private static final Binary C = stringBinary("C");
-
-        @Override
-        public boolean keep(Binary value)
-        {
-            return value != null && value.length() > 0 && value.getBytesUnsafe()[0] == 'B';
-        }
-
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
-        {
-            Comparator<Binary> cmp = statistics.getComparator();
-            return cmp.compare(statistics.getMin(), C) >= 0 || cmp.compare(statistics.getMax(), B) < 0;
-        }
-
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
-        {
-            Comparator<Binary> cmp = statistics.getComparator();
-            return cmp.compare(statistics.getMin(), B) >= 0 && cmp.compare(statistics.getMax(), C) < 0;
+        assertEquals(expectedValues.length, values.size());
+        for (int i = 0; i < expectedValues.length; ++i) {
+            Boolean expectedValue = expectedValues[i];
+            ByteBuffer value = values.get(i);
+            if (expectedValue == null) {
+                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
+            }
+            else {
+                assertEquals(1, value.remaining(), "The byte buffer should be 1 byte long for boolean");
+                assertEquals(expectedValue.booleanValue(), value.get(0) != 0, "Invalid value for page " + i);
+            }
         }
     }
 
-    public static class BooleanIsTrueOrNull
-            extends UserDefinedPredicate<Boolean>
+    private static void assertCorrectValues(List<ByteBuffer> values, Double... expectedValues)
     {
-        @Override
-        public boolean keep(Boolean value)
-        {
-            return value == null || value;
-        }
-
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Boolean> statistics)
-        {
-            return statistics.getComparator().compare(statistics.getMax(), true) != 0;
-        }
-
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Boolean> statistics)
-        {
-            return statistics.getComparator().compare(statistics.getMin(), true) == 0;
+        assertEquals(expectedValues.length, values.size());
+        for (int i = 0; i < expectedValues.length; ++i) {
+            Double expectedValue = expectedValues[i];
+            ByteBuffer value = values.get(i);
+            if (expectedValue == null) {
+                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
+            }
+            else {
+                assertEquals(8, value.remaining(), "The byte buffer should be 8 bytes long for double");
+                assertTrue(Double.compare(expectedValue.doubleValue(), value.getDouble(0)) == 0, "Invalid value for page " + i);
+            }
         }
     }
 
-    public static class DoubleIsInteger
-            extends UserDefinedPredicate<Double>
+    private static void assertCorrectValues(List<ByteBuffer> values, Float... expectedValues)
     {
-        @Override
-        public boolean keep(Double value)
-        {
-            return value != null && Math.floor(value) == value;
-        }
-
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Double> statistics)
-        {
-            double min = statistics.getMin();
-            double max = statistics.getMax();
-            Comparator<Double> cmp = statistics.getComparator();
-            return cmp.compare(Math.floor(min), Math.floor(max)) == 0 && cmp.compare(Math.floor(min), min) != 0
-                    && cmp.compare(Math.floor(max), max) != 0;
-        }
-
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Double> statistics)
-        {
-            double min = statistics.getMin();
-            double max = statistics.getMax();
-            Comparator<Double> cmp = statistics.getComparator();
-            return cmp.compare(min, max) == 0 && cmp.compare(Math.floor(min), min) == 0;
+        assertEquals(expectedValues.length, values.size());
+        for (int i = 0; i < expectedValues.length; ++i) {
+            Float expectedValue = expectedValues[i];
+            ByteBuffer value = values.get(i);
+            if (expectedValue == null) {
+                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
+            }
+            else {
+                assertEquals(4, value.remaining(), "The byte buffer should be 4 bytes long for double");
+                assertTrue(Float.compare(expectedValue.floatValue(), value.getFloat(0)) == 0, "Invalid value for page " + i);
+            }
         }
     }
 
-    public static class FloatIsInteger
-            extends UserDefinedPredicate<Float>
+    private static void assertCorrectValues(List<ByteBuffer> values, Integer... expectedValues)
     {
-        private static float floor(float value)
-        {
-            return (float) Math.floor(value);
-        }
-
-        @Override
-        public boolean keep(Float value)
-        {
-            return value != null && Math.floor(value) == value;
-        }
-
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Float> statistics)
-        {
-            float min = statistics.getMin();
-            float max = statistics.getMax();
-            Comparator<Float> cmp = statistics.getComparator();
-            return cmp.compare(floor(min), floor(max)) == 0 && cmp.compare(floor(min), min) != 0
-                    && cmp.compare(floor(max), max) != 0;
-        }
-
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Float> statistics)
-        {
-            float min = statistics.getMin();
-            float max = statistics.getMax();
-            Comparator<Float> cmp = statistics.getComparator();
-            return cmp.compare(min, max) == 0 && cmp.compare(floor(min), min) == 0;
+        assertEquals(expectedValues.length, values.size());
+        for (int i = 0; i < expectedValues.length; ++i) {
+            Integer expectedValue = expectedValues[i];
+            ByteBuffer value = values.get(i);
+            if (expectedValue == null) {
+                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
+            }
+            else {
+                assertEquals(4, value.remaining(), "The byte buffer should be 4 bytes long for int32");
+                assertEquals(expectedValue.intValue(), value.getInt(0), "Invalid value for page " + i);
+            }
         }
     }
 
-    public static class IntegerIsDivisableWith3
-            extends UserDefinedPredicate<Integer>
+    private static void assertCorrectValues(List<ByteBuffer> values, Long... expectedValues)
     {
-        @Override
-        public boolean keep(Integer value)
-        {
-            return value != null && value % 3 == 0;
-        }
-
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Integer> statistics)
-        {
-            int min = statistics.getMin();
-            int max = statistics.getMax();
-            return min % 3 != 0 && max % 3 != 0 && max - min < 3;
-        }
-
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Integer> statistics)
-        {
-            int min = statistics.getMin();
-            int max = statistics.getMax();
-            return min == max && min % 3 == 0;
+        assertEquals(expectedValues.length, values.size());
+        for (int i = 0; i < expectedValues.length; ++i) {
+            Long expectedValue = expectedValues[i];
+            ByteBuffer value = values.get(i);
+            if (expectedValue == null) {
+                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
+            }
+            else {
+                assertEquals(8, value.remaining(), "The byte buffer should be 8 bytes long for int64");
+                assertEquals(expectedValue.intValue(), value.getLong(0), "Invalid value for page " + i);
+            }
         }
     }
 
-    public static class LongIsDivisableWith3
-            extends UserDefinedPredicate<Long>
+    private static void assertCorrectNullCounts(ColumnIndex columnIndex, long... expectedNullCounts)
     {
-        @Override
-        public boolean keep(Long value)
-        {
-            return value != null && value % 3 == 0;
+        List<Long> nullCounts = columnIndex.getNullCounts();
+        assertEquals(expectedNullCounts.length, nullCounts.size());
+        for (int i = 0; i < expectedNullCounts.length; ++i) {
+            assertEquals(expectedNullCounts[i], nullCounts.get(i).longValue(), "Invalid null count at page " + i);
         }
+    }
 
-        @Override
-        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Long> statistics)
-        {
-            long min = statistics.getMin();
-            long max = statistics.getMax();
-            return min % 3 != 0 && max % 3 != 0 && max - min < 3;
+    private static void assertCorrectNullPages(ColumnIndex columnIndex, boolean... expectedNullPages)
+    {
+        List<Boolean> nullPages = columnIndex.getNullPages();
+        assertEquals(expectedNullPages.length, nullPages.size());
+        for (int i = 0; i < expectedNullPages.length; ++i) {
+            assertEquals(expectedNullPages[i], nullPages.get(i).booleanValue(), "Invalid null pages at page " + i);
         }
+    }
 
-        @Override
-        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Long> statistics)
-        {
-            long min = statistics.getMin();
-            long max = statistics.getMax();
-            return min == max && min % 3 == 0;
-        }
+    private static void assertCorrectFiltering(ColumnIndex ci, FilterPredicate predicate, int... expectedIndexes)
+    {
+        checkEquals(predicate.accept(ci), expectedIndexes);
+    }
+
+    static void checkEquals(PrimitiveIterator.OfInt actualIt, int... expectedValues)
+    {
+        IntList actualList = new IntArrayList();
+        actualIt.forEachRemaining((int value) -> actualList.add(value));
+        int[] actualValues = actualList.toIntArray();
+        assertArrayEquals(
+                "ExpectedValues: " + Arrays.toString(expectedValues) + " ActualValues: " + Arrays.toString(actualValues),
+                expectedValues, actualValues);
     }
 
     @Test
@@ -1363,210 +1395,193 @@ public class TestColumnIndexBuilder
         assertNull(builder.build());
     }
 
-    private static List<ByteBuffer> toBBList(Binary... values)
+    public static class BinaryDecimalIsNullOrZeroUdp
+            extends UserDefinedPredicate<Binary>
     {
-        List<ByteBuffer> buffers = new ArrayList<>(values.length);
-        for (Binary value : values) {
-            if (value == null) {
-                buffers.add(ByteBuffer.allocate(0));
-            }
-            else {
-                buffers.add(value.toByteBuffer());
-            }
+        private static final Binary ZERO = decimalBinary("0.0");
+
+        @Override
+        public boolean keep(Binary value)
+        {
+            return value == null || value.equals(ZERO);
         }
-        return buffers;
-    }
 
-    private static List<ByteBuffer> toBBList(Boolean... values)
-    {
-        List<ByteBuffer> buffers = new ArrayList<>(values.length);
-        for (Boolean value : values) {
-            if (value == null) {
-                buffers.add(ByteBuffer.allocate(0));
-            }
-            else {
-                buffers.add(ByteBuffer.wrap(BytesUtils.booleanToBytes(value)));
-            }
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
+        {
+            Comparator<Binary> cmp = statistics.getComparator();
+            return cmp.compare(statistics.getMin(), ZERO) > 0 || cmp.compare(statistics.getMax(), ZERO) < 0;
         }
-        return buffers;
-    }
 
-    private static List<ByteBuffer> toBBList(Double... values)
-    {
-        List<ByteBuffer> buffers = new ArrayList<>(values.length);
-        for (Double value : values) {
-            if (value == null) {
-                buffers.add(ByteBuffer.allocate(0));
-            }
-            else {
-                buffers.add(ByteBuffer.wrap(BytesUtils.longToBytes(Double.doubleToLongBits(value))));
-            }
-        }
-        return buffers;
-    }
-
-    private static List<ByteBuffer> toBBList(Float... values)
-    {
-        List<ByteBuffer> buffers = new ArrayList<>(values.length);
-        for (Float value : values) {
-            if (value == null) {
-                buffers.add(ByteBuffer.allocate(0));
-            }
-            else {
-                buffers.add(ByteBuffer.wrap(BytesUtils.intToBytes(Float.floatToIntBits(value))));
-            }
-        }
-        return buffers;
-    }
-
-    private static List<ByteBuffer> toBBList(Integer... values)
-    {
-        List<ByteBuffer> buffers = new ArrayList<>(values.length);
-        for (Integer value : values) {
-            if (value == null) {
-                buffers.add(ByteBuffer.allocate(0));
-            }
-            else {
-                buffers.add(ByteBuffer.wrap(BytesUtils.intToBytes(value)));
-            }
-        }
-        return buffers;
-    }
-
-    private static List<ByteBuffer> toBBList(Long... values)
-    {
-        List<ByteBuffer> buffers = new ArrayList<>(values.length);
-        for (Long value : values) {
-            if (value == null) {
-                buffers.add(ByteBuffer.allocate(0));
-            }
-            else {
-                buffers.add(ByteBuffer.wrap(BytesUtils.longToBytes(value)));
-            }
-        }
-        return buffers;
-    }
-
-    private static Binary decimalBinary(String num)
-    {
-        return Binary.fromConstantByteArray(new BigDecimal(num).unscaledValue().toByteArray());
-    }
-
-    private static Binary stringBinary(String str)
-    {
-        return Binary.fromString(str);
-    }
-
-    private static void assertCorrectValues(List<ByteBuffer> values, Binary... expectedValues)
-    {
-        assertEquals(expectedValues.length, values.size());
-        for (int i = 0; i < expectedValues.length; ++i) {
-            Binary expectedValue = expectedValues[i];
-            ByteBuffer value = values.get(i);
-            if (expectedValue == null) {
-                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
-            }
-            else {
-                assertArrayEquals("Invalid value for page " + i, expectedValue.getBytesUnsafe(), value.array());
-            }
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
+        {
+            Comparator<Binary> cmp = statistics.getComparator();
+            return cmp.compare(statistics.getMin(), ZERO) == 0 && cmp.compare(statistics.getMax(), ZERO) == 0;
         }
     }
 
-    private static void assertCorrectValues(List<ByteBuffer> values, Boolean... expectedValues)
+    public static class BinaryUtf8StartsWithB
+            extends UserDefinedPredicate<Binary>
     {
-        assertEquals(expectedValues.length, values.size());
-        for (int i = 0; i < expectedValues.length; ++i) {
-            Boolean expectedValue = expectedValues[i];
-            ByteBuffer value = values.get(i);
-            if (expectedValue == null) {
-                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
-            }
-            else {
-                assertEquals(1, value.remaining(), "The byte buffer should be 1 byte long for boolean");
-                assertEquals(expectedValue.booleanValue(), value.get(0) != 0, "Invalid value for page " + i);
-            }
+        private static final Binary B = stringBinary("B");
+        private static final Binary C = stringBinary("C");
+
+        @Override
+        public boolean keep(Binary value)
+        {
+            return value != null && value.length() > 0 && value.getBytesUnsafe()[0] == 'B';
+        }
+
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
+        {
+            Comparator<Binary> cmp = statistics.getComparator();
+            return cmp.compare(statistics.getMin(), C) >= 0 || cmp.compare(statistics.getMax(), B) < 0;
+        }
+
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Binary> statistics)
+        {
+            Comparator<Binary> cmp = statistics.getComparator();
+            return cmp.compare(statistics.getMin(), B) >= 0 && cmp.compare(statistics.getMax(), C) < 0;
         }
     }
 
-    private static void assertCorrectValues(List<ByteBuffer> values, Double... expectedValues)
+    public static class BooleanIsTrueOrNull
+            extends UserDefinedPredicate<Boolean>
     {
-        assertEquals(expectedValues.length, values.size());
-        for (int i = 0; i < expectedValues.length; ++i) {
-            Double expectedValue = expectedValues[i];
-            ByteBuffer value = values.get(i);
-            if (expectedValue == null) {
-                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
-            }
-            else {
-                assertEquals(8, value.remaining(), "The byte buffer should be 8 bytes long for double");
-                assertTrue(Double.compare(expectedValue.doubleValue(), value.getDouble(0)) == 0, "Invalid value for page " + i);
-            }
+        @Override
+        public boolean keep(Boolean value)
+        {
+            return value == null || value;
+        }
+
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Boolean> statistics)
+        {
+            return statistics.getComparator().compare(statistics.getMax(), true) != 0;
+        }
+
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Boolean> statistics)
+        {
+            return statistics.getComparator().compare(statistics.getMin(), true) == 0;
         }
     }
 
-    private static void assertCorrectValues(List<ByteBuffer> values, Float... expectedValues)
+    public static class DoubleIsInteger
+            extends UserDefinedPredicate<Double>
     {
-        assertEquals(expectedValues.length, values.size());
-        for (int i = 0; i < expectedValues.length; ++i) {
-            Float expectedValue = expectedValues[i];
-            ByteBuffer value = values.get(i);
-            if (expectedValue == null) {
-                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
-            }
-            else {
-                assertEquals(4, value.remaining(), "The byte buffer should be 4 bytes long for double");
-                assertTrue(Float.compare(expectedValue.floatValue(), value.getFloat(0)) == 0, "Invalid value for page " + i);
-            }
+        @Override
+        public boolean keep(Double value)
+        {
+            return value != null && Math.floor(value) == value;
+        }
+
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Double> statistics)
+        {
+            double min = statistics.getMin();
+            double max = statistics.getMax();
+            Comparator<Double> cmp = statistics.getComparator();
+            return cmp.compare(Math.floor(min), Math.floor(max)) == 0 && cmp.compare(Math.floor(min), min) != 0
+                    && cmp.compare(Math.floor(max), max) != 0;
+        }
+
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Double> statistics)
+        {
+            double min = statistics.getMin();
+            double max = statistics.getMax();
+            Comparator<Double> cmp = statistics.getComparator();
+            return cmp.compare(min, max) == 0 && cmp.compare(Math.floor(min), min) == 0;
         }
     }
 
-    private static void assertCorrectValues(List<ByteBuffer> values, Integer... expectedValues)
+    public static class FloatIsInteger
+            extends UserDefinedPredicate<Float>
     {
-        assertEquals(expectedValues.length, values.size());
-        for (int i = 0; i < expectedValues.length; ++i) {
-            Integer expectedValue = expectedValues[i];
-            ByteBuffer value = values.get(i);
-            if (expectedValue == null) {
-                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
-            }
-            else {
-                assertEquals(4, value.remaining(), "The byte buffer should be 4 bytes long for int32");
-                assertEquals(expectedValue.intValue(), value.getInt(0), "Invalid value for page " + i);
-            }
+        private static float floor(float value)
+        {
+            return (float) Math.floor(value);
+        }
+
+        @Override
+        public boolean keep(Float value)
+        {
+            return value != null && Math.floor(value) == value;
+        }
+
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Float> statistics)
+        {
+            float min = statistics.getMin();
+            float max = statistics.getMax();
+            Comparator<Float> cmp = statistics.getComparator();
+            return cmp.compare(floor(min), floor(max)) == 0 && cmp.compare(floor(min), min) != 0
+                    && cmp.compare(floor(max), max) != 0;
+        }
+
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Float> statistics)
+        {
+            float min = statistics.getMin();
+            float max = statistics.getMax();
+            Comparator<Float> cmp = statistics.getComparator();
+            return cmp.compare(min, max) == 0 && cmp.compare(floor(min), min) == 0;
         }
     }
 
-    private static void assertCorrectValues(List<ByteBuffer> values, Long... expectedValues)
+    public static class IntegerIsDivisableWith3
+            extends UserDefinedPredicate<Integer>
     {
-        assertEquals(expectedValues.length, values.size());
-        for (int i = 0; i < expectedValues.length; ++i) {
-            Long expectedValue = expectedValues[i];
-            ByteBuffer value = values.get(i);
-            if (expectedValue == null) {
-                assertFalse(value.hasRemaining(), "The byte buffer should be empty for null pages");
-            }
-            else {
-                assertEquals(8, value.remaining(), "The byte buffer should be 8 bytes long for int64");
-                assertEquals(expectedValue.intValue(), value.getLong(0), "Invalid value for page " + i);
-            }
+        @Override
+        public boolean keep(Integer value)
+        {
+            return value != null && value % 3 == 0;
+        }
+
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Integer> statistics)
+        {
+            int min = statistics.getMin();
+            int max = statistics.getMax();
+            return min % 3 != 0 && max % 3 != 0 && max - min < 3;
+        }
+
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Integer> statistics)
+        {
+            int min = statistics.getMin();
+            int max = statistics.getMax();
+            return min == max && min % 3 == 0;
         }
     }
 
-    private static void assertCorrectNullCounts(ColumnIndex columnIndex, long... expectedNullCounts)
+    public static class LongIsDivisableWith3
+            extends UserDefinedPredicate<Long>
     {
-        List<Long> nullCounts = columnIndex.getNullCounts();
-        assertEquals(expectedNullCounts.length, nullCounts.size());
-        for (int i = 0; i < expectedNullCounts.length; ++i) {
-            assertEquals(expectedNullCounts[i], nullCounts.get(i).longValue(), "Invalid null count at page " + i);
+        @Override
+        public boolean keep(Long value)
+        {
+            return value != null && value % 3 == 0;
         }
-    }
 
-    private static void assertCorrectNullPages(ColumnIndex columnIndex, boolean... expectedNullPages)
-    {
-        List<Boolean> nullPages = columnIndex.getNullPages();
-        assertEquals(expectedNullPages.length, nullPages.size());
-        for (int i = 0; i < expectedNullPages.length; ++i) {
-            assertEquals(expectedNullPages[i], nullPages.get(i).booleanValue(), "Invalid null pages at page " + i);
+        @Override
+        public boolean canDrop(org.apache.parquet.filter2.predicate.Statistics<Long> statistics)
+        {
+            long min = statistics.getMin();
+            long max = statistics.getMax();
+            return min % 3 != 0 && max % 3 != 0 && max - min < 3;
+        }
+
+        @Override
+        public boolean inverseCanDrop(org.apache.parquet.filter2.predicate.Statistics<Long> statistics)
+        {
+            long min = statistics.getMin();
+            long max = statistics.getMax();
+            return min == max && min % 3 == 0;
         }
     }
 
@@ -1618,20 +1633,5 @@ public class TestColumnIndexBuilder
         {
             return minMaxSize;
         }
-    }
-
-    private static void assertCorrectFiltering(ColumnIndex ci, FilterPredicate predicate, int... expectedIndexes)
-    {
-        checkEquals(predicate.accept(ci), expectedIndexes);
-    }
-
-    static void checkEquals(PrimitiveIterator.OfInt actualIt, int... expectedValues)
-    {
-        IntList actualList = new IntArrayList();
-        actualIt.forEachRemaining((int value) -> actualList.add(value));
-        int[] actualValues = actualList.toIntArray();
-        assertArrayEquals(
-                "ExpectedValues: " + Arrays.toString(expectedValues) + " ActualValues: " + Arrays.toString(actualValues),
-                expectedValues, actualValues);
     }
 }

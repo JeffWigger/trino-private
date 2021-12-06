@@ -119,6 +119,188 @@ public class MaterializedResult
         this.warnings = requireNonNull(warnings, "warnings is null");
     }
 
+    private static void appendToPage(PageBuilder pageBuilder, MaterializedRow row)
+    {
+        for (int field = 0; field < row.getFieldCount(); field++) {
+            Type type = pageBuilder.getType(field);
+            Object value = row.getField(field);
+            BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(field);
+            writeValue(type, blockBuilder, value);
+        }
+        pageBuilder.declarePosition();
+    }
+
+    private static void writeValue(Type type, BlockBuilder blockBuilder, Object value)
+    {
+        if (value == null) {
+            blockBuilder.appendNull();
+        }
+        else if (BIGINT.equals(type)) {
+            type.writeLong(blockBuilder, (Long) value);
+        }
+        else if (INTEGER.equals(type)) {
+            type.writeLong(blockBuilder, (Integer) value);
+        }
+        else if (SMALLINT.equals(type)) {
+            type.writeLong(blockBuilder, (Short) value);
+        }
+        else if (TINYINT.equals(type)) {
+            type.writeLong(blockBuilder, (Byte) value);
+        }
+        else if (REAL.equals(type)) {
+            type.writeLong(blockBuilder, floatToRawIntBits(((Float) value)));
+        }
+        else if (DOUBLE.equals(type)) {
+            type.writeDouble(blockBuilder, (Double) value);
+        }
+        else if (BOOLEAN.equals(type)) {
+            type.writeBoolean(blockBuilder, (Boolean) value);
+        }
+        else if (JSON.equals(type)) {
+            type.writeSlice(blockBuilder, Slices.utf8Slice((String) value));
+        }
+        else if (type instanceof VarcharType) {
+            type.writeSlice(blockBuilder, Slices.utf8Slice((String) value));
+        }
+        else if (type instanceof CharType) {
+            type.writeSlice(blockBuilder, Slices.utf8Slice((String) value));
+        }
+        else if (VARBINARY.equals(type)) {
+            type.writeSlice(blockBuilder, Slices.wrappedBuffer((byte[]) value));
+        }
+        else if (DATE.equals(type)) {
+            int days = ((SqlDate) value).getDays();
+            type.writeLong(blockBuilder, days);
+        }
+        else if (type instanceof TimeType) {
+            SqlTime time = (SqlTime) value;
+            type.writeLong(blockBuilder, time.getPicos());
+        }
+        else if (type instanceof TimeWithTimeZoneType) {
+            long nanos = roundDiv(((SqlTimeWithTimeZone) value).getPicos(), PICOSECONDS_PER_NANOSECOND);
+            int offsetMinutes = ((SqlTimeWithTimeZone) value).getOffsetMinutes();
+            type.writeLong(blockBuilder, packTimeWithTimeZone(nanos, offsetMinutes));
+        }
+        else if (type instanceof TimestampType) {
+            long micros = ((SqlTimestamp) value).getEpochMicros();
+            if (((TimestampType) type).getPrecision() <= TimestampType.MAX_SHORT_PRECISION) {
+                type.writeLong(blockBuilder, micros);
+            }
+            else {
+                type.writeObject(blockBuilder, new LongTimestamp(micros, ((SqlTimestamp) value).getPicosOfMicros()));
+            }
+        }
+        else if (TIMESTAMP_WITH_TIME_ZONE.equals(type)) {
+            long millisUtc = ((SqlTimestampWithTimeZone) value).getMillisUtc();
+            TimeZoneKey timeZoneKey = ((SqlTimestampWithTimeZone) value).getTimeZoneKey();
+            type.writeLong(blockBuilder, packDateTimeWithZone(millisUtc, timeZoneKey));
+        }
+        else if (type instanceof ArrayType) {
+            List<?> list = (List<?>) value;
+            Type elementType = ((ArrayType) type).getElementType();
+            BlockBuilder arrayBlockBuilder = blockBuilder.beginBlockEntry();
+            for (Object element : list) {
+                writeValue(elementType, arrayBlockBuilder, element);
+            }
+            blockBuilder.closeEntry();
+        }
+        else if (type instanceof MapType) {
+            Map<?, ?> map = (Map<?, ?>) value;
+            Type keyType = ((MapType) type).getKeyType();
+            Type valueType = ((MapType) type).getValueType();
+            BlockBuilder mapBlockBuilder = blockBuilder.beginBlockEntry();
+            for (Entry<?, ?> entry : map.entrySet()) {
+                writeValue(keyType, mapBlockBuilder, entry.getKey());
+                writeValue(valueType, mapBlockBuilder, entry.getValue());
+            }
+            blockBuilder.closeEntry();
+        }
+        else if (type instanceof RowType) {
+            List<?> row = (List<?>) value;
+            List<Type> fieldTypes = type.getTypeParameters();
+            BlockBuilder rowBlockBuilder = blockBuilder.beginBlockEntry();
+            for (int field = 0; field < row.size(); field++) {
+                writeValue(fieldTypes.get(field), rowBlockBuilder, row.get(field));
+            }
+            blockBuilder.closeEntry();
+        }
+        else {
+            throw new IllegalArgumentException("Unsupported type " + type);
+        }
+    }
+
+    private static MaterializedRow convertToTestTypes(MaterializedRow trinoRow)
+    {
+        List<Object> convertedValues = new ArrayList<>();
+        for (int field = 0; field < trinoRow.getFieldCount(); field++) {
+            Object trinoValue = trinoRow.getField(field);
+            Object convertedValue;
+            if (trinoValue instanceof SqlDate) {
+                convertedValue = LocalDate.ofEpochDay(((SqlDate) trinoValue).getDays());
+            }
+            else if (trinoValue instanceof SqlTime) {
+                convertedValue = DateTimeFormatter.ISO_LOCAL_TIME.parse(trinoValue.toString(), LocalTime::from);
+            }
+            else if (trinoValue instanceof SqlTimeWithTimeZone) {
+                long nanos = roundDiv(((SqlTimeWithTimeZone) trinoValue).getPicos(), PICOSECONDS_PER_NANOSECOND);
+                int offsetMinutes = ((SqlTimeWithTimeZone) trinoValue).getOffsetMinutes();
+                convertedValue = OffsetTime.of(LocalTime.ofNanoOfDay(nanos), ZoneOffset.ofTotalSeconds(offsetMinutes * 60));
+            }
+            else if (trinoValue instanceof SqlTimestamp) {
+                convertedValue = ((SqlTimestamp) trinoValue).toLocalDateTime();
+            }
+            else if (trinoValue instanceof SqlTimestampWithTimeZone) {
+                convertedValue = ((SqlTimestampWithTimeZone) trinoValue).toZonedDateTime();
+            }
+            else if (trinoValue instanceof SqlDecimal) {
+                convertedValue = ((SqlDecimal) trinoValue).toBigDecimal();
+            }
+            else {
+                convertedValue = trinoValue;
+            }
+            convertedValues.add(convertedValue);
+        }
+        return new MaterializedRow(trinoRow.getPrecision(), convertedValues);
+    }
+
+    public static MaterializedResult materializeSourceDataStream(Session session, ConnectorPageSource pageSource, List<Type> types)
+    {
+        return materializeSourceDataStream(session.toConnectorSession(), pageSource, types);
+    }
+
+    public static MaterializedResult materializeSourceDataStream(ConnectorSession session, ConnectorPageSource pageSource, List<Type> types)
+    {
+        MaterializedResult.Builder builder = resultBuilder(session, types);
+        while (!pageSource.isFinished()) {
+            Page outputPage = pageSource.getNextPage();
+            if (outputPage == null) {
+                continue;
+            }
+            builder.page(outputPage);
+        }
+        return builder.build();
+    }
+
+    public static Builder resultBuilder(Session session, Type... types)
+    {
+        return resultBuilder(session.toConnectorSession(), types);
+    }
+
+    public static Builder resultBuilder(Session session, Iterable<? extends Type> types)
+    {
+        return resultBuilder(session.toConnectorSession(), types);
+    }
+
+    public static Builder resultBuilder(ConnectorSession session, Type... types)
+    {
+        return resultBuilder(session, ImmutableList.copyOf(types));
+    }
+
+    public static Builder resultBuilder(ConnectorSession session, Iterable<? extends Type> types)
+    {
+        return new Builder(session, ImmutableList.copyOf(types));
+    }
+
     public int getRowCount()
     {
         return rows.size();
@@ -233,116 +415,6 @@ public class MaterializedResult
         return pageBuilder.build();
     }
 
-    private static void appendToPage(PageBuilder pageBuilder, MaterializedRow row)
-    {
-        for (int field = 0; field < row.getFieldCount(); field++) {
-            Type type = pageBuilder.getType(field);
-            Object value = row.getField(field);
-            BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(field);
-            writeValue(type, blockBuilder, value);
-        }
-        pageBuilder.declarePosition();
-    }
-
-    private static void writeValue(Type type, BlockBuilder blockBuilder, Object value)
-    {
-        if (value == null) {
-            blockBuilder.appendNull();
-        }
-        else if (BIGINT.equals(type)) {
-            type.writeLong(blockBuilder, (Long) value);
-        }
-        else if (INTEGER.equals(type)) {
-            type.writeLong(blockBuilder, (Integer) value);
-        }
-        else if (SMALLINT.equals(type)) {
-            type.writeLong(blockBuilder, (Short) value);
-        }
-        else if (TINYINT.equals(type)) {
-            type.writeLong(blockBuilder, (Byte) value);
-        }
-        else if (REAL.equals(type)) {
-            type.writeLong(blockBuilder, floatToRawIntBits(((Float) value)));
-        }
-        else if (DOUBLE.equals(type)) {
-            type.writeDouble(blockBuilder, (Double) value);
-        }
-        else if (BOOLEAN.equals(type)) {
-            type.writeBoolean(blockBuilder, (Boolean) value);
-        }
-        else if (JSON.equals(type)) {
-            type.writeSlice(blockBuilder, Slices.utf8Slice((String) value));
-        }
-        else if (type instanceof VarcharType) {
-            type.writeSlice(blockBuilder, Slices.utf8Slice((String) value));
-        }
-        else if (type instanceof CharType) {
-            type.writeSlice(blockBuilder, Slices.utf8Slice((String) value));
-        }
-        else if (VARBINARY.equals(type)) {
-            type.writeSlice(blockBuilder, Slices.wrappedBuffer((byte[]) value));
-        }
-        else if (DATE.equals(type)) {
-            int days = ((SqlDate) value).getDays();
-            type.writeLong(blockBuilder, days);
-        }
-        else if (type instanceof TimeType) {
-            SqlTime time = (SqlTime) value;
-            type.writeLong(blockBuilder, time.getPicos());
-        }
-        else if (type instanceof TimeWithTimeZoneType) {
-            long nanos = roundDiv(((SqlTimeWithTimeZone) value).getPicos(), PICOSECONDS_PER_NANOSECOND);
-            int offsetMinutes = ((SqlTimeWithTimeZone) value).getOffsetMinutes();
-            type.writeLong(blockBuilder, packTimeWithTimeZone(nanos, offsetMinutes));
-        }
-        else if (type instanceof TimestampType) {
-            long micros = ((SqlTimestamp) value).getEpochMicros();
-            if (((TimestampType) type).getPrecision() <= TimestampType.MAX_SHORT_PRECISION) {
-                type.writeLong(blockBuilder, micros);
-            }
-            else {
-                type.writeObject(blockBuilder, new LongTimestamp(micros, ((SqlTimestamp) value).getPicosOfMicros()));
-            }
-        }
-        else if (TIMESTAMP_WITH_TIME_ZONE.equals(type)) {
-            long millisUtc = ((SqlTimestampWithTimeZone) value).getMillisUtc();
-            TimeZoneKey timeZoneKey = ((SqlTimestampWithTimeZone) value).getTimeZoneKey();
-            type.writeLong(blockBuilder, packDateTimeWithZone(millisUtc, timeZoneKey));
-        }
-        else if (type instanceof ArrayType) {
-            List<?> list = (List<?>) value;
-            Type elementType = ((ArrayType) type).getElementType();
-            BlockBuilder arrayBlockBuilder = blockBuilder.beginBlockEntry();
-            for (Object element : list) {
-                writeValue(elementType, arrayBlockBuilder, element);
-            }
-            blockBuilder.closeEntry();
-        }
-        else if (type instanceof MapType) {
-            Map<?, ?> map = (Map<?, ?>) value;
-            Type keyType = ((MapType) type).getKeyType();
-            Type valueType = ((MapType) type).getValueType();
-            BlockBuilder mapBlockBuilder = blockBuilder.beginBlockEntry();
-            for (Entry<?, ?> entry : map.entrySet()) {
-                writeValue(keyType, mapBlockBuilder, entry.getKey());
-                writeValue(valueType, mapBlockBuilder, entry.getValue());
-            }
-            blockBuilder.closeEntry();
-        }
-        else if (type instanceof RowType) {
-            List<?> row = (List<?>) value;
-            List<Type> fieldTypes = type.getTypeParameters();
-            BlockBuilder rowBlockBuilder = blockBuilder.beginBlockEntry();
-            for (int field = 0; field < row.size(); field++) {
-                writeValue(fieldTypes.get(field), rowBlockBuilder, row.get(field));
-            }
-            blockBuilder.closeEntry();
-        }
-        else {
-            throw new IllegalArgumentException("Unsupported type " + type);
-        }
-    }
-
     /**
      * Converts this {@link MaterializedResult} to a new one, representing the data using the same type domain as returned by {@code TestingTrinoClient}.
      */
@@ -358,78 +430,6 @@ public class MaterializedResult
                 updateType,
                 updateCount,
                 warnings);
-    }
-
-    private static MaterializedRow convertToTestTypes(MaterializedRow trinoRow)
-    {
-        List<Object> convertedValues = new ArrayList<>();
-        for (int field = 0; field < trinoRow.getFieldCount(); field++) {
-            Object trinoValue = trinoRow.getField(field);
-            Object convertedValue;
-            if (trinoValue instanceof SqlDate) {
-                convertedValue = LocalDate.ofEpochDay(((SqlDate) trinoValue).getDays());
-            }
-            else if (trinoValue instanceof SqlTime) {
-                convertedValue = DateTimeFormatter.ISO_LOCAL_TIME.parse(trinoValue.toString(), LocalTime::from);
-            }
-            else if (trinoValue instanceof SqlTimeWithTimeZone) {
-                long nanos = roundDiv(((SqlTimeWithTimeZone) trinoValue).getPicos(), PICOSECONDS_PER_NANOSECOND);
-                int offsetMinutes = ((SqlTimeWithTimeZone) trinoValue).getOffsetMinutes();
-                convertedValue = OffsetTime.of(LocalTime.ofNanoOfDay(nanos), ZoneOffset.ofTotalSeconds(offsetMinutes * 60));
-            }
-            else if (trinoValue instanceof SqlTimestamp) {
-                convertedValue = ((SqlTimestamp) trinoValue).toLocalDateTime();
-            }
-            else if (trinoValue instanceof SqlTimestampWithTimeZone) {
-                convertedValue = ((SqlTimestampWithTimeZone) trinoValue).toZonedDateTime();
-            }
-            else if (trinoValue instanceof SqlDecimal) {
-                convertedValue = ((SqlDecimal) trinoValue).toBigDecimal();
-            }
-            else {
-                convertedValue = trinoValue;
-            }
-            convertedValues.add(convertedValue);
-        }
-        return new MaterializedRow(trinoRow.getPrecision(), convertedValues);
-    }
-
-    public static MaterializedResult materializeSourceDataStream(Session session, ConnectorPageSource pageSource, List<Type> types)
-    {
-        return materializeSourceDataStream(session.toConnectorSession(), pageSource, types);
-    }
-
-    public static MaterializedResult materializeSourceDataStream(ConnectorSession session, ConnectorPageSource pageSource, List<Type> types)
-    {
-        MaterializedResult.Builder builder = resultBuilder(session, types);
-        while (!pageSource.isFinished()) {
-            Page outputPage = pageSource.getNextPage();
-            if (outputPage == null) {
-                continue;
-            }
-            builder.page(outputPage);
-        }
-        return builder.build();
-    }
-
-    public static Builder resultBuilder(Session session, Type... types)
-    {
-        return resultBuilder(session.toConnectorSession(), types);
-    }
-
-    public static Builder resultBuilder(Session session, Iterable<? extends Type> types)
-    {
-        return resultBuilder(session.toConnectorSession(), types);
-    }
-
-    public static Builder resultBuilder(ConnectorSession session, Type... types)
-    {
-        return resultBuilder(session, ImmutableList.copyOf(types));
-    }
-
-    public static Builder resultBuilder(ConnectorSession session, Iterable<? extends Type> types)
-    {
-        return new Builder(session, ImmutableList.copyOf(types));
     }
 
     public static class Builder

@@ -42,99 +42,18 @@ import static java.util.Objects.requireNonNull;
 public class RowNumberOperator
         implements Operator
 {
-    public static class RowNumberOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Optional<Integer> maxRowsPerPartition;
-        private final List<Type> sourceTypes;
-        private final List<Integer> outputChannels;
-        private final List<Integer> partitionChannels;
-        private final List<Type> partitionTypes;
-        private final Optional<Integer> hashChannel;
-        private final int expectedPositions;
-        private boolean closed;
-        private final JoinCompiler joinCompiler;
-        private final BlockTypeOperators blockTypeOperators;
-
-        public RowNumberOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> sourceTypes,
-                List<Integer> outputChannels,
-                List<Integer> partitionChannels,
-                List<? extends Type> partitionTypes,
-                Optional<Integer> maxRowsPerPartition,
-                Optional<Integer> hashChannel,
-                int expectedPositions,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.sourceTypes = ImmutableList.copyOf(sourceTypes);
-            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
-            this.partitionChannels = ImmutableList.copyOf(requireNonNull(partitionChannels, "partitionChannels is null"));
-            this.partitionTypes = ImmutableList.copyOf(requireNonNull(partitionTypes, "partitionTypes is null"));
-            this.maxRowsPerPartition = requireNonNull(maxRowsPerPartition, "maxRowsPerPartition is null");
-
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-            checkArgument(expectedPositions > 0, "expectedPositions < 0");
-            this.expectedPositions = expectedPositions;
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, RowNumberOperator.class.getSimpleName());
-            return new RowNumberOperator(
-                    operatorContext,
-                    sourceTypes,
-                    outputChannels,
-                    partitionChannels,
-                    partitionTypes,
-                    maxRowsPerPartition,
-                    hashChannel,
-                    expectedPositions,
-                    joinCompiler,
-                    blockTypeOperators);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new RowNumberOperatorFactory(operatorId, planNodeId, sourceTypes, outputChannels, partitionChannels, partitionTypes, maxRowsPerPartition, hashChannel, expectedPositions, joinCompiler, blockTypeOperators);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext localUserMemoryContext;
-    private boolean finishing;
-
     private final int[] outputChannels;
     private final List<Type> types;
-
-    private GroupByIdBlock partitionIds;
     private final Optional<GroupByHash> groupByHash;
-
-    private Page inputPage;
     private final LongBigArray partitionRowCount;
-
     private final Optional<Integer> maxRowsPerPartition;
     // Only present if maxRowsPerPartition is present
     private final Optional<PageBuilder> selectedRowPageBuilder;
-
+    private boolean finishing;
+    private GroupByIdBlock partitionIds;
+    private Page inputPage;
     // for yield when memory is not available
     private Work<GroupByIdBlock> unfinishedWork;
 
@@ -171,6 +90,16 @@ public class RowNumberOperator
             int[] channels = Ints.toArray(partitionChannels);
             this.groupByHash = Optional.of(createGroupByHash(partitionTypes, channels, hashChannel, expectedPositions, isDictionaryAggregationEnabled(operatorContext.getSession()), joinCompiler, blockTypeOperators, this::updateMemoryReservation));
         }
+    }
+
+    private static List<Type> toTypes(List<? extends Type> sourceTypes, List<Integer> outputChannels)
+    {
+        ImmutableList.Builder<Type> types = ImmutableList.builder();
+        for (int channel : outputChannels) {
+            types.add(sourceTypes.get(channel));
+        }
+        types.add(BIGINT);
+        return types.build();
     }
 
     @Override
@@ -346,19 +275,85 @@ public class RowNumberOperator
         return isSinglePartition() ? 0 : partitionIds.getGroupId(position);
     }
 
-    private static List<Type> toTypes(List<? extends Type> sourceTypes, List<Integer> outputChannels)
-    {
-        ImmutableList.Builder<Type> types = ImmutableList.builder();
-        for (int channel : outputChannels) {
-            types.add(sourceTypes.get(channel));
-        }
-        types.add(BIGINT);
-        return types.build();
-    }
-
     @VisibleForTesting
     public int getCapacity()
     {
         return groupByHash.map(GroupByHash::getCapacity).orElse(0);
+    }
+
+    public static class RowNumberOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Optional<Integer> maxRowsPerPartition;
+        private final List<Type> sourceTypes;
+        private final List<Integer> outputChannels;
+        private final List<Integer> partitionChannels;
+        private final List<Type> partitionTypes;
+        private final Optional<Integer> hashChannel;
+        private final int expectedPositions;
+        private final JoinCompiler joinCompiler;
+        private final BlockTypeOperators blockTypeOperators;
+        private boolean closed;
+
+        public RowNumberOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> sourceTypes,
+                List<Integer> outputChannels,
+                List<Integer> partitionChannels,
+                List<? extends Type> partitionTypes,
+                Optional<Integer> maxRowsPerPartition,
+                Optional<Integer> hashChannel,
+                int expectedPositions,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.sourceTypes = ImmutableList.copyOf(sourceTypes);
+            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
+            this.partitionChannels = ImmutableList.copyOf(requireNonNull(partitionChannels, "partitionChannels is null"));
+            this.partitionTypes = ImmutableList.copyOf(requireNonNull(partitionTypes, "partitionTypes is null"));
+            this.maxRowsPerPartition = requireNonNull(maxRowsPerPartition, "maxRowsPerPartition is null");
+
+            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            checkArgument(expectedPositions > 0, "expectedPositions < 0");
+            this.expectedPositions = expectedPositions;
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, RowNumberOperator.class.getSimpleName());
+            return new RowNumberOperator(
+                    operatorContext,
+                    sourceTypes,
+                    outputChannels,
+                    partitionChannels,
+                    partitionTypes,
+                    maxRowsPerPartition,
+                    hashChannel,
+                    expectedPositions,
+                    joinCompiler,
+                    blockTypeOperators);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new RowNumberOperatorFactory(operatorId, planNodeId, sourceTypes, outputChannels, partitionChannels, partitionTypes, maxRowsPerPartition, hashChannel, expectedPositions, joinCompiler, blockTypeOperators);
+        }
     }
 }

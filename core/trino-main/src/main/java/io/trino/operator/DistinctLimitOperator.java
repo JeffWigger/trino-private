@@ -41,81 +41,17 @@ import static java.util.Objects.requireNonNull;
 public class DistinctLimitOperator
         implements Operator
 {
-    public static class DistinctLimitOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final List<Integer> distinctChannels;
-        private final List<Type> sourceTypes;
-        private final long limit;
-        private final Optional<Integer> hashChannel;
-        private boolean closed;
-        private final JoinCompiler joinCompiler;
-        private final BlockTypeOperators blockTypeOperators;
-
-        public DistinctLimitOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<? extends Type> sourceTypes,
-                List<Integer> distinctChannels,
-                long limit,
-                Optional<Integer> hashChannel,
-                JoinCompiler joinCompiler,
-                BlockTypeOperators blockTypeOperators)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
-            this.distinctChannels = requireNonNull(distinctChannels, "distinctChannels is null");
-
-            checkArgument(limit >= 0, "limit must be at least zero");
-            this.limit = limit;
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, DistinctLimitOperator.class.getSimpleName());
-            List<Type> distinctTypes = distinctChannels.stream()
-                    .map(sourceTypes::get)
-                    .collect(toImmutableList());
-            return new DistinctLimitOperator(operatorContext, distinctChannels, distinctTypes, limit, hashChannel, joinCompiler, blockTypeOperators);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new DistinctLimitOperatorFactory(operatorId, planNodeId, sourceTypes, distinctChannels, limit, hashChannel, joinCompiler, blockTypeOperators);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext localUserMemoryContext;
-
-    private Page inputPage;
-    private long remainingLimit;
-
-    private boolean finishing;
-
     private final int[] outputChannels;
     private final GroupByHash groupByHash;
+    private Page inputPage;
+    private long remainingLimit;
+    private boolean finishing;
     private long nextDistinctId;
-
     // for yield when memory is not available
     private GroupByIdBlock groupByIds;
     private Work<GroupByIdBlock> unfinishedWork;
-
     public DistinctLimitOperator(OperatorContext operatorContext, List<Integer> distinctChannels, List<Type> distinctTypes, long limit, Optional<Integer> hashChannel, JoinCompiler joinCompiler, BlockTypeOperators blockTypeOperators)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -252,5 +188,64 @@ public class DistinctLimitOperator
     public int getCapacity()
     {
         return groupByHash.getCapacity();
+    }
+
+    public static class DistinctLimitOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final List<Integer> distinctChannels;
+        private final List<Type> sourceTypes;
+        private final long limit;
+        private final Optional<Integer> hashChannel;
+        private final JoinCompiler joinCompiler;
+        private final BlockTypeOperators blockTypeOperators;
+        private boolean closed;
+
+        public DistinctLimitOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<? extends Type> sourceTypes,
+                List<Integer> distinctChannels,
+                long limit,
+                Optional<Integer> hashChannel,
+                JoinCompiler joinCompiler,
+                BlockTypeOperators blockTypeOperators)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.sourceTypes = ImmutableList.copyOf(requireNonNull(sourceTypes, "sourceTypes is null"));
+            this.distinctChannels = requireNonNull(distinctChannels, "distinctChannels is null");
+
+            checkArgument(limit >= 0, "limit must be at least zero");
+            this.limit = limit;
+            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, DistinctLimitOperator.class.getSimpleName());
+            List<Type> distinctTypes = distinctChannels.stream()
+                    .map(sourceTypes::get)
+                    .collect(toImmutableList());
+            return new DistinctLimitOperator(operatorContext, distinctChannels, distinctTypes, limit, hashChannel, joinCompiler, blockTypeOperators);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new DistinctLimitOperatorFactory(operatorId, planNodeId, sourceTypes, distinctChannels, limit, hashChannel, joinCompiler, blockTypeOperators);
+        }
     }
 }

@@ -31,12 +31,10 @@ import static java.util.stream.Collectors.toSet;
 
 public class DictionaryCompressionOptimizer
 {
-    private static final double DICTIONARY_MIN_COMPRESSION_RATIO = 1.25;
-
     // Instead of waiting for the dictionary to fill completely, which would force a column into
     // direct mode, close the stripe early assuming it has hit the minimum row count.
     static final DataSize DICTIONARY_MEMORY_MAX_RANGE = DataSize.of(4, Unit.MEGABYTE);
-
+    private static final double DICTIONARY_MIN_COMPRESSION_RATIO = 1.25;
     private static final DataSize DIRECT_COLUMN_SIZE_RANGE = DataSize.of(4, Unit.MEGABYTE);
 
     private final Set<DictionaryColumnManager> allWriters;
@@ -76,6 +74,21 @@ public class DictionaryCompressionOptimizer
         this.dictionaryMemoryMaxBytesLow = (int) Math.max(dictionaryMemoryMaxBytes - DICTIONARY_MEMORY_MAX_RANGE.toBytes(), 0);
 
         directConversionCandidates.addAll(allWriters);
+    }
+
+    public static int estimateIndexBytesPerValue(int dictionaryEntries)
+    {
+        // assume basic byte packing
+        if (dictionaryEntries <= 256) {
+            return 1;
+        }
+        if (dictionaryEntries <= 65_536) {
+            return 2;
+        }
+        if (dictionaryEntries <= 16_777_216) {
+            return 3;
+        }
+        return 4;
     }
 
     public int getDictionaryMemoryBytes()
@@ -298,21 +311,6 @@ public class DictionaryCompressionOptimizer
     private int getMaxDirectBytes(int bufferedBytes)
     {
         return toIntExact(Math.min(stripeMaxBytes, stripeMaxBytes - bufferedBytes + DIRECT_COLUMN_SIZE_RANGE.toBytes()));
-    }
-
-    public static int estimateIndexBytesPerValue(int dictionaryEntries)
-    {
-        // assume basic byte packing
-        if (dictionaryEntries <= 256) {
-            return 1;
-        }
-        if (dictionaryEntries <= 65_536) {
-            return 2;
-        }
-        if (dictionaryEntries <= 16_777_216) {
-            return 3;
-        }
-        return 4;
     }
 
     public interface DictionaryColumn

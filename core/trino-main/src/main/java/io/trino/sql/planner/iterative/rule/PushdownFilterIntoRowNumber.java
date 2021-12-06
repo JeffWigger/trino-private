@@ -65,65 +65,6 @@ public class PushdownFilterIntoRowNumber
         this.typeOperators = typeOperators;
     }
 
-    @Override
-    public Pattern<FilterNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public Result apply(FilterNode node, Captures captures, Context context)
-    {
-        Session session = context.getSession();
-        TypeProvider types = context.getSymbolAllocator().getTypes();
-
-        DomainTranslator.ExtractionResult extractionResult = fromPredicate(metadata, typeOperators, session, node.getPredicate(), types);
-        TupleDomain<Symbol> tupleDomain = extractionResult.getTupleDomain();
-
-        RowNumberNode source = captures.get(CHILD);
-        Symbol rowNumberSymbol = source.getRowNumberSymbol();
-        OptionalInt upperBound = extractUpperBound(tupleDomain, rowNumberSymbol);
-
-        if (upperBound.isEmpty()) {
-            return Result.empty();
-        }
-
-        if (upperBound.getAsInt() <= 0) {
-            return Result.ofPlanNode(new ValuesNode(node.getId(), node.getOutputSymbols(), ImmutableList.of()));
-        }
-
-        RowNumberNode merged = mergeLimit(source, upperBound.getAsInt());
-        boolean needRewriteSource = !merged.getMaxRowCountPerPartition().equals(source.getMaxRowCountPerPartition());
-        if (needRewriteSource) {
-            source = merged;
-        }
-
-        if (!allRowNumberValuesInDomain(tupleDomain, rowNumberSymbol, source.getMaxRowCountPerPartition().get())) {
-            if (needRewriteSource) {
-                return Result.ofPlanNode(new FilterNode(node.getId(), source, node.getPredicate()));
-            }
-            else {
-                return Result.empty();
-            }
-        }
-
-        TupleDomain<Symbol> newTupleDomain = tupleDomain.filter((symbol, domain) -> !symbol.equals(rowNumberSymbol));
-        Expression newPredicate = ExpressionUtils.combineConjuncts(
-                metadata,
-                extractionResult.getRemainingExpression(),
-                domainTranslator.toPredicate(newTupleDomain));
-
-        if (newPredicate.equals(BooleanLiteral.TRUE_LITERAL)) {
-            return Result.ofPlanNode(source);
-        }
-
-        if (!newPredicate.equals(node.getPredicate())) {
-            return Result.ofPlanNode(new FilterNode(node.getId(), source, newPredicate));
-        }
-
-        return Result.empty();
-    }
-
     private static boolean allRowNumberValuesInDomain(TupleDomain<Symbol> tupleDomain, Symbol symbol, long upperBound)
     {
         if (tupleDomain.isNone()) {
@@ -182,5 +123,64 @@ public class PushdownFilterIntoRowNumber
                 node.getRowNumberSymbol(),
                 Optional.of(newRowCountPerPartition),
                 node.getHashSymbol());
+    }
+
+    @Override
+    public Pattern<FilterNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public Result apply(FilterNode node, Captures captures, Context context)
+    {
+        Session session = context.getSession();
+        TypeProvider types = context.getSymbolAllocator().getTypes();
+
+        DomainTranslator.ExtractionResult extractionResult = fromPredicate(metadata, typeOperators, session, node.getPredicate(), types);
+        TupleDomain<Symbol> tupleDomain = extractionResult.getTupleDomain();
+
+        RowNumberNode source = captures.get(CHILD);
+        Symbol rowNumberSymbol = source.getRowNumberSymbol();
+        OptionalInt upperBound = extractUpperBound(tupleDomain, rowNumberSymbol);
+
+        if (upperBound.isEmpty()) {
+            return Result.empty();
+        }
+
+        if (upperBound.getAsInt() <= 0) {
+            return Result.ofPlanNode(new ValuesNode(node.getId(), node.getOutputSymbols(), ImmutableList.of()));
+        }
+
+        RowNumberNode merged = mergeLimit(source, upperBound.getAsInt());
+        boolean needRewriteSource = !merged.getMaxRowCountPerPartition().equals(source.getMaxRowCountPerPartition());
+        if (needRewriteSource) {
+            source = merged;
+        }
+
+        if (!allRowNumberValuesInDomain(tupleDomain, rowNumberSymbol, source.getMaxRowCountPerPartition().get())) {
+            if (needRewriteSource) {
+                return Result.ofPlanNode(new FilterNode(node.getId(), source, node.getPredicate()));
+            }
+            else {
+                return Result.empty();
+            }
+        }
+
+        TupleDomain<Symbol> newTupleDomain = tupleDomain.filter((symbol, domain) -> !symbol.equals(rowNumberSymbol));
+        Expression newPredicate = ExpressionUtils.combineConjuncts(
+                metadata,
+                extractionResult.getRemainingExpression(),
+                domainTranslator.toPredicate(newTupleDomain));
+
+        if (newPredicate.equals(BooleanLiteral.TRUE_LITERAL)) {
+            return Result.ofPlanNode(source);
+        }
+
+        if (!newPredicate.equals(node.getPredicate())) {
+            return Result.ofPlanNode(new FilterNode(node.getId(), source, newPredicate));
+        }
+
+        return Result.empty();
     }
 }

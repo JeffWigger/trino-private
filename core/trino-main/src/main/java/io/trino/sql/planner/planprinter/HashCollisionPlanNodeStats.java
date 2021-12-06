@@ -54,6 +54,14 @@ public class HashCollisionPlanNodeStats
         this.operatorHashCollisionsStats = requireNonNull(operatorHashCollisionsStats, "operatorHashCollisionsStats is null");
     }
 
+    private static double computedWeightedStdDev(double sumSquared, double sum, double totalWeight)
+    {
+        double average = sum / totalWeight;
+        double variance = (sumSquared - 2 * sum * average) / totalWeight + average * average;
+        // variance might be negative because of numeric inaccuracy, therefore we need to use max
+        return sqrt(max(variance, 0d));
+    }
+
     public Map<String, Double> getOperatorHashCollisionsAverages()
     {
         return operatorHashCollisionsStats.entrySet().stream()
@@ -71,14 +79,6 @@ public class HashCollisionPlanNodeStats
                                 entry.getValue().getWeightedSumSquaredHashCollisions(),
                                 entry.getValue().getWeightedHashCollisions(),
                                 entry.getValue().getInputPositions())));
-    }
-
-    private static double computedWeightedStdDev(double sumSquared, double sum, double totalWeight)
-    {
-        double average = sum / totalWeight;
-        double variance = (sumSquared - 2 * sum * average) / totalWeight + average * average;
-        // variance might be negative because of numeric inaccuracy, therefore we need to use max
-        return sqrt(max(variance, 0d));
     }
 
     public Map<String, Double> getOperatorExpectedCollisionsAverages()

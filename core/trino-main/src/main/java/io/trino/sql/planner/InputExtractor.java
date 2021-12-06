@@ -47,6 +47,11 @@ public class InputExtractor
         this.session = session;
     }
 
+    private static Column createColumn(ColumnMetadata columnMetadata)
+    {
+        return new Column(columnMetadata.getName(), columnMetadata.getType().toString());
+    }
+
     public List<Input> extractInputs(SubPlan root)
     {
         Visitor visitor = new Visitor();
@@ -54,11 +59,6 @@ public class InputExtractor
                 .forEach(fragment -> fragment.getRoot().accept(visitor, fragment.getId()));
 
         return ImmutableList.copyOf(visitor.getInputs());
-    }
-
-    private static Column createColumn(ColumnMetadata columnMetadata)
-    {
-        return new Column(columnMetadata.getName(), columnMetadata.getType().toString());
     }
 
     private Input createInput(Session session, TableHandle table, Set<Column> columns, PlanFragmentId fragmentId, PlanNodeId planNodeId)

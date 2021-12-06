@@ -453,93 +453,15 @@ public class TaskExecutor
         return null;
     }
 
-    private class TaskRunner
-            implements Runnable
-    {
-        private final long runnerId = NEXT_RUNNER_ID.getAndIncrement();
-
-        @Override
-        public void run()
-        {
-            try (SetThreadName runnerName = new SetThreadName("SplitRunner-%s", runnerId)) {
-                while (!closed && !Thread.currentThread().isInterrupted()) {
-                    // select next worker
-                    PrioritizedSplitRunner split;
-                    try {
-                        split = waitingSplits.take();
-                    }
-                    catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-
-                    String threadId = split.getTaskHandle().getTaskId() + "-" + split.getSplitId();
-                    try (SetThreadName splitName = new SetThreadName(threadId)) {
-                        RunningSplitInfo splitInfo = new RunningSplitInfo(ticker.read(), threadId, Thread.currentThread());
-                        runningSplitInfos.add(splitInfo);
-                        runningSplits.add(split);
-
-                        ListenableFuture<Void> blocked;
-                        try {
-                            blocked = split.process();
-                        }
-                        finally {
-                            runningSplitInfos.remove(splitInfo);
-                            runningSplits.remove(split);
-                        }
-
-                        if (split.isFinished()) {
-                            log.debug("%s is finished", split.getInfo());
-                            splitFinished(split);
-                        }
-                        else {
-                            if (blocked.isDone()) {
-                                waitingSplits.offer(split);
-                            }
-                            else {
-                                blockedSplits.put(split, blocked);
-                                blocked.addListener(() -> {
-                                    blockedSplits.remove(split);
-                                    // reset the level priority to prevent previously-blocked splits from starving existing splits
-                                    split.resetLevelPriority();
-                                    waitingSplits.offer(split);
-                                }, executor);
-                            }
-                        }
-                    }
-                    catch (Throwable t) {
-                        // ignore random errors due to driver thread interruption
-                        if (!split.isDestroyed()) {
-                            if (t instanceof TrinoException) {
-                                TrinoException e = (TrinoException) t;
-                                log.error(t, "Error processing %s: %s: %s", split.getInfo(), e.getErrorCode().getName(), e.getMessage());
-                            }
-                            else {
-                                log.error(t, "Error processing %s", split.getInfo());
-                            }
-                        }
-                        splitFinished(split);
-                    }
-                }
-            }
-            finally {
-                // unless we have been closed, we need to replace this thread
-                if (!closed) {
-                    addRunnerThread();
-                }
-            }
-        }
-    }
-
-    //
-    // STATS
-    //
-
     @Managed
     public synchronized int getTasks()
     {
         return tasks.size();
     }
+
+    //
+    // STATS
+    //
 
     @Managed
     public int getRunnerThreads()
@@ -830,6 +752,13 @@ public class TaskExecutor
         return count;
     }
 
+    @Managed(description = "Task processor executor")
+    @Nested
+    public ThreadPoolExecutorMBean getProcessorExecutor()
+    {
+        return executorMBean;
+    }
+
     private static class RunningSplitInfo
             implements Comparable<RunningSplitInfo>
     {
@@ -881,10 +810,81 @@ public class TaskExecutor
         }
     }
 
-    @Managed(description = "Task processor executor")
-    @Nested
-    public ThreadPoolExecutorMBean getProcessorExecutor()
+    private class TaskRunner
+            implements Runnable
     {
-        return executorMBean;
+        private final long runnerId = NEXT_RUNNER_ID.getAndIncrement();
+
+        @Override
+        public void run()
+        {
+            try (SetThreadName runnerName = new SetThreadName("SplitRunner-%s", runnerId)) {
+                while (!closed && !Thread.currentThread().isInterrupted()) {
+                    // select next worker
+                    PrioritizedSplitRunner split;
+                    try {
+                        split = waitingSplits.take();
+                    }
+                    catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+
+                    String threadId = split.getTaskHandle().getTaskId() + "-" + split.getSplitId();
+                    try (SetThreadName splitName = new SetThreadName(threadId)) {
+                        RunningSplitInfo splitInfo = new RunningSplitInfo(ticker.read(), threadId, Thread.currentThread());
+                        runningSplitInfos.add(splitInfo);
+                        runningSplits.add(split);
+
+                        ListenableFuture<Void> blocked;
+                        try {
+                            blocked = split.process();
+                        }
+                        finally {
+                            runningSplitInfos.remove(splitInfo);
+                            runningSplits.remove(split);
+                        }
+
+                        if (split.isFinished()) {
+                            log.debug("%s is finished", split.getInfo());
+                            splitFinished(split);
+                        }
+                        else {
+                            if (blocked.isDone()) {
+                                waitingSplits.offer(split);
+                            }
+                            else {
+                                blockedSplits.put(split, blocked);
+                                blocked.addListener(() -> {
+                                    blockedSplits.remove(split);
+                                    // reset the level priority to prevent previously-blocked splits from starving existing splits
+                                    split.resetLevelPriority();
+                                    waitingSplits.offer(split);
+                                }, executor);
+                            }
+                        }
+                    }
+                    catch (Throwable t) {
+                        // ignore random errors due to driver thread interruption
+                        if (!split.isDestroyed()) {
+                            if (t instanceof TrinoException) {
+                                TrinoException e = (TrinoException) t;
+                                log.error(t, "Error processing %s: %s: %s", split.getInfo(), e.getErrorCode().getName(), e.getMessage());
+                            }
+                            else {
+                                log.error(t, "Error processing %s", split.getInfo());
+                            }
+                        }
+                        splitFinished(split);
+                    }
+                }
+            }
+            finally {
+                // unless we have been closed, we need to replace this thread
+                if (!closed) {
+                    addRunnerThread();
+                }
+            }
+        }
     }
 }

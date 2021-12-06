@@ -117,100 +117,6 @@ public class DecorrelateInnerUnnestWithGlobalAggregation
             .with(filter().equalTo(TRUE_LITERAL))
             .matching(node -> node.getType() == CorrelatedJoinNode.Type.INNER || node.getType() == CorrelatedJoinNode.Type.LEFT);
 
-    @Override
-    public Pattern<CorrelatedJoinNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public Result apply(CorrelatedJoinNode correlatedJoinNode, Captures captures, Context context)
-    {
-        // find global aggregation in subquery
-        List<PlanNode> globalAggregations = PlanNodeSearcher.searchFrom(correlatedJoinNode.getSubquery(), context.getLookup())
-                .where(DecorrelateInnerUnnestWithGlobalAggregation::isGlobalAggregation)
-                .recurseOnlyWhen(node -> node instanceof ProjectNode || isGlobalAggregation(node))
-                .findAll();
-
-        if (globalAggregations.isEmpty()) {
-            return Result.empty();
-        }
-
-        // if there are multiple global aggregations, the one that is closest to the source is the "reducing" aggregation, because it reduces multiple input rows to single output row
-        AggregationNode reducingAggregation = (AggregationNode) globalAggregations.get(globalAggregations.size() - 1);
-
-        // find unnest in subquery
-        Optional<UnnestNode> subqueryUnnest = PlanNodeSearcher.searchFrom(reducingAggregation.getSource(), context.getLookup())
-                .where(node -> isSupportedUnnest(node, correlatedJoinNode.getCorrelation(), context.getLookup()))
-                .recurseOnlyWhen(node -> node instanceof ProjectNode || isGroupedAggregation(node))
-                .findFirst();
-
-        if (subqueryUnnest.isEmpty()) {
-            return Result.empty();
-        }
-
-        UnnestNode unnestNode = subqueryUnnest.get();
-
-        // assign unique id to input rows to restore semantics of aggregations after rewrite
-        PlanNode input = new AssignUniqueId(
-                context.getIdAllocator().getNextId(),
-                correlatedJoinNode.getInput(),
-                context.getSymbolAllocator().newSymbol("unique", BIGINT));
-
-        // pre-project unnest symbols if they were pre-projected in subquery
-        // The correlated UnnestNode either unnests correlation symbols directly, or unnests symbols produced by a projection that uses only correlation symbols.
-        // Here, any underlying projection that was a source of the correlated UnnestNode, is appended as a source of the rewritten UnnestNode.
-        // If the projection is not necessary for UnnestNode (i.e. it does not produce any unnest symbols), it should be pruned afterwards.
-        PlanNode unnestSource = context.getLookup().resolve(unnestNode.getSource());
-        if (unnestSource instanceof ProjectNode) {
-            ProjectNode sourceProjection = (ProjectNode) unnestSource;
-            input = new ProjectNode(
-                    sourceProjection.getId(),
-                    input,
-                    Assignments.builder()
-                            .putIdentities(input.getOutputSymbols())
-                            .putAll(sourceProjection.getAssignments())
-                            .build());
-        }
-
-        // rewrite correlated join to UnnestNode
-        Symbol ordinalitySymbol = unnestNode.getOrdinalitySymbol().orElseGet(() -> context.getSymbolAllocator().newSymbol("ordinality", BIGINT));
-
-        UnnestNode rewrittenUnnest = new UnnestNode(
-                context.getIdAllocator().getNextId(),
-                input,
-                input.getOutputSymbols(),
-                unnestNode.getMappings(),
-                Optional.of(ordinalitySymbol),
-                LEFT,
-                Optional.empty());
-
-        // append mask symbol based on ordinality to distinguish between the unnested rows and synthetic null rows
-        Symbol mask = context.getSymbolAllocator().newSymbol("mask", BOOLEAN);
-        ProjectNode sourceWithMask = new ProjectNode(
-                context.getIdAllocator().getNextId(),
-                rewrittenUnnest,
-                Assignments.builder()
-                        .putIdentities(rewrittenUnnest.getOutputSymbols())
-                        .put(mask, new IsNotNullPredicate(ordinalitySymbol.toSymbolReference()))
-                        .build());
-
-        // restore all projections, grouped aggregations and global aggregations from the subquery
-        PlanNode result = rewriteNodeSequence(
-                context.getLookup().resolve(correlatedJoinNode.getSubquery()),
-                input.getOutputSymbols(),
-                mask,
-                sourceWithMask,
-                reducingAggregation.getId(),
-                unnestNode.getId(),
-                context.getSymbolAllocator(),
-                context.getIdAllocator(),
-                context.getLookup());
-
-        // restrict outputs
-        return Result.ofPlanNode(restrictOutputs(context.getIdAllocator(), result, ImmutableSet.copyOf(correlatedJoinNode.getOutputSymbols())).orElse(result));
-    }
-
     private static boolean isGlobalAggregation(PlanNode node)
     {
         if (!(node instanceof AggregationNode)) {
@@ -363,5 +269,99 @@ public class DecorrelateInnerUnnestWithGlobalAggregation
                 SINGLE,
                 Optional.empty(),
                 Optional.empty());
+    }
+
+    @Override
+    public Pattern<CorrelatedJoinNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public Result apply(CorrelatedJoinNode correlatedJoinNode, Captures captures, Context context)
+    {
+        // find global aggregation in subquery
+        List<PlanNode> globalAggregations = PlanNodeSearcher.searchFrom(correlatedJoinNode.getSubquery(), context.getLookup())
+                .where(DecorrelateInnerUnnestWithGlobalAggregation::isGlobalAggregation)
+                .recurseOnlyWhen(node -> node instanceof ProjectNode || isGlobalAggregation(node))
+                .findAll();
+
+        if (globalAggregations.isEmpty()) {
+            return Result.empty();
+        }
+
+        // if there are multiple global aggregations, the one that is closest to the source is the "reducing" aggregation, because it reduces multiple input rows to single output row
+        AggregationNode reducingAggregation = (AggregationNode) globalAggregations.get(globalAggregations.size() - 1);
+
+        // find unnest in subquery
+        Optional<UnnestNode> subqueryUnnest = PlanNodeSearcher.searchFrom(reducingAggregation.getSource(), context.getLookup())
+                .where(node -> isSupportedUnnest(node, correlatedJoinNode.getCorrelation(), context.getLookup()))
+                .recurseOnlyWhen(node -> node instanceof ProjectNode || isGroupedAggregation(node))
+                .findFirst();
+
+        if (subqueryUnnest.isEmpty()) {
+            return Result.empty();
+        }
+
+        UnnestNode unnestNode = subqueryUnnest.get();
+
+        // assign unique id to input rows to restore semantics of aggregations after rewrite
+        PlanNode input = new AssignUniqueId(
+                context.getIdAllocator().getNextId(),
+                correlatedJoinNode.getInput(),
+                context.getSymbolAllocator().newSymbol("unique", BIGINT));
+
+        // pre-project unnest symbols if they were pre-projected in subquery
+        // The correlated UnnestNode either unnests correlation symbols directly, or unnests symbols produced by a projection that uses only correlation symbols.
+        // Here, any underlying projection that was a source of the correlated UnnestNode, is appended as a source of the rewritten UnnestNode.
+        // If the projection is not necessary for UnnestNode (i.e. it does not produce any unnest symbols), it should be pruned afterwards.
+        PlanNode unnestSource = context.getLookup().resolve(unnestNode.getSource());
+        if (unnestSource instanceof ProjectNode) {
+            ProjectNode sourceProjection = (ProjectNode) unnestSource;
+            input = new ProjectNode(
+                    sourceProjection.getId(),
+                    input,
+                    Assignments.builder()
+                            .putIdentities(input.getOutputSymbols())
+                            .putAll(sourceProjection.getAssignments())
+                            .build());
+        }
+
+        // rewrite correlated join to UnnestNode
+        Symbol ordinalitySymbol = unnestNode.getOrdinalitySymbol().orElseGet(() -> context.getSymbolAllocator().newSymbol("ordinality", BIGINT));
+
+        UnnestNode rewrittenUnnest = new UnnestNode(
+                context.getIdAllocator().getNextId(),
+                input,
+                input.getOutputSymbols(),
+                unnestNode.getMappings(),
+                Optional.of(ordinalitySymbol),
+                LEFT,
+                Optional.empty());
+
+        // append mask symbol based on ordinality to distinguish between the unnested rows and synthetic null rows
+        Symbol mask = context.getSymbolAllocator().newSymbol("mask", BOOLEAN);
+        ProjectNode sourceWithMask = new ProjectNode(
+                context.getIdAllocator().getNextId(),
+                rewrittenUnnest,
+                Assignments.builder()
+                        .putIdentities(rewrittenUnnest.getOutputSymbols())
+                        .put(mask, new IsNotNullPredicate(ordinalitySymbol.toSymbolReference()))
+                        .build());
+
+        // restore all projections, grouped aggregations and global aggregations from the subquery
+        PlanNode result = rewriteNodeSequence(
+                context.getLookup().resolve(correlatedJoinNode.getSubquery()),
+                input.getOutputSymbols(),
+                mask,
+                sourceWithMask,
+                reducingAggregation.getId(),
+                unnestNode.getId(),
+                context.getSymbolAllocator(),
+                context.getIdAllocator(),
+                context.getLookup());
+
+        // restrict outputs
+        return Result.ofPlanNode(restrictOutputs(context.getIdAllocator(), result, ImmutableSet.copyOf(correlatedJoinNode.getOutputSymbols())).orElse(result));
     }
 }

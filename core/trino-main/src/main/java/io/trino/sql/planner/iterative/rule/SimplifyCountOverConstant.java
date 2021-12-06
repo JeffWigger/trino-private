@@ -56,6 +56,21 @@ public class SimplifyCountOverConstant
         countFunction = metadata.resolveFunction(QualifiedName.of("count"), ImmutableList.of());
     }
 
+    private static boolean isCountOverConstant(AggregationNode.Aggregation aggregation, Assignments inputs)
+    {
+        BoundSignature signature = aggregation.getResolvedFunction().getSignature();
+        if (!signature.getName().equals("count") || signature.getArgumentTypes().size() != 1) {
+            return false;
+        }
+
+        Expression argument = aggregation.getArguments().get(0);
+        if (argument instanceof SymbolReference) {
+            argument = inputs.get(Symbol.from(argument));
+        }
+
+        return argument instanceof Literal && !(argument instanceof NullLiteral);
+    }
+
     @Override
     public Pattern<AggregationNode> getPattern()
     {
@@ -99,20 +114,5 @@ public class SimplifyCountOverConstant
                 parent.getStep(),
                 parent.getHashSymbol(),
                 parent.getGroupIdSymbol()));
-    }
-
-    private static boolean isCountOverConstant(AggregationNode.Aggregation aggregation, Assignments inputs)
-    {
-        BoundSignature signature = aggregation.getResolvedFunction().getSignature();
-        if (!signature.getName().equals("count") || signature.getArgumentTypes().size() != 1) {
-            return false;
-        }
-
-        Expression argument = aggregation.getArguments().get(0);
-        if (argument instanceof SymbolReference) {
-            argument = inputs.get(Symbol.from(argument));
-        }
-
-        return argument instanceof Literal && !(argument instanceof NullLiteral);
     }
 }

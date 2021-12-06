@@ -67,22 +67,6 @@ public class JsonToMapCast
                 true);
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        MapType mapType = (MapType) functionBinding.getBoundSignature().getReturnType();
-        checkCondition(canCastFromJson(mapType), INVALID_CAST_ARGUMENT, "Cannot cast JSON to %s", mapType);
-
-        BlockBuilderAppender mapAppender = createBlockBuilderAppender(mapType);
-        MethodHandle methodHandle = METHOD_HANDLE.bindTo(mapType).bindTo(mapAppender);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                NULLABLE_RETURN,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Block toMap(MapType mapType, BlockBuilderAppender mapAppender, ConnectorSession connectorSession, Slice json)
     {
@@ -105,5 +89,21 @@ public class JsonToMapCast
         catch (Exception e) {
             throw new TrinoException(INVALID_CAST_ARGUMENT, format("Cannot cast to %s.\n%s", mapType, truncateIfNecessaryForErrorMessage(json)), e);
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        MapType mapType = (MapType) functionBinding.getBoundSignature().getReturnType();
+        checkCondition(canCastFromJson(mapType), INVALID_CAST_ARGUMENT, "Cannot cast JSON to %s", mapType);
+
+        BlockBuilderAppender mapAppender = createBlockBuilderAppender(mapType);
+        MethodHandle methodHandle = METHOD_HANDLE.bindTo(mapType).bindTo(mapAppender);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                NULLABLE_RETURN,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

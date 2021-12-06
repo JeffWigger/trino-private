@@ -64,44 +64,6 @@ public class MapSubscriptOperator
                 true);
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return FunctionDependencyDeclaration.builder()
-                .addOptionalCastSignature(new TypeSignature("K"), VARCHAR.getTypeSignature())
-                .build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V");
-
-        MethodHandle methodHandle;
-        if (keyType.getJavaType() == boolean.class) {
-            methodHandle = METHOD_HANDLE_BOOLEAN;
-        }
-        else if (keyType.getJavaType() == long.class) {
-            methodHandle = METHOD_HANDLE_LONG;
-        }
-        else if (keyType.getJavaType() == double.class) {
-            methodHandle = METHOD_HANDLE_DOUBLE;
-        }
-        else {
-            methodHandle = METHOD_HANDLE_OBJECT;
-        }
-        MissingKeyExceptionFactory missingKeyExceptionFactory = new MissingKeyExceptionFactory(functionDependencies, keyType);
-        methodHandle = methodHandle.bindTo(missingKeyExceptionFactory).bindTo(keyType).bindTo(valueType);
-        methodHandle = methodHandle.asType(methodHandle.type().changeReturnType(Primitives.wrap(valueType.getJavaType())));
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                NULLABLE_RETURN,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Object subscript(MissingKeyExceptionFactory missingKeyExceptionFactory, Type keyType, Type valueType, ConnectorSession session, Block map, boolean key)
     {
@@ -144,6 +106,44 @@ public class MapSubscriptOperator
             throw missingKeyExceptionFactory.create(session, key);
         }
         return readNativeValue(valueType, mapBlock, valuePosition);
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return FunctionDependencyDeclaration.builder()
+                .addOptionalCastSignature(new TypeSignature("K"), VARCHAR.getTypeSignature())
+                .build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V");
+
+        MethodHandle methodHandle;
+        if (keyType.getJavaType() == boolean.class) {
+            methodHandle = METHOD_HANDLE_BOOLEAN;
+        }
+        else if (keyType.getJavaType() == long.class) {
+            methodHandle = METHOD_HANDLE_LONG;
+        }
+        else if (keyType.getJavaType() == double.class) {
+            methodHandle = METHOD_HANDLE_DOUBLE;
+        }
+        else {
+            methodHandle = METHOD_HANDLE_OBJECT;
+        }
+        MissingKeyExceptionFactory missingKeyExceptionFactory = new MissingKeyExceptionFactory(functionDependencies, keyType);
+        methodHandle = methodHandle.bindTo(missingKeyExceptionFactory).bindTo(keyType).bindTo(valueType);
+        methodHandle = methodHandle.asType(methodHandle.type().changeReturnType(Primitives.wrap(valueType.getJavaType())));
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                NULLABLE_RETURN,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL),
+                methodHandle);
     }
 
     private static class MissingKeyExceptionFactory

@@ -71,6 +71,15 @@ public class ExpressionCompiler
         this.cacheStatsMBean = new CacheStatsMBean(cursorProcessors);
     }
 
+    private static void generateToString(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, String string)
+    {
+        // bind constant via invokedynamic to avoid constant pool issues due to large strings
+        classDefinition.declareMethod(a(PUBLIC), "toString", type(String.class))
+                .getBody()
+                .append(invoke(callSiteBinder.bind(string, String.class), "toString"))
+                .retObject();
+    }
+
     @Managed
     @Nested
     public CacheStatsMBean getCursorProcessorCache()
@@ -165,15 +174,6 @@ public class ExpressionCompiler
                         .toString());
 
         return defineClass(classDefinition, superType, callSiteBinder.getBindings(), getClass().getClassLoader());
-    }
-
-    private static void generateToString(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, String string)
-    {
-        // bind constant via invokedynamic to avoid constant pool issues due to large strings
-        classDefinition.declareMethod(a(PUBLIC), "toString", type(String.class))
-                .getBody()
-                .append(invoke(callSiteBinder.bind(string, String.class), "toString"))
-                .retObject();
     }
 
     private static final class CacheKey

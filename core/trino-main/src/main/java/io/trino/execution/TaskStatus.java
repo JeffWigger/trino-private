@@ -122,6 +122,52 @@ public class TaskStatus
         this.dynamicFiltersVersion = dynamicFiltersVersion;
     }
 
+    public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId)
+    {
+        return new TaskStatus(
+                taskId,
+                "",
+                STARTING_VERSION,
+                PLANNED,
+                location,
+                nodeId,
+                ImmutableSet.of(),
+                ImmutableList.of(),
+                0,
+                0,
+                false,
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                0,
+                new Duration(0, MILLISECONDS),
+                INITIAL_DYNAMIC_FILTERS_VERSION);
+    }
+
+    public static TaskStatus failWith(TaskStatus taskStatus, TaskState state, List<ExecutionFailureInfo> exceptions)
+    {
+        return new TaskStatus(
+                taskStatus.getTaskId(),
+                taskStatus.getTaskInstanceId(),
+                MAX_VERSION,
+                state,
+                taskStatus.getSelf(),
+                taskStatus.getNodeId(),
+                taskStatus.getCompletedDriverGroups(),
+                exceptions,
+                taskStatus.getQueuedPartitionedDrivers(),
+                taskStatus.getRunningPartitionedDrivers(),
+                taskStatus.isOutputBufferOverutilized(),
+                taskStatus.getPhysicalWrittenDataSize(),
+                taskStatus.getMemoryReservation(),
+                taskStatus.getSystemMemoryReservation(),
+                taskStatus.getRevocableMemoryReservation(),
+                taskStatus.getFullGcCount(),
+                taskStatus.getFullGcTime(),
+                taskStatus.getDynamicFiltersVersion());
+    }
+
     @JsonProperty
     public TaskId getTaskId()
     {
@@ -237,51 +283,5 @@ public class TaskStatus
                 .add("taskId", taskId)
                 .add("state", state)
                 .toString();
-    }
-
-    public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId)
-    {
-        return new TaskStatus(
-                taskId,
-                "",
-                STARTING_VERSION,
-                PLANNED,
-                location,
-                nodeId,
-                ImmutableSet.of(),
-                ImmutableList.of(),
-                0,
-                0,
-                false,
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                0,
-                new Duration(0, MILLISECONDS),
-                INITIAL_DYNAMIC_FILTERS_VERSION);
-    }
-
-    public static TaskStatus failWith(TaskStatus taskStatus, TaskState state, List<ExecutionFailureInfo> exceptions)
-    {
-        return new TaskStatus(
-                taskStatus.getTaskId(),
-                taskStatus.getTaskInstanceId(),
-                MAX_VERSION,
-                state,
-                taskStatus.getSelf(),
-                taskStatus.getNodeId(),
-                taskStatus.getCompletedDriverGroups(),
-                exceptions,
-                taskStatus.getQueuedPartitionedDrivers(),
-                taskStatus.getRunningPartitionedDrivers(),
-                taskStatus.isOutputBufferOverutilized(),
-                taskStatus.getPhysicalWrittenDataSize(),
-                taskStatus.getMemoryReservation(),
-                taskStatus.getSystemMemoryReservation(),
-                taskStatus.getRevocableMemoryReservation(),
-                taskStatus.getFullGcCount(),
-                taskStatus.getFullGcTime(),
-                taskStatus.getDynamicFiltersVersion());
     }
 }

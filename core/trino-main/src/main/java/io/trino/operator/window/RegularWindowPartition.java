@@ -41,14 +41,11 @@ public final class RegularWindowPartition
     private final List<FramedWindowFunction> windowFunctions;
 
     private final PagesHashStrategy peerGroupHashStrategy;
-
+    private final Map<Integer, Framing> framings = new HashMap<>();
     private int peerGroupStart;
     private int peerGroupEnd;
-
     private int currentGroupIndex = -1;
     private int currentPosition;
-
-    private final Map<Integer, Framing> framings = new HashMap<>();
 
     public RegularWindowPartition(
             PagesIndex pagesIndex,

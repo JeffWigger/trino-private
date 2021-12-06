@@ -23,6 +23,11 @@ public class TestingWarningCollectorConfig
     private int preloadedWarnings;
     private boolean addWarnings;
 
+    public int getPreloadedWarnings()
+    {
+        return preloadedWarnings;
+    }
+
     @Config("testing-warning-collector.preloaded-warnings")
     @ConfigDescription("Preloads warning collector with test warnings")
     public TestingWarningCollectorConfig setPreloadedWarnings(int preloadedWarnings)
@@ -32,9 +37,9 @@ public class TestingWarningCollectorConfig
         return this;
     }
 
-    public int getPreloadedWarnings()
+    public boolean getAddWarnings()
     {
-        return preloadedWarnings;
+        return addWarnings;
     }
 
     @Config("testing-warning-collector.add-warnings")
@@ -43,10 +48,5 @@ public class TestingWarningCollectorConfig
     {
         this.addWarnings = addWarnings;
         return this;
-    }
-
-    public boolean getAddWarnings()
-    {
-        return addWarnings;
     }
 }

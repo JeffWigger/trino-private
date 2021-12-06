@@ -50,6 +50,14 @@ public class LoggingInvocationHandler
         this.logger = requireNonNull(logger, "logger is null");
     }
 
+    private static String formatArgument(Object arg)
+    {
+        if (arg instanceof String) {
+            return "'" + ((String) arg).replace("'", "''") + "'";
+        }
+        return String.valueOf(arg);
+    }
+
     @Override
     protected Object handleInvocation(Object proxy, Method method, Object[] args)
             throws Throwable
@@ -82,14 +90,6 @@ public class LoggingInvocationHandler
                             return formatArgument(args[i]);
                         })
                         .collect(joining(", ", "(", ")"));
-    }
-
-    private static String formatArgument(Object arg)
-    {
-        if (arg instanceof String) {
-            return "'" + ((String) arg).replace("'", "''") + "'";
-        }
-        return String.valueOf(arg);
     }
 
     public interface ParameterNamesProvider

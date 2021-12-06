@@ -40,6 +40,15 @@ public final class SqlTimestampWithTimeZone
     private final int picosOfMilli;
     private final TimeZoneKey timeZoneKey;
 
+    // visible for testing
+    SqlTimestampWithTimeZone(int precision, long epochMillis, int picosOfMilli, TimeZoneKey timeZoneKey)
+    {
+        this.precision = precision;
+        this.epochMillis = epochMillis;
+        this.picosOfMilli = picosOfMilli;
+        this.timeZoneKey = requireNonNull(timeZoneKey, "timeZoneKey is null");
+    }
+
     public static SqlTimestampWithTimeZone fromInstant(int precision, Instant instant, ZoneId zoneId)
     {
         return newInstanceWithRounding(precision, instant.toEpochMilli(), (instant.getNano() % NANOSECONDS_PER_MILLISECOND) * PICOSECONDS_PER_NANOSECOND, TimeZoneKey.getTimeZoneKey(zoneId.getId()));
@@ -91,15 +100,6 @@ public final class SqlTimestampWithTimeZone
         }
 
         return new SqlTimestampWithTimeZone(precision, epochMillis, picosOfMilli, sessionTimeZoneKey);
-    }
-
-    // visible for testing
-    SqlTimestampWithTimeZone(int precision, long epochMillis, int picosOfMilli, TimeZoneKey timeZoneKey)
-    {
-        this.precision = precision;
-        this.epochMillis = epochMillis;
-        this.picosOfMilli = picosOfMilli;
-        this.timeZoneKey = requireNonNull(timeZoneKey, "timeZoneKey is null");
     }
 
     public int getPrecision()

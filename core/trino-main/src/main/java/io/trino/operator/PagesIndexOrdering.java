@@ -27,6 +27,16 @@ public class PagesIndexOrdering
         this.comparator = requireNonNull(comparator, "comparator is null");
     }
 
+    /**
+     * Swaps x[a .. (a+n-1)] with x[b .. (b+n-1)].
+     */
+    private static void vectorSwap(PagesIndex pagesIndex, int from, int l, int s)
+    {
+        for (int i = 0; i < s; i++, from++, l++) {
+            pagesIndex.swap(from, l);
+        }
+    }
+
     public PagesIndexComparator getComparator()
     {
         return comparator;
@@ -149,15 +159,5 @@ public class PagesIndexOrdering
         return (ab < 0 ?
                 (bc < 0 ? b : ac < 0 ? c : a) :
                 (bc > 0 ? b : ac > 0 ? c : a));
-    }
-
-    /**
-     * Swaps x[a .. (a+n-1)] with x[b .. (b+n-1)].
-     */
-    private static void vectorSwap(PagesIndex pagesIndex, int from, int l, int s)
-    {
-        for (int i = 0; i < s; i++, from++, l++) {
-            pagesIndex.swap(from, l);
-        }
     }
 }

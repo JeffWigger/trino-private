@@ -51,11 +51,10 @@ public class FixedLifespanScheduler
     private final Map<InternalNode, IntListIterator> nodeToDriverGroupsMap;
     private final List<ConnectorPartitionHandle> partitionHandles;
     private final OptionalInt concurrentLifespansPerTask;
-
-    private boolean initialScheduled;
-    private SettableFuture<Void> newDriverGroupReady = SettableFuture.create();
     @GuardedBy("this")
     private final List<Lifespan> recentlyCompletedDriverGroups = new ArrayList<>();
+    private boolean initialScheduled;
+    private SettableFuture<Void> newDriverGroupReady = SettableFuture.create();
     private int totalDriverGroupsScheduled;
 
     public FixedLifespanScheduler(BucketNodeMap bucketNodeMap, List<ConnectorPartitionHandle> partitionHandles, OptionalInt concurrentLifespansPerTask)

@@ -30,6 +30,23 @@ import static org.testng.Assert.assertTrue;
 
 public class TestBooleanOutputStream
 {
+    private static boolean checkpointsEqual(BooleanStreamCheckpoint left, BooleanStreamCheckpoint right)
+    {
+        assertNotNull(left);
+        assertNotNull(right);
+        if (left.getOffset() != right.getOffset()) {
+            return false;
+        }
+
+        ByteStreamCheckpoint leftCheckpoint = left.getByteStreamCheckpoint();
+        ByteStreamCheckpoint rightCheckpoint = right.getByteStreamCheckpoint();
+        assertNotNull(leftCheckpoint);
+        assertNotNull(rightCheckpoint);
+
+        return leftCheckpoint.getInputStreamCheckpoint() == rightCheckpoint.getInputStreamCheckpoint() &&
+                leftCheckpoint.getOffset() == rightCheckpoint.getOffset();
+    }
+
     @Test
     public void testWriteBoolean()
     {
@@ -77,22 +94,5 @@ public class TestBooleanOutputStream
             }
             assertEquals(batchWriteBuffer, singleWriteBuffer);
         }
-    }
-
-    private static boolean checkpointsEqual(BooleanStreamCheckpoint left, BooleanStreamCheckpoint right)
-    {
-        assertNotNull(left);
-        assertNotNull(right);
-        if (left.getOffset() != right.getOffset()) {
-            return false;
-        }
-
-        ByteStreamCheckpoint leftCheckpoint = left.getByteStreamCheckpoint();
-        ByteStreamCheckpoint rightCheckpoint = right.getByteStreamCheckpoint();
-        assertNotNull(leftCheckpoint);
-        assertNotNull(rightCheckpoint);
-
-        return leftCheckpoint.getInputStreamCheckpoint() == rightCheckpoint.getInputStreamCheckpoint() &&
-                leftCheckpoint.getOffset() == rightCheckpoint.getOffset();
     }
 }

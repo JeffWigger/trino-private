@@ -116,29 +116,6 @@ class AggregationAnalyzer
     private final Scope sourceScope;
     private final Optional<Scope> orderByScope;
 
-    public static void verifySourceAggregations(
-            List<Expression> groupByExpressions,
-            Scope sourceScope,
-            Expression expression,
-            Metadata metadata,
-            Analysis analysis)
-    {
-        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.empty(), metadata, analysis);
-        analyzer.analyze(expression);
-    }
-
-    public static void verifyOrderByAggregations(
-            List<Expression> groupByExpressions,
-            Scope sourceScope,
-            Scope orderByScope,
-            Expression expression,
-            Metadata metadata,
-            Analysis analysis)
-    {
-        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.of(orderByScope), metadata, analysis);
-        analyzer.analyze(expression);
-    }
-
     private AggregationAnalyzer(List<Expression> groupByExpressions, Scope sourceScope, Optional<Scope> orderByScope, Metadata metadata, Analysis analysis)
     {
         requireNonNull(groupByExpressions, "groupByExpressions is null");
@@ -171,12 +148,49 @@ class AggregationAnalyzer
         });
     }
 
+    public static void verifySourceAggregations(
+            List<Expression> groupByExpressions,
+            Scope sourceScope,
+            Expression expression,
+            Metadata metadata,
+            Analysis analysis)
+    {
+        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.empty(), metadata, analysis);
+        analyzer.analyze(expression);
+    }
+
+    public static void verifyOrderByAggregations(
+            List<Expression> groupByExpressions,
+            Scope sourceScope,
+            Scope orderByScope,
+            Expression expression,
+            Metadata metadata,
+            Analysis analysis)
+    {
+        AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, sourceScope, Optional.of(orderByScope), metadata, analysis);
+        analyzer.analyze(expression);
+    }
+
     private void analyze(Expression expression)
     {
         Visitor visitor = new Visitor();
         if (!visitor.process(expression, null)) {
             throw semanticException(EXPRESSION_NOT_AGGREGATE, expression, "'%s' must be an aggregate expression or appear in GROUP BY clause", expression);
         }
+    }
+
+    private boolean hasOrderByReferencesToOutputColumns(Node node)
+    {
+        return hasReferencesToScope(node, analysis, orderByScope.get());
+    }
+
+    private void verifyNoOrderByReferencesToOutputColumns(Node node, StandardErrorCode errorCode, String errorString)
+    {
+        getReferencesToScope(node, analysis, orderByScope.get())
+                .findFirst()
+                .ifPresent(expression -> {
+                    throw semanticException(errorCode, expression, errorString);
+                });
     }
 
     /**
@@ -708,19 +722,5 @@ class AggregationAnalyzer
 
             return super.process(node, context);
         }
-    }
-
-    private boolean hasOrderByReferencesToOutputColumns(Node node)
-    {
-        return hasReferencesToScope(node, analysis, orderByScope.get());
-    }
-
-    private void verifyNoOrderByReferencesToOutputColumns(Node node, StandardErrorCode errorCode, String errorString)
-    {
-        getReferencesToScope(node, analysis, orderByScope.get())
-                .findFirst()
-                .ifPresent(expression -> {
-                    throw semanticException(errorCode, expression, errorString);
-                });
     }
 }

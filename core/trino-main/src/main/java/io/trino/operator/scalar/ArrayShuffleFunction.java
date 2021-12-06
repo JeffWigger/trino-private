@@ -29,8 +29,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @Description("Generates a random permutation of the given array.")
 public final class ArrayShuffleFunction
 {
-    private final PageBuilder pageBuilder;
     private static final int INITIAL_LENGTH = 128;
+    private final PageBuilder pageBuilder;
     private int[] positions = new int[INITIAL_LENGTH];
 
     @TypeParameter("E")

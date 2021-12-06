@@ -43,6 +43,22 @@ public class RowsFraming
         this.partitionEnd = partitionEnd;
     }
 
+    private static int preceding(int rowPosition, long value)
+    {
+        if (value > rowPosition) {
+            return 0;
+        }
+        return toIntExact(rowPosition - value);
+    }
+
+    private static int following(int rowPosition, int endPosition, long value)
+    {
+        if (value > (endPosition - rowPosition)) {
+            return endPosition;
+        }
+        return toIntExact(rowPosition + value);
+    }
+
     @Override
     public Range getRange(int currentPosition, int currentGroup, int peerGroupStart, int peerGroupEnd)
     {
@@ -120,22 +136,6 @@ public class RowsFraming
         }
 
         return (start > end) || (start > positions);
-    }
-
-    private static int preceding(int rowPosition, long value)
-    {
-        if (value > rowPosition) {
-            return 0;
-        }
-        return toIntExact(rowPosition - value);
-    }
-
-    private static int following(int rowPosition, int endPosition, long value)
-    {
-        if (value > (endPosition - rowPosition)) {
-            return endPosition;
-        }
-        return toIntExact(rowPosition + value);
     }
 
     private long getValue(int channel, int currentPosition)

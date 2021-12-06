@@ -117,6 +117,132 @@ public abstract class AbstractMinMaxBy
         this.min = min;
     }
 
+    private static List<ParameterMetadata> createInputParameterMetadata(Type value, Type key)
+    {
+        return ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(NULLABLE_BLOCK_INPUT_CHANNEL, value), new ParameterMetadata(BLOCK_INPUT_CHANNEL, key), new ParameterMetadata(BLOCK_INDEX));
+    }
+
+    private static void generateInputMethod(ClassDefinition definition, CallSiteBinder binder, MethodHandle compareMethod, Type keyType, Type valueType, Class<?> stateClass)
+    {
+        Parameter state = arg("state", stateClass);
+        Parameter value = arg("value", Block.class);
+        Parameter key = arg("key", Block.class);
+        Parameter position = arg("position", int.class);
+        MethodDefinition method = definition.declareMethod(a(PUBLIC, STATIC), "input", type(void.class), state, value, key, position);
+        SqlTypeBytecodeExpression keySqlType = constantType(binder, keyType);
+
+        BytecodeBlock ifBlock = new BytecodeBlock()
+                .append(invokeMethod(stateClass, state, "setFirst", keySqlType.getValue(key, position)))
+                .append(state.invoke("setFirstNull", void.class, constantBoolean(false)))
+                .append(state.invoke("setSecondNull", void.class, value.invoke("isNull", boolean.class, position)));
+        BytecodeNode setValueNode;
+        if (valueType.getJavaType().isPrimitive()) {
+            SqlTypeBytecodeExpression valueSqlType = constantType(binder, valueType);
+            setValueNode = invokeMethod(stateClass, state, "setSecond", valueSqlType.getValue(value, position));
+        }
+        else {
+            // Do not get value directly given it creates object overhead.
+            // Such objects would live long enough in Block or SliceBigArray to cause GC pressure.
+            setValueNode = new BytecodeBlock()
+                    .append(state.invoke("setSecondBlock", void.class, value))
+                    .append(state.invoke("setSecondPosition", void.class, position));
+        }
+        ifBlock.append(new IfStatement()
+                .condition(value.invoke("isNull", boolean.class, position))
+                .ifFalse(setValueNode));
+
+        method.getBody().append(new IfStatement()
+                        .condition(or(
+                                state.invoke("isFirstNull", boolean.class),
+                                and(
+                                        not(key.invoke("isNull", boolean.class, position)),
+                                        loadConstant(binder, compareMethod, MethodHandle.class).invoke(
+                                                "invokeExact",
+                                                boolean.class,
+                                                keySqlType.getValue(key, position).cast(compareMethod.type().parameterType(0)),
+                                                invokeMethod(stateClass, state, "getFirst").cast(compareMethod.type().parameterType(1))))))
+                        .ifTrue(ifBlock))
+                .ret();
+    }
+
+    private static void generateCombineMethod(ClassDefinition definition, CallSiteBinder binder, MethodHandle compareMethod, Type valueType, Class<?> stateClass)
+    {
+        Parameter state = arg("state", stateClass);
+        Parameter otherState = arg("otherState", stateClass);
+        MethodDefinition method = definition.declareMethod(a(PUBLIC, STATIC), "combine", type(void.class), state, otherState);
+
+        BytecodeBlock ifBlock = new BytecodeBlock()
+                .append(invokeMethod(stateClass, state, "setFirst", invokeMethod(stateClass, otherState, "getFirst")))
+                .append(state.invoke("setFirstNull", void.class, otherState.invoke("isFirstNull", boolean.class)))
+                .append(state.invoke("setSecondNull", void.class, otherState.invoke("isSecondNull", boolean.class)));
+        if (valueType.getJavaType().isPrimitive()) {
+            ifBlock.append(invokeMethod(stateClass, state, "setSecond", otherState.invoke("getSecond", valueType.getJavaType())));
+        }
+        else {
+            ifBlock.append(new BytecodeBlock()
+                    .append(state.invoke("setSecondBlock", void.class, otherState.invoke("getSecondBlock", Block.class)))
+                    .append(state.invoke("setSecondPosition", void.class, otherState.invoke("getSecondPosition", int.class))));
+        }
+
+        method.getBody()
+                .append(new IfStatement()
+                        .condition(or(
+                                state.invoke("isFirstNull", boolean.class),
+                                and(
+                                        not(otherState.invoke("isFirstNull", boolean.class)),
+                                        loadConstant(binder, compareMethod, MethodHandle.class).invoke(
+                                                "invokeExact",
+                                                boolean.class,
+                                                invokeMethod(stateClass, otherState, "getFirst").cast(compareMethod.type().parameterType(0)),
+                                                invokeMethod(stateClass, state, "getFirst").cast(compareMethod.type().parameterType(1))))))
+                        .ifTrue(ifBlock))
+                .ret();
+    }
+
+    private static BytecodeExpression invokeMethod(Class<?> instanceType, Parameter instance, String methodName, BytecodeExpression... arguments)
+    {
+        Method method = getMethod(instanceType, methodName);
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        checkArgument(parameterTypes.length == arguments.length, "Expected %s arguments, but got %s", parameterTypes.length, arguments.length);
+
+        ImmutableList.Builder<BytecodeExpression> castedArguments = ImmutableList.builder();
+        for (int i = 0; i < arguments.length; i++) {
+            BytecodeExpression argument = arguments[i];
+            Class<?> parameterType = parameterTypes[i];
+            castedArguments.add(argument.cast(parameterType));
+        }
+        return instance.invoke(method, castedArguments.build());
+    }
+
+    private static void generateOutputMethod(ClassDefinition definition, CallSiteBinder binder, Type valueType, Class<?> stateClass)
+    {
+        Parameter state = arg("state", stateClass);
+        Parameter out = arg("out", BlockBuilder.class);
+        MethodDefinition method = definition.declareMethod(a(PUBLIC, STATIC), "output", type(void.class), state, out);
+
+        IfStatement ifStatement = new IfStatement()
+                .condition(or(state.invoke("isFirstNull", boolean.class), state.invoke("isSecondNull", boolean.class)))
+                .ifTrue(new BytecodeBlock().append(out.invoke("appendNull", BlockBuilder.class)).pop());
+        SqlTypeBytecodeExpression valueSqlType = constantType(binder, valueType);
+        BytecodeExpression getValueExpression;
+        if (valueType.getJavaType().isPrimitive()) {
+            getValueExpression = state.invoke("getSecond", valueType.getJavaType());
+        }
+        else {
+            getValueExpression = valueSqlType.getValue(state.invoke("getSecondBlock", Block.class), state.invoke("getSecondPosition", int.class));
+        }
+        ifStatement.ifFalse(valueSqlType.writeValue(out, getValueExpression));
+        method.getBody().append(ifStatement).ret();
+    }
+
+    private static Method getMethod(Class<?> stateClass, String name)
+    {
+        return stream(stateClass.getMethods())
+                .filter(method -> method.getName().equals(name))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("State class does not have a method named " + name));
+    }
+
     @Override
     public FunctionDependencyDeclaration getFunctionDependencies()
     {
@@ -210,131 +336,5 @@ public abstract class AbstractMinMaxBy
                 valueType);
         GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(aggregationMetadata, classLoader);
         return new InternalAggregationFunction(name, inputTypes, ImmutableList.of(intermediateType), valueType, factory);
-    }
-
-    private static List<ParameterMetadata> createInputParameterMetadata(Type value, Type key)
-    {
-        return ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(NULLABLE_BLOCK_INPUT_CHANNEL, value), new ParameterMetadata(BLOCK_INPUT_CHANNEL, key), new ParameterMetadata(BLOCK_INDEX));
-    }
-
-    private static void generateInputMethod(ClassDefinition definition, CallSiteBinder binder, MethodHandle compareMethod, Type keyType, Type valueType, Class<?> stateClass)
-    {
-        Parameter state = arg("state", stateClass);
-        Parameter value = arg("value", Block.class);
-        Parameter key = arg("key", Block.class);
-        Parameter position = arg("position", int.class);
-        MethodDefinition method = definition.declareMethod(a(PUBLIC, STATIC), "input", type(void.class), state, value, key, position);
-        SqlTypeBytecodeExpression keySqlType = constantType(binder, keyType);
-
-        BytecodeBlock ifBlock = new BytecodeBlock()
-                .append(invokeMethod(stateClass, state, "setFirst", keySqlType.getValue(key, position)))
-                .append(state.invoke("setFirstNull", void.class, constantBoolean(false)))
-                .append(state.invoke("setSecondNull", void.class, value.invoke("isNull", boolean.class, position)));
-        BytecodeNode setValueNode;
-        if (valueType.getJavaType().isPrimitive()) {
-            SqlTypeBytecodeExpression valueSqlType = constantType(binder, valueType);
-            setValueNode = invokeMethod(stateClass, state, "setSecond", valueSqlType.getValue(value, position));
-        }
-        else {
-            // Do not get value directly given it creates object overhead.
-            // Such objects would live long enough in Block or SliceBigArray to cause GC pressure.
-            setValueNode = new BytecodeBlock()
-                    .append(state.invoke("setSecondBlock", void.class, value))
-                    .append(state.invoke("setSecondPosition", void.class, position));
-        }
-        ifBlock.append(new IfStatement()
-                .condition(value.invoke("isNull", boolean.class, position))
-                .ifFalse(setValueNode));
-
-        method.getBody().append(new IfStatement()
-                .condition(or(
-                        state.invoke("isFirstNull", boolean.class),
-                        and(
-                                not(key.invoke("isNull", boolean.class, position)),
-                                loadConstant(binder, compareMethod, MethodHandle.class).invoke(
-                                        "invokeExact",
-                                        boolean.class,
-                                        keySqlType.getValue(key, position).cast(compareMethod.type().parameterType(0)),
-                                        invokeMethod(stateClass, state, "getFirst").cast(compareMethod.type().parameterType(1))))))
-                .ifTrue(ifBlock))
-                .ret();
-    }
-
-    private static void generateCombineMethod(ClassDefinition definition, CallSiteBinder binder, MethodHandle compareMethod, Type valueType, Class<?> stateClass)
-    {
-        Parameter state = arg("state", stateClass);
-        Parameter otherState = arg("otherState", stateClass);
-        MethodDefinition method = definition.declareMethod(a(PUBLIC, STATIC), "combine", type(void.class), state, otherState);
-
-        BytecodeBlock ifBlock = new BytecodeBlock()
-                .append(invokeMethod(stateClass, state, "setFirst", invokeMethod(stateClass, otherState, "getFirst")))
-                .append(state.invoke("setFirstNull", void.class, otherState.invoke("isFirstNull", boolean.class)))
-                .append(state.invoke("setSecondNull", void.class, otherState.invoke("isSecondNull", boolean.class)));
-        if (valueType.getJavaType().isPrimitive()) {
-            ifBlock.append(invokeMethod(stateClass, state, "setSecond", otherState.invoke("getSecond", valueType.getJavaType())));
-        }
-        else {
-            ifBlock.append(new BytecodeBlock()
-                    .append(state.invoke("setSecondBlock", void.class, otherState.invoke("getSecondBlock", Block.class)))
-                    .append(state.invoke("setSecondPosition", void.class, otherState.invoke("getSecondPosition", int.class))));
-        }
-
-        method.getBody()
-                .append(new IfStatement()
-                        .condition(or(
-                                state.invoke("isFirstNull", boolean.class),
-                                and(
-                                        not(otherState.invoke("isFirstNull", boolean.class)),
-                                        loadConstant(binder, compareMethod, MethodHandle.class).invoke(
-                                                "invokeExact",
-                                                boolean.class,
-                                                invokeMethod(stateClass, otherState, "getFirst").cast(compareMethod.type().parameterType(0)),
-                                                invokeMethod(stateClass, state, "getFirst").cast(compareMethod.type().parameterType(1))))))
-                        .ifTrue(ifBlock))
-                .ret();
-    }
-
-    private static BytecodeExpression invokeMethod(Class<?> instanceType, Parameter instance, String methodName, BytecodeExpression... arguments)
-    {
-        Method method = getMethod(instanceType, methodName);
-        Class<?>[] parameterTypes = method.getParameterTypes();
-        checkArgument(parameterTypes.length == arguments.length, "Expected %s arguments, but got %s", parameterTypes.length, arguments.length);
-
-        ImmutableList.Builder<BytecodeExpression> castedArguments = ImmutableList.builder();
-        for (int i = 0; i < arguments.length; i++) {
-            BytecodeExpression argument = arguments[i];
-            Class<?> parameterType = parameterTypes[i];
-            castedArguments.add(argument.cast(parameterType));
-        }
-        return instance.invoke(method, castedArguments.build());
-    }
-
-    private static void generateOutputMethod(ClassDefinition definition, CallSiteBinder binder, Type valueType, Class<?> stateClass)
-    {
-        Parameter state = arg("state", stateClass);
-        Parameter out = arg("out", BlockBuilder.class);
-        MethodDefinition method = definition.declareMethod(a(PUBLIC, STATIC), "output", type(void.class), state, out);
-
-        IfStatement ifStatement = new IfStatement()
-                .condition(or(state.invoke("isFirstNull", boolean.class), state.invoke("isSecondNull", boolean.class)))
-                .ifTrue(new BytecodeBlock().append(out.invoke("appendNull", BlockBuilder.class)).pop());
-        SqlTypeBytecodeExpression valueSqlType = constantType(binder, valueType);
-        BytecodeExpression getValueExpression;
-        if (valueType.getJavaType().isPrimitive()) {
-            getValueExpression = state.invoke("getSecond", valueType.getJavaType());
-        }
-        else {
-            getValueExpression = valueSqlType.getValue(state.invoke("getSecondBlock", Block.class), state.invoke("getSecondPosition", int.class));
-        }
-        ifStatement.ifFalse(valueSqlType.writeValue(out, getValueExpression));
-        method.getBody().append(ifStatement).ret();
-    }
-
-    private static Method getMethod(Class<?> stateClass, String name)
-    {
-        return stream(stateClass.getMethods())
-                .filter(method -> method.getName().equals(name))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("State class does not have a method named " + name));
     }
 }

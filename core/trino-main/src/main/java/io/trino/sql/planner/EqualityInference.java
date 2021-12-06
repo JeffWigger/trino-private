@@ -77,6 +77,117 @@ public class EqualityInference
     }
 
     /**
+     * Determines whether an Expression may be successfully applied to the equality inference
+     */
+    public static boolean isInferenceCandidate(Metadata metadata, Expression expression)
+    {
+        if (expression instanceof ComparisonExpression &&
+                isDeterministic(expression, metadata) &&
+                !mayReturnNullOnNonNullInput(expression)) {
+            ComparisonExpression comparison = (ComparisonExpression) expression;
+            if (comparison.getOperator() == ComparisonExpression.Operator.EQUAL) {
+                // We should only consider equalities that have distinct left and right components
+                return !comparison.getLeft().equals(comparison.getRight());
+            }
+        }
+        return false;
+    }
+
+    public static EqualityInference newInstance(Metadata metadata, Expression... expressions)
+    {
+        return newInstance(metadata, Arrays.asList(expressions));
+    }
+
+    public static EqualityInference newInstance(Metadata metadata, Collection<Expression> expressions)
+    {
+        DisjointSet<Expression> equalities = new DisjointSet<>();
+        expressions.stream()
+                .flatMap(expression -> extractConjuncts(expression).stream())
+                .filter(expression -> isInferenceCandidate(metadata, expression))
+                .forEach(expression -> {
+                    ComparisonExpression comparison = (ComparisonExpression) expression;
+                    Expression expression1 = comparison.getLeft();
+                    Expression expression2 = comparison.getRight();
+
+                    equalities.findAndUnion(expression1, expression2);
+                });
+
+        Collection<Set<Expression>> equivalentClasses = equalities.getEquivalentClasses();
+
+        // Map every expression to the set of equivalent expressions
+        Map<Expression, Set<Expression>> byExpression = new HashMap<>();
+        for (Set<Expression> equivalence : equivalentClasses) {
+            equivalence.forEach(expression -> byExpression.put(expression, equivalence));
+        }
+
+        // For every non-derived expression, extract the sub-expressions and see if they can be rewritten as other expressions. If so,
+        // use this new information to update the known equalities.
+        Set<Expression> derivedExpressions = new LinkedHashSet<>();
+        for (Expression expression : byExpression.keySet()) {
+            if (derivedExpressions.contains(expression)) {
+                continue;
+            }
+
+            SubExpressionExtractor.extract(expression)
+                    .filter(e -> !e.equals(expression))
+                    .forEach(subExpression -> {
+                        byExpression.getOrDefault(subExpression, ImmutableSet.of())
+                                .stream()
+                                .filter(e -> !e.equals(subExpression))
+                                .forEach(equivalentSubExpression -> {
+                                    Expression rewritten = replaceExpression(expression, ImmutableMap.of(subExpression, equivalentSubExpression));
+                                    equalities.findAndUnion(expression, rewritten);
+                                    derivedExpressions.add(rewritten);
+                                });
+                    });
+        }
+
+        Multimap<Expression, Expression> equalitySets = makeEqualitySets(equalities);
+
+        ImmutableMap.Builder<Expression, Expression> canonicalMappings = ImmutableMap.builder();
+        for (Map.Entry<Expression, Expression> entry : equalitySets.entries()) {
+            Expression canonical = entry.getKey();
+            Expression expression = entry.getValue();
+            canonicalMappings.put(expression, canonical);
+        }
+
+        return new EqualityInference(equalitySets, canonicalMappings.build(), derivedExpressions);
+    }
+
+    /**
+     * Provides a convenience Stream of Expression conjuncts which have not been added to the inference
+     */
+    public static Stream<Expression> nonInferrableConjuncts(Metadata metadata, Expression expression)
+    {
+        return extractConjuncts(expression).stream()
+                .filter(e -> !isInferenceCandidate(metadata, e));
+    }
+
+    /**
+     * Returns the most preferrable expression to be used as the canonical expression
+     */
+    private static Expression getCanonical(Stream<Expression> expressions)
+    {
+        return expressions.min(CANONICAL_ORDERING).orElse(null);
+    }
+
+    private static boolean isScoped(Expression expression, Predicate<Symbol> symbolScope)
+    {
+        return SymbolsExtractor.extractUnique(expression).stream().allMatch(symbolScope);
+    }
+
+    private static Multimap<Expression, Expression> makeEqualitySets(DisjointSet<Expression> equalities)
+    {
+        ImmutableSetMultimap.Builder<Expression, Expression> builder = ImmutableSetMultimap.builder();
+        for (Set<Expression> equalityGroup : equalities.getEquivalentClasses()) {
+            if (!equalityGroup.isEmpty()) {
+                builder.putAll(CANONICAL_ORDERING.min(equalityGroup), equalityGroup);
+            }
+        }
+        return builder.build();
+    }
+
+    /**
      * Attempts to rewrite an Expression in terms of the symbols allowed by the symbol scope
      * given the known equalities. Returns null if unsuccessful.
      */
@@ -176,93 +287,6 @@ public class EqualityInference
         return new EqualityPartition(scopeEqualities.build(), scopeComplementEqualities.build(), scopeStraddlingEqualities.build());
     }
 
-    /**
-     * Determines whether an Expression may be successfully applied to the equality inference
-     */
-    public static boolean isInferenceCandidate(Metadata metadata, Expression expression)
-    {
-        if (expression instanceof ComparisonExpression &&
-                isDeterministic(expression, metadata) &&
-                !mayReturnNullOnNonNullInput(expression)) {
-            ComparisonExpression comparison = (ComparisonExpression) expression;
-            if (comparison.getOperator() == ComparisonExpression.Operator.EQUAL) {
-                // We should only consider equalities that have distinct left and right components
-                return !comparison.getLeft().equals(comparison.getRight());
-            }
-        }
-        return false;
-    }
-
-    public static EqualityInference newInstance(Metadata metadata, Expression... expressions)
-    {
-        return newInstance(metadata, Arrays.asList(expressions));
-    }
-
-    public static EqualityInference newInstance(Metadata metadata, Collection<Expression> expressions)
-    {
-        DisjointSet<Expression> equalities = new DisjointSet<>();
-        expressions.stream()
-                .flatMap(expression -> extractConjuncts(expression).stream())
-                .filter(expression -> isInferenceCandidate(metadata, expression))
-                .forEach(expression -> {
-                    ComparisonExpression comparison = (ComparisonExpression) expression;
-                    Expression expression1 = comparison.getLeft();
-                    Expression expression2 = comparison.getRight();
-
-                    equalities.findAndUnion(expression1, expression2);
-                });
-
-        Collection<Set<Expression>> equivalentClasses = equalities.getEquivalentClasses();
-
-        // Map every expression to the set of equivalent expressions
-        Map<Expression, Set<Expression>> byExpression = new HashMap<>();
-        for (Set<Expression> equivalence : equivalentClasses) {
-            equivalence.forEach(expression -> byExpression.put(expression, equivalence));
-        }
-
-        // For every non-derived expression, extract the sub-expressions and see if they can be rewritten as other expressions. If so,
-        // use this new information to update the known equalities.
-        Set<Expression> derivedExpressions = new LinkedHashSet<>();
-        for (Expression expression : byExpression.keySet()) {
-            if (derivedExpressions.contains(expression)) {
-                continue;
-            }
-
-            SubExpressionExtractor.extract(expression)
-                    .filter(e -> !e.equals(expression))
-                    .forEach(subExpression -> {
-                        byExpression.getOrDefault(subExpression, ImmutableSet.of())
-                                .stream()
-                                .filter(e -> !e.equals(subExpression))
-                                .forEach(equivalentSubExpression -> {
-                                    Expression rewritten = replaceExpression(expression, ImmutableMap.of(subExpression, equivalentSubExpression));
-                                    equalities.findAndUnion(expression, rewritten);
-                                    derivedExpressions.add(rewritten);
-                                });
-                    });
-        }
-
-        Multimap<Expression, Expression> equalitySets = makeEqualitySets(equalities);
-
-        ImmutableMap.Builder<Expression, Expression> canonicalMappings = ImmutableMap.builder();
-        for (Map.Entry<Expression, Expression> entry : equalitySets.entries()) {
-            Expression canonical = entry.getKey();
-            Expression expression = entry.getValue();
-            canonicalMappings.put(expression, canonical);
-        }
-
-        return new EqualityInference(equalitySets, canonicalMappings.build(), derivedExpressions);
-    }
-
-    /**
-     * Provides a convenience Stream of Expression conjuncts which have not been added to the inference
-     */
-    public static Stream<Expression> nonInferrableConjuncts(Metadata metadata, Expression expression)
-    {
-        return extractConjuncts(expression).stream()
-                .filter(e -> !isInferenceCandidate(metadata, e));
-    }
-
     private Expression rewrite(Expression expression, Predicate<Symbol> symbolScope, boolean allowFullReplacement)
     {
         Map<Expression, Expression> expressionRemap = new HashMap<>();
@@ -286,14 +310,6 @@ public class EqualityInference
             return null;
         }
         return rewritten;
-    }
-
-    /**
-     * Returns the most preferrable expression to be used as the canonical expression
-     */
-    private static Expression getCanonical(Stream<Expression> expressions)
-    {
-        return expressions.min(CANONICAL_ORDERING).orElse(null);
     }
 
     /**
@@ -323,22 +339,6 @@ public class EqualityInference
         return getCanonical(
                 equivalences.stream()
                         .filter(e -> isScoped(e, symbolScope)));
-    }
-
-    private static boolean isScoped(Expression expression, Predicate<Symbol> symbolScope)
-    {
-        return SymbolsExtractor.extractUnique(expression).stream().allMatch(symbolScope);
-    }
-
-    private static Multimap<Expression, Expression> makeEqualitySets(DisjointSet<Expression> equalities)
-    {
-        ImmutableSetMultimap.Builder<Expression, Expression> builder = ImmutableSetMultimap.builder();
-        for (Set<Expression> equalityGroup : equalities.getEquivalentClasses()) {
-            if (!equalityGroup.isEmpty()) {
-                builder.putAll(CANONICAL_ORDERING.min(equalityGroup), equalityGroup);
-            }
-        }
-        return builder.build();
     }
 
     public static class EqualityPartition

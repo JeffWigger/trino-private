@@ -53,39 +53,6 @@ public class PushTableWriteThroughUnion
             .matching(tableWriter -> tableWriter.getPartitioningScheme().isEmpty())
             .with(source().matching(union().capturedAs(CHILD)));
 
-    @Override
-    public Pattern<TableWriterNode> getPattern()
-    {
-        return PATTERN;
-    }
-
-    @Override
-    public boolean isEnabled(Session session)
-    {
-        return isPushTableWriteThroughUnion(session);
-    }
-
-    @Override
-    public Result apply(TableWriterNode writerNode, Captures captures, Context context)
-    {
-        UnionNode unionNode = captures.get(CHILD);
-        ImmutableList.Builder<PlanNode> rewrittenSources = ImmutableList.builder();
-        List<Map<Symbol, Symbol>> sourceMappings = new ArrayList<>();
-        for (int source = 0; source < unionNode.getSources().size(); source++) {
-            rewrittenSources.add(rewriteSource(writerNode, unionNode, source, sourceMappings, context));
-        }
-
-        ImmutableListMultimap.Builder<Symbol, Symbol> unionMappings = ImmutableListMultimap.builder();
-        sourceMappings.forEach(mappings -> mappings.forEach(unionMappings::put));
-
-        return Result.ofPlanNode(
-                new UnionNode(
-                        context.getIdAllocator().getNextId(),
-                        rewrittenSources.build(),
-                        unionMappings.build(),
-                        ImmutableList.copyOf(unionMappings.build().keySet())));
-    }
-
     private static TableWriterNode rewriteSource(
             TableWriterNode writerNode,
             UnionNode unionNode,
@@ -118,5 +85,38 @@ public class PushTableWriteThroughUnion
                 .keySet()
                 .stream()
                 .collect(toImmutableMap(key -> key, key -> node.getSymbolMapping().get(key).get(source)));
+    }
+
+    @Override
+    public Pattern<TableWriterNode> getPattern()
+    {
+        return PATTERN;
+    }
+
+    @Override
+    public boolean isEnabled(Session session)
+    {
+        return isPushTableWriteThroughUnion(session);
+    }
+
+    @Override
+    public Result apply(TableWriterNode writerNode, Captures captures, Context context)
+    {
+        UnionNode unionNode = captures.get(CHILD);
+        ImmutableList.Builder<PlanNode> rewrittenSources = ImmutableList.builder();
+        List<Map<Symbol, Symbol>> sourceMappings = new ArrayList<>();
+        for (int source = 0; source < unionNode.getSources().size(); source++) {
+            rewrittenSources.add(rewriteSource(writerNode, unionNode, source, sourceMappings, context));
+        }
+
+        ImmutableListMultimap.Builder<Symbol, Symbol> unionMappings = ImmutableListMultimap.builder();
+        sourceMappings.forEach(mappings -> mappings.forEach(unionMappings::put));
+
+        return Result.ofPlanNode(
+                new UnionNode(
+                        context.getIdAllocator().getNextId(),
+                        rewrittenSources.build(),
+                        unionMappings.build(),
+                        ImmutableList.copyOf(unionMappings.build().keySet())));
     }
 }

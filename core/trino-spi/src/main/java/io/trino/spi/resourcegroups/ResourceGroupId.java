@@ -40,13 +40,6 @@ public final class ResourceGroupId
         this(append(requireNonNull(parent, "parent is null").segments, requireNonNull(name, "name is null")));
     }
 
-    private static List<String> append(List<String> list, String element)
-    {
-        List<String> result = new ArrayList<>(list);
-        result.add(element);
-        return result;
-    }
-
     @JsonCreator
     public ResourceGroupId(List<String> segments)
     {
@@ -55,6 +48,20 @@ public final class ResourceGroupId
             checkArgument(!segment.isEmpty(), "Empty segment in resource group id");
         }
         this.segments = segments;
+    }
+
+    private static List<String> append(List<String> list, String element)
+    {
+        List<String> result = new ArrayList<>(list);
+        result.add(element);
+        return result;
+    }
+
+    private static void checkArgument(boolean argument, String format, Object... args)
+    {
+        if (!argument) {
+            throw new IllegalArgumentException(format(format, args));
+        }
     }
 
     public String getLastSegment()
@@ -88,13 +95,6 @@ public final class ResourceGroupId
             return false;
         }
         return descendantSegments.subList(0, segments.size()).equals(segments);
-    }
-
-    private static void checkArgument(boolean argument, String format, Object... args)
-    {
-        if (!argument) {
-            throw new IllegalArgumentException(format(format, args));
-        }
     }
 
     @Override

@@ -34,6 +34,13 @@ import static com.google.common.reflect.Reflection.newProxy;
 public class WorkerModule
         implements Module
 {
+    @Provides
+    @Singleton
+    public static ResourceGroupManager<?> getResourceGroupManager(@SuppressWarnings("rawtypes") ResourceGroupManager manager)
+    {
+        return manager;
+    }
+
     @Override
     public void configure(Binder binder)
     {
@@ -55,12 +62,5 @@ public class WorkerModule
         }));
 
         binder.bind(WebUiAuthenticationFilter.class).to(NoWebUiAuthenticationFilter.class).in(Scopes.SINGLETON);
-    }
-
-    @Provides
-    @Singleton
-    public static ResourceGroupManager<?> getResourceGroupManager(@SuppressWarnings("rawtypes") ResourceGroupManager manager)
-    {
-        return manager;
     }
 }

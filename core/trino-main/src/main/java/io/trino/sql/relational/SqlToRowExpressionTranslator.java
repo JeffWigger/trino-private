@@ -165,6 +165,12 @@ public final class SqlToRowExpressionTranslator
             standardFunctionResolution = new StandardFunctionResolution(metadata);
         }
 
+        private static RowExpression changeType(RowExpression value, Type targetType)
+        {
+            ChangeTypeVisitor visitor = new ChangeTypeVisitor(targetType);
+            return value.accept(visitor, null);
+        }
+
         private Type getType(Expression node)
         {
             return types.get(NodeRef.of(node));
@@ -452,59 +458,6 @@ public final class SqlToRowExpressionTranslator
                     value);
         }
 
-        private static RowExpression changeType(RowExpression value, Type targetType)
-        {
-            ChangeTypeVisitor visitor = new ChangeTypeVisitor(targetType);
-            return value.accept(visitor, null);
-        }
-
-        private static class ChangeTypeVisitor
-                implements RowExpressionVisitor<RowExpression, Void>
-        {
-            private final Type targetType;
-
-            private ChangeTypeVisitor(Type targetType)
-            {
-                this.targetType = targetType;
-            }
-
-            @Override
-            public RowExpression visitCall(CallExpression call, Void context)
-            {
-                return new CallExpression(call.getResolvedFunction(), call.getArguments());
-            }
-
-            @Override
-            public RowExpression visitSpecialForm(SpecialForm specialForm, Void context)
-            {
-                return new SpecialForm(specialForm.getForm(), targetType, specialForm.getArguments());
-            }
-
-            @Override
-            public RowExpression visitInputReference(InputReferenceExpression reference, Void context)
-            {
-                return field(reference.getField(), targetType);
-            }
-
-            @Override
-            public RowExpression visitConstant(ConstantExpression literal, Void context)
-            {
-                return constant(literal.getValue(), targetType);
-            }
-
-            @Override
-            public RowExpression visitLambda(LambdaDefinitionExpression lambda, Void context)
-            {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public RowExpression visitVariableReference(VariableReferenceExpression reference, Void context)
-            {
-                return new VariableReferenceExpression(reference.getName(), targetType);
-            }
-        }
-
         @Override
         protected RowExpression visitCoalesceExpression(CoalesceExpression node, Void context)
         {
@@ -715,6 +668,53 @@ public final class SqlToRowExpressionTranslator
                     .collect(toImmutableList());
             Type returnType = getType(node);
             return new SpecialForm(ROW_CONSTRUCTOR, returnType, arguments);
+        }
+
+        private static class ChangeTypeVisitor
+                implements RowExpressionVisitor<RowExpression, Void>
+        {
+            private final Type targetType;
+
+            private ChangeTypeVisitor(Type targetType)
+            {
+                this.targetType = targetType;
+            }
+
+            @Override
+            public RowExpression visitCall(CallExpression call, Void context)
+            {
+                return new CallExpression(call.getResolvedFunction(), call.getArguments());
+            }
+
+            @Override
+            public RowExpression visitSpecialForm(SpecialForm specialForm, Void context)
+            {
+                return new SpecialForm(specialForm.getForm(), targetType, specialForm.getArguments());
+            }
+
+            @Override
+            public RowExpression visitInputReference(InputReferenceExpression reference, Void context)
+            {
+                return field(reference.getField(), targetType);
+            }
+
+            @Override
+            public RowExpression visitConstant(ConstantExpression literal, Void context)
+            {
+                return constant(literal.getValue(), targetType);
+            }
+
+            @Override
+            public RowExpression visitLambda(LambdaDefinitionExpression lambda, Void context)
+            {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public RowExpression visitVariableReference(VariableReferenceExpression reference, Void context)
+            {
+                return new VariableReferenceExpression(reference.getName(), targetType);
+            }
         }
     }
 }

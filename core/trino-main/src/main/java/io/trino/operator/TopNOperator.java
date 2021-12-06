@@ -37,6 +37,34 @@ import static java.util.Objects.requireNonNull;
 public class TopNOperator
         implements AdapterWorkProcessorOperator
 {
+    private final TopNProcessor topNProcessor;
+    private final WorkProcessor<Page> pages;
+    private final PageBuffer pageBuffer = new PageBuffer();
+    private TopNOperator(
+            MemoryTrackingContext memoryTrackingContext,
+            Optional<WorkProcessor<Page>> sourcePages,
+            List<Type> types,
+            int n,
+            List<Integer> sortChannels,
+            List<SortOrder> sortOrders,
+            TypeOperators typeOperators)
+    {
+        this.topNProcessor = new TopNProcessor(
+                requireNonNull(memoryTrackingContext, "memoryTrackingContext is null").aggregateUserMemoryContext(),
+                types,
+                n,
+                sortChannels,
+                sortOrders,
+                typeOperators);
+
+        if (n == 0) {
+            pages = WorkProcessor.of();
+        }
+        else {
+            pages = sourcePages.orElse(pageBuffer.pages()).transform(new TopNPages());
+        }
+    }
+
     public static OperatorFactory createOperatorFactory(
             int operatorId,
             PlanNodeId planNodeId,
@@ -47,6 +75,35 @@ public class TopNOperator
             TypeOperators typeOperators)
     {
         return createAdapterOperatorFactory(new Factory(operatorId, planNodeId, types, n, sortChannels, sortOrders, typeOperators));
+    }
+
+    @Override
+    public WorkProcessor<Page> getOutputPages()
+    {
+        return pages;
+    }
+
+    @Override
+    public boolean needsInput()
+    {
+        return pageBuffer.isEmpty() && !pageBuffer.isFinished();
+    }
+
+    @Override
+    public void addInput(Page page)
+    {
+        addPage(page);
+    }
+
+    @Override
+    public void finish()
+    {
+        pageBuffer.finish();
+    }
+
+    private void addPage(Page page)
+    {
+        topNProcessor.addInput(page);
     }
 
     private static class Factory
@@ -138,64 +195,6 @@ public class TopNOperator
         {
             return new Factory(operatorId, planNodeId, sourceTypes, n, sortChannels, sortOrders, typeOperators);
         }
-    }
-
-    private final TopNProcessor topNProcessor;
-    private final WorkProcessor<Page> pages;
-    private final PageBuffer pageBuffer = new PageBuffer();
-
-    private TopNOperator(
-            MemoryTrackingContext memoryTrackingContext,
-            Optional<WorkProcessor<Page>> sourcePages,
-            List<Type> types,
-            int n,
-            List<Integer> sortChannels,
-            List<SortOrder> sortOrders,
-            TypeOperators typeOperators)
-    {
-        this.topNProcessor = new TopNProcessor(
-                requireNonNull(memoryTrackingContext, "memoryTrackingContext is null").aggregateUserMemoryContext(),
-                types,
-                n,
-                sortChannels,
-                sortOrders,
-                typeOperators);
-
-        if (n == 0) {
-            pages = WorkProcessor.of();
-        }
-        else {
-            pages = sourcePages.orElse(pageBuffer.pages()).transform(new TopNPages());
-        }
-    }
-
-    @Override
-    public WorkProcessor<Page> getOutputPages()
-    {
-        return pages;
-    }
-
-    @Override
-    public boolean needsInput()
-    {
-        return pageBuffer.isEmpty() && !pageBuffer.isFinished();
-    }
-
-    @Override
-    public void addInput(Page page)
-    {
-        addPage(page);
-    }
-
-    @Override
-    public void finish()
-    {
-        pageBuffer.finish();
-    }
-
-    private void addPage(Page page)
-    {
-        topNProcessor.addInput(page);
     }
 
     private class TopNPages

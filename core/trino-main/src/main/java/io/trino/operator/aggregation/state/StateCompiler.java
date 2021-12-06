@@ -553,9 +553,9 @@ public final class StateCompiler
         MethodDefinition getter = definition.declareMethod(a(PUBLIC), stateField.getGetterName(), type(stateField.getType()));
         getter.getBody()
                 .append(getter.getThis().getField(field).invoke(
-                        "get",
-                        stateField.getType(),
-                        getter.getThis().invoke("getGroupId", long.class))
+                                "get",
+                                stateField.getType(),
+                                getter.getThis().invoke("getGroupId", long.class))
                         .ret());
 
         // Generate setter

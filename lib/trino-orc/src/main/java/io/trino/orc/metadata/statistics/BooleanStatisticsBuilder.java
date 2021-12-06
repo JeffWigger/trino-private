@@ -28,6 +28,22 @@ public class BooleanStatisticsBuilder
     private long nonNullValueCount;
     private long trueValueCount;
 
+    public static Optional<BooleanStatistics> mergeBooleanStatistics(List<ColumnStatistics> stats)
+    {
+        BooleanStatisticsBuilder booleanStatisticsBuilder = new BooleanStatisticsBuilder();
+        for (ColumnStatistics columnStatistics : stats) {
+            BooleanStatistics partialStatistics = columnStatistics.getBooleanStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null) {
+                    // there are non null values but no statistics, so we cannot say anything about the data
+                    return Optional.empty();
+                }
+                booleanStatisticsBuilder.addBooleanStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return booleanStatisticsBuilder.buildBooleanStatistics();
+    }
+
     @Override
     public void addBlock(Type type, Block block)
     {
@@ -78,21 +94,5 @@ public class BooleanStatisticsBuilder
                 null,
                 null,
                 null);
-    }
-
-    public static Optional<BooleanStatistics> mergeBooleanStatistics(List<ColumnStatistics> stats)
-    {
-        BooleanStatisticsBuilder booleanStatisticsBuilder = new BooleanStatisticsBuilder();
-        for (ColumnStatistics columnStatistics : stats) {
-            BooleanStatistics partialStatistics = columnStatistics.getBooleanStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null) {
-                    // there are non null values but no statistics, so we cannot say anything about the data
-                    return Optional.empty();
-                }
-                booleanStatisticsBuilder.addBooleanStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return booleanStatisticsBuilder.buildBooleanStatistics();
     }
 }

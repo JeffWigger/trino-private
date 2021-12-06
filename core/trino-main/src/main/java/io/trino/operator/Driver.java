@@ -41,7 +41,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -88,43 +87,12 @@ public class Driver
     private final AtomicReference<State> state = new AtomicReference<>(State.ALIVE);
 
     private final DriverLock exclusiveLock = new DriverLock();
-
+    private final AtomicReference<SettableFuture<Void>> driverBlockedFuture = new AtomicReference<>();
+    public boolean preFinished = false;
     @GuardedBy("exclusiveLock")
     private TaskSource currentTaskSource;
-
     private int finishedIndex = 0;
     private int finishedIndexDelta = 0;
-
-    public boolean preFinished = false;
-
-    private final AtomicReference<SettableFuture<Void>> driverBlockedFuture = new AtomicReference<>();
-
-    private enum State
-    {
-        ALIVE, NEED_DESTRUCTION, DESTROYED
-    }
-
-    public static Driver createDriver(DriverContext driverContext, List<Operator> operators)
-    {
-        requireNonNull(driverContext, "driverContext is null");
-        requireNonNull(operators, "operators is null");
-        Driver driver = new Driver(driverContext, operators);
-        driver.initialize();
-        return driver;
-    }
-
-    @VisibleForTesting
-    public static Driver createDriver(DriverContext driverContext, Operator firstOperator, Operator... otherOperators)
-    {
-        requireNonNull(driverContext, "driverContext is null");
-        requireNonNull(firstOperator, "firstOperator is null");
-        requireNonNull(otherOperators, "otherOperators is null");
-        ImmutableList<Operator> operators = ImmutableList.<Operator>builder()
-                .add(firstOperator)
-                .add(otherOperators)
-                .build();
-        return createDriver(driverContext, operators);
-    }
 
     private Driver(DriverContext driverContext, List<Operator> operators)
     {
@@ -160,6 +128,64 @@ public class Driver
         SettableFuture<Void> future = SettableFuture.create();
         future.set(null);
         driverBlockedFuture.set(future);
+    }
+
+    public static Driver createDriver(DriverContext driverContext, List<Operator> operators)
+    {
+        requireNonNull(driverContext, "driverContext is null");
+        requireNonNull(operators, "operators is null");
+        Driver driver = new Driver(driverContext, operators);
+        driver.initialize();
+        return driver;
+    }
+
+    @VisibleForTesting
+    public static Driver createDriver(DriverContext driverContext, Operator firstOperator, Operator... otherOperators)
+    {
+        requireNonNull(driverContext, "driverContext is null");
+        requireNonNull(firstOperator, "firstOperator is null");
+        requireNonNull(otherOperators, "otherOperators is null");
+        ImmutableList<Operator> operators = ImmutableList.<Operator>builder()
+                .add(firstOperator)
+                .add(otherOperators)
+                .build();
+        return createDriver(driverContext, operators);
+    }
+
+    @FormatMethod
+    private static Throwable addSuppressedException(Throwable inFlightException, Throwable newException, String message, Object... args)
+    {
+        if (newException instanceof Error) {
+            if (inFlightException == null) {
+                inFlightException = newException;
+            }
+            else {
+                // Self-suppression not permitted
+                if (inFlightException != newException) {
+                    inFlightException.addSuppressed(newException);
+                }
+            }
+        }
+        else {
+            // log normal exceptions instead of rethrowing them
+            log.error(newException, message, args);
+        }
+        return inFlightException;
+    }
+
+    private static ListenableFuture<Void> firstFinishedFuture(List<ListenableFuture<Void>> futures)
+    {
+        if (futures.size() == 1) {
+            return futures.get(0);
+        }
+
+        SettableFuture<Void> result = SettableFuture.create();
+
+        for (ListenableFuture<Void> future : futures) {
+            future.addListener(() -> result.set(null), directExecutor());
+        }
+
+        return result;
     }
 
     // the memory revocation request listeners are added here in a separate initialize() method
@@ -312,9 +338,10 @@ public class Driver
                 //risky, TODO: test if lock is released if crash happens
                 DeltaFlagRequest.deltaFlagLock.readLock().lock();
                 Function<OperationTimer, ListenableFuture<Void>> func;
-                if (DeltaFlagRequest.globalDeltaUpdateInProcess){
+                if (DeltaFlagRequest.globalDeltaUpdateInProcess) {
                     func = this::processInternalDelta;
-                }else{
+                }
+                else {
                     func = this::processInternal;
                 }
 
@@ -347,9 +374,10 @@ public class Driver
         }
         DeltaFlagRequest.deltaFlagLock.readLock().lock();
         Function<OperationTimer, ListenableFuture<Void>> func;
-        if (DeltaFlagRequest.globalDeltaUpdateInProcess){
+        if (DeltaFlagRequest.globalDeltaUpdateInProcess) {
             func = this::processInternalDelta;
-        }else{
+        }
+        else {
             func = this::processInternal;
         }
         Optional<ListenableFuture<Void>> result = Optional.empty();
@@ -358,12 +386,11 @@ public class Driver
                 ListenableFuture<Void> future = func.apply(createTimer());
                 return updateDriverBlockedFuture(future);
             });
-        }finally {
+        }
+        finally {
             DeltaFlagRequest.deltaFlagLock.readLock().unlock();
         }
         return result.orElse(NOT_BLOCKED);
-
-
     }
 
     private OperationTimer createTimer()
@@ -396,7 +423,8 @@ public class Driver
         return newDriverBlockedFuture;
     }
 
-    public ListenableFuture<Void> finish(){
+    public ListenableFuture<Void> finish()
+    {
         checkLockNotHeld("Cannot finish while holding the driver lock");
 
         // if the driver is blocked we don't need to continue
@@ -406,14 +434,15 @@ public class Driver
         }
 
         Optional<ListenableFuture<Void>> result = tryWithLock(100, TimeUnit.MILLISECONDS, () -> {
-                ListenableFuture<Void> future = internalFinish();
-                return updateDriverBlockedFuture(future);
-            });
+            ListenableFuture<Void> future = internalFinish();
+            return updateDriverBlockedFuture(future);
+        });
 
         return result.orElse(NOT_BLOCKED);
     }
 
-    private ListenableFuture<Void> internalFinish(){
+    private ListenableFuture<Void> internalFinish()
+    {
         checkLockHeld("Lock must be held to call internalFinish");
         Throwable throwable = closeAndDestroyOperators(this.activeOperators);
         this.activeOperators.clear();
@@ -440,7 +469,7 @@ public class Driver
             // TODO remove the second part of the if statement, when these operators are fixed
             // Note: finish should not be called on the natural source of the pipeline as this could cause the task to finish early
             //if (!activeOperators.isEmpty() && activeOperators.size() != allOperators.size()) {
-            if (finishedIndex > 0){
+            if (finishedIndex > 0) {
                 Operator rootOperator = activeOperators.get(finishedIndex);
                 rootOperator.finish();
                 rootOperator.getOperatorContext().recordFinish(operationTimer);
@@ -450,7 +479,7 @@ public class Driver
             for (int i = finishedIndex; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
                 Operator current = activeOperators.get(i);
                 Operator next = activeOperators.get(i + 1);
-                System.out.println(String.format("%s -> %s is at index %d",current.toString(), next.toString(), i));
+                System.out.println(String.format("%s -> %s is at index %d", current.toString(), next.toString(), i));
 
                 // skip blocked operator
                 if (getBlockedFuture(current).isPresent()) {
@@ -461,7 +490,7 @@ public class Driver
                 if (!current.isFinished() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
                     // get an output page from current operator
                     Page page = current.getOutput();
-                    System.out.println(String.format("%s page == %b",current.toString(), page == null));
+                    System.out.println(String.format("%s page == %b", current.toString(), page == null));
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
                     // if we got an output page, add it to the next operator
@@ -523,7 +552,7 @@ public class Driver
                 }
             }
 
-            if(activeOperators.get(activeOperators.size() - 1).isFinished()){
+            if (activeOperators.get(activeOperators.size() - 1).isFinished()) {
                 preFinished = true;
             }
 
@@ -547,7 +576,6 @@ public class Driver
         }
     }
 
-
     @GuardedBy("exclusiveLock")
     private ListenableFuture<Void> processInternalDelta(OperationTimer operationTimer)
     {
@@ -563,7 +591,7 @@ public class Driver
             // TODO remove the second part of the if statement, when these operators are fixed
             // Note: finish should not be called on the natural source of the pipeline as this could cause the task to finish early
             //if (!activeOperators.isEmpty() && activeOperators.size() != allOperators.size()) {
-            if (finishedIndexDelta > 0){
+            if (finishedIndexDelta > 0) {
                 Operator rootOperator = activeOperators.get(finishedIndexDelta);
                 rootOperator.finishDelta();
                 rootOperator.getOperatorContext().recordFinish(operationTimer);
@@ -583,7 +611,7 @@ public class Driver
                 if (!current.isFinishedDelta() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
                     // get an output page from current operator
                     Page page = current.getOutputDelta();
-                    System.out.println(String.format("%s page == %b",current.toString(), page == null));
+                    System.out.println(String.format("%s page == %b", current.toString(), page == null));
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
                     // if we got an output page, add it to the next operator
@@ -801,27 +829,6 @@ public class Driver
         return Optional.empty();
     }
 
-    @FormatMethod
-    private static Throwable addSuppressedException(Throwable inFlightException, Throwable newException, String message, Object... args)
-    {
-        if (newException instanceof Error) {
-            if (inFlightException == null) {
-                inFlightException = newException;
-            }
-            else {
-                // Self-suppression not permitted
-                if (inFlightException != newException) {
-                    inFlightException.addSuppressed(newException);
-                }
-            }
-        }
-        else {
-            // log normal exceptions instead of rethrowing them
-            log.error(newException, message, args);
-        }
-        return inFlightException;
-    }
-
     private synchronized void checkLockNotHeld(String message)
     {
         checkState(!exclusiveLock.isHeldByCurrentThread(), message);
@@ -831,21 +838,6 @@ public class Driver
     private synchronized void checkLockHeld(String message)
     {
         checkState(exclusiveLock.isHeldByCurrentThread(), message);
-    }
-
-    private static ListenableFuture<Void> firstFinishedFuture(List<ListenableFuture<Void>> futures)
-    {
-        if (futures.size() == 1) {
-            return futures.get(0);
-        }
-
-        SettableFuture<Void> result = SettableFuture.create();
-
-        for (ListenableFuture<Void> future : futures) {
-            future.addListener(() -> result.set(null), directExecutor());
-        }
-
-        return result;
     }
 
     // Note: task cannot return null
@@ -910,6 +902,11 @@ public class Driver
         }
 
         return result;
+    }
+
+    private enum State
+    {
+        ALIVE, NEED_DESTRUCTION, DESTROYED
     }
 
     private static class DriverLock

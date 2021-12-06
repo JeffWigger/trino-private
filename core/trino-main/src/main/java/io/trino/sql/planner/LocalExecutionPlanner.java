@@ -417,6 +417,89 @@ public class LocalExecutionPlanner
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
+    private static List<Type> getTypes(List<Expression> expressions, Map<NodeRef<Expression>, Type> expressionTypes)
+    {
+        return expressions.stream()
+                .map(NodeRef::of)
+                .map(expressionTypes::get)
+                .collect(toImmutableList());
+    }
+
+    private static TableFinisher createTableFinisher(Session session, TableFinishNode node, Metadata metadata)
+    {
+        WriterTarget target = node.getTarget();
+        return (fragments, statistics) -> {
+            if (target instanceof CreateTarget) {
+                return metadata.finishCreateTable(session, ((CreateTarget) target).getHandle(), fragments, statistics);
+            }
+            else if (target instanceof InsertTarget) {
+                return metadata.finishInsert(session, ((InsertTarget) target).getHandle(), fragments, statistics);
+            }
+            else if (target instanceof TableWriterNode.RefreshMaterializedViewTarget) {
+                TableWriterNode.RefreshMaterializedViewTarget refreshTarget = (TableWriterNode.RefreshMaterializedViewTarget) target;
+                return metadata.finishRefreshMaterializedView(
+                        session,
+                        refreshTarget.getTableHandle(),
+                        refreshTarget.getInsertHandle(),
+                        fragments,
+                        statistics,
+                        refreshTarget.getSourceTableHandles());
+            }
+            else if (target instanceof DeleteTarget) {
+                metadata.finishDelete(session, ((DeleteTarget) target).getHandleOrElseThrow(), fragments);
+                return Optional.empty();
+            }
+            else if (target instanceof UpdateTarget) {
+                metadata.finishUpdate(session, ((UpdateTarget) target).getHandleOrElseThrow(), fragments);
+                return Optional.empty();
+            }
+            else {
+                throw new AssertionError("Unhandled target type: " + target.getClass().getName());
+            }
+        };
+    }
+
+    private static Function<Page, Page> enforceLoadedLayoutProcessor(List<Symbol> expectedLayout, Map<Symbol, Integer> inputLayout)
+    {
+        int[] channels = expectedLayout.stream()
+                .peek(symbol -> checkArgument(inputLayout.containsKey(symbol), "channel not found for symbol: %s", symbol))
+                .mapToInt(inputLayout::get)
+                .toArray();
+
+        if (Arrays.equals(channels, range(0, inputLayout.size()).toArray())) {
+            // this is an identity mapping, simply ensuring that the page is fully loaded is sufficient
+            return PageChannelSelector.identitySelection();
+        }
+
+        return new PageChannelSelector(channels);
+    }
+
+    private static List<Integer> getChannelsForSymbols(List<Symbol> symbols, Map<Symbol, Integer> layout)
+    {
+        ImmutableList.Builder<Integer> builder = ImmutableList.builder();
+        for (Symbol symbol : symbols) {
+            builder.add(layout.get(symbol));
+        }
+        return builder.build();
+    }
+
+    private static Function<Symbol, Integer> channelGetter(PhysicalOperation source)
+    {
+        return input -> {
+            checkArgument(source.getLayout().containsKey(input));
+            return source.getLayout().get(input);
+        };
+    }
+
+    private static Set<DynamicFilterId> getConsumedDynamicFilterIds(PlanNode node)
+    {
+        return extractExpressions(node)
+                .stream()
+                .flatMap(expression -> extractDynamicFilters(expression).getDynamicConjuncts().stream())
+                .map(DynamicFilters.Descriptor::getId)
+                .collect(toImmutableSet());
+    }
+
     public LocalExecutionPlan plan(
             TaskContext taskContext,
             PlanNode plan,
@@ -542,6 +625,48 @@ public class LocalExecutionPlanner
                 .forEach(LocalPlannerAware::localPlannerComplete);
 
         return new LocalExecutionPlan(context.getDriverFactories(), partitionedSourceOrder, stageExecutionDescriptor);
+    }
+
+    private int getDynamicFilteringMaxDistinctValuesPerDriver(Session session, boolean isReplicatedJoin)
+    {
+        if (isEnableLargeDynamicFilters(session)) {
+            if (isReplicatedJoin) {
+                return dynamicFilterConfig.getLargeBroadcastMaxDistinctValuesPerDriver();
+            }
+            return dynamicFilterConfig.getLargePartitionedMaxDistinctValuesPerDriver();
+        }
+        if (isReplicatedJoin) {
+            return dynamicFilterConfig.getSmallBroadcastMaxDistinctValuesPerDriver();
+        }
+        return dynamicFilterConfig.getSmallPartitionedMaxDistinctValuesPerDriver();
+    }
+
+    private DataSize getDynamicFilteringMaxSizePerDriver(Session session, boolean isReplicatedJoin)
+    {
+        if (isEnableLargeDynamicFilters(session)) {
+            if (isReplicatedJoin) {
+                return dynamicFilterConfig.getLargeBroadcastMaxSizePerDriver();
+            }
+            return dynamicFilterConfig.getLargePartitionedMaxSizePerDriver();
+        }
+        if (isReplicatedJoin) {
+            return dynamicFilterConfig.getSmallBroadcastMaxSizePerDriver();
+        }
+        return dynamicFilterConfig.getSmallPartitionedMaxSizePerDriver();
+    }
+
+    private int getDynamicFilteringRangeRowLimitPerDriver(Session session, boolean isReplicatedJoin)
+    {
+        if (isEnableLargeDynamicFilters(session)) {
+            if (isReplicatedJoin) {
+                return dynamicFilterConfig.getLargeBroadcastRangeRowLimitPerDriver();
+            }
+            return dynamicFilterConfig.getLargePartitionedRangeRowLimitPerDriver();
+        }
+        if (isReplicatedJoin) {
+            return dynamicFilterConfig.getSmallBroadcastRangeRowLimitPerDriver();
+        }
+        return dynamicFilterConfig.getSmallPartitionedRangeRowLimitPerDriver();
     }
 
     private static class LocalExecutionPlanContext
@@ -813,6 +938,123 @@ public class LocalExecutionPlanner
         public List<Type> getTypes()
         {
             return types;
+        }
+    }
+
+    /**
+     * Encapsulates an physical operator plus the mapping of logical symbols to channel/field
+     */
+    private static class PhysicalOperation
+    {
+        private final List<OperatorFactoryWithTypes> operatorFactoriesWithTypes;
+        private final Map<Symbol, Integer> layout;
+        private final List<Type> types;
+
+        private final PipelineExecutionStrategy pipelineExecutionStrategy;
+
+        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PipelineExecutionStrategy pipelineExecutionStrategy)
+        {
+            this(operatorFactory, layout, context.getTypes(), Optional.empty(), pipelineExecutionStrategy);
+        }
+
+        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PhysicalOperation source)
+        {
+            this(operatorFactory, layout, context.getTypes(), Optional.of(requireNonNull(source, "source is null")), source.getPipelineExecutionStrategy());
+        }
+
+        public PhysicalOperation(OperatorFactory outputOperatorFactory, PhysicalOperation source)
+        {
+            this(outputOperatorFactory, ImmutableMap.of(), TypeProvider.empty(), Optional.of(requireNonNull(source, "source is null")), source.getPipelineExecutionStrategy());
+        }
+
+        private PhysicalOperation(
+                OperatorFactory operatorFactory,
+                Map<Symbol, Integer> layout,
+                TypeProvider typeProvider,
+                Optional<PhysicalOperation> source,
+                PipelineExecutionStrategy pipelineExecutionStrategy)
+        {
+            requireNonNull(operatorFactory, "operatorFactory is null");
+            requireNonNull(layout, "layout is null");
+            requireNonNull(typeProvider, "typeProvider is null");
+            requireNonNull(source, "source is null");
+            requireNonNull(pipelineExecutionStrategy, "pipelineExecutionStrategy is null");
+
+            this.types = toTypes(layout, typeProvider);
+            this.operatorFactoriesWithTypes = ImmutableList.<OperatorFactoryWithTypes>builder()
+                    .addAll(source.map(PhysicalOperation::getOperatorFactoriesWithTypes).orElse(ImmutableList.of()))
+                    .add(new OperatorFactoryWithTypes(operatorFactory, types))
+                    .build();
+            this.layout = ImmutableMap.copyOf(layout);
+            this.pipelineExecutionStrategy = pipelineExecutionStrategy;
+        }
+
+        private static List<Type> toTypes(Map<Symbol, Integer> layout, TypeProvider typeProvider)
+        {
+            // verify layout covers all values
+            int channelCount = layout.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
+            checkArgument(
+                    layout.size() == channelCount && ImmutableSet.copyOf(layout.values()).containsAll(ContiguousSet.create(closedOpen(0, channelCount), integers())),
+                    "Layout does not have a symbol for every output channel: %s", layout);
+            Map<Integer, Symbol> channelLayout = ImmutableBiMap.copyOf(layout).inverse();
+
+            return range(0, channelCount)
+                    .mapToObj(channelLayout::get)
+                    .map(typeProvider::get)
+                    .collect(toImmutableList());
+        }
+
+        public int symbolToChannel(Symbol input)
+        {
+            checkArgument(layout.containsKey(input));
+            return layout.get(input);
+        }
+
+        public List<Type> getTypes()
+        {
+            return types;
+        }
+
+        public Map<Symbol, Integer> getLayout()
+        {
+            return layout;
+        }
+
+        private List<OperatorFactory> getOperatorFactories()
+        {
+            return toOperatorFactories(operatorFactoriesWithTypes);
+        }
+
+        private List<OperatorFactoryWithTypes> getOperatorFactoriesWithTypes()
+        {
+            return operatorFactoriesWithTypes;
+        }
+
+        public PipelineExecutionStrategy getPipelineExecutionStrategy()
+        {
+            return pipelineExecutionStrategy;
+        }
+    }
+
+    private static class DriverFactoryParameters
+    {
+        private final LocalExecutionPlanContext subContext;
+        private final PhysicalOperation source;
+
+        public DriverFactoryParameters(LocalExecutionPlanContext subContext, PhysicalOperation source)
+        {
+            this.subContext = subContext;
+            this.source = source;
+        }
+
+        public LocalExecutionPlanContext getSubContext()
+        {
+            return subContext;
+        }
+
+        public PhysicalOperation getSource()
+        {
+            return source;
         }
     }
 
@@ -3534,248 +3776,6 @@ public class LocalExecutionPlanner
                         blockTypeOperators,
                         useSystemMemory);
             }
-        }
-    }
-
-    private int getDynamicFilteringMaxDistinctValuesPerDriver(Session session, boolean isReplicatedJoin)
-    {
-        if (isEnableLargeDynamicFilters(session)) {
-            if (isReplicatedJoin) {
-                return dynamicFilterConfig.getLargeBroadcastMaxDistinctValuesPerDriver();
-            }
-            return dynamicFilterConfig.getLargePartitionedMaxDistinctValuesPerDriver();
-        }
-        if (isReplicatedJoin) {
-            return dynamicFilterConfig.getSmallBroadcastMaxDistinctValuesPerDriver();
-        }
-        return dynamicFilterConfig.getSmallPartitionedMaxDistinctValuesPerDriver();
-    }
-
-    private DataSize getDynamicFilteringMaxSizePerDriver(Session session, boolean isReplicatedJoin)
-    {
-        if (isEnableLargeDynamicFilters(session)) {
-            if (isReplicatedJoin) {
-                return dynamicFilterConfig.getLargeBroadcastMaxSizePerDriver();
-            }
-            return dynamicFilterConfig.getLargePartitionedMaxSizePerDriver();
-        }
-        if (isReplicatedJoin) {
-            return dynamicFilterConfig.getSmallBroadcastMaxSizePerDriver();
-        }
-        return dynamicFilterConfig.getSmallPartitionedMaxSizePerDriver();
-    }
-
-    private int getDynamicFilteringRangeRowLimitPerDriver(Session session, boolean isReplicatedJoin)
-    {
-        if (isEnableLargeDynamicFilters(session)) {
-            if (isReplicatedJoin) {
-                return dynamicFilterConfig.getLargeBroadcastRangeRowLimitPerDriver();
-            }
-            return dynamicFilterConfig.getLargePartitionedRangeRowLimitPerDriver();
-        }
-        if (isReplicatedJoin) {
-            return dynamicFilterConfig.getSmallBroadcastRangeRowLimitPerDriver();
-        }
-        return dynamicFilterConfig.getSmallPartitionedRangeRowLimitPerDriver();
-    }
-
-    private static List<Type> getTypes(List<Expression> expressions, Map<NodeRef<Expression>, Type> expressionTypes)
-    {
-        return expressions.stream()
-                .map(NodeRef::of)
-                .map(expressionTypes::get)
-                .collect(toImmutableList());
-    }
-
-    private static TableFinisher createTableFinisher(Session session, TableFinishNode node, Metadata metadata)
-    {
-        WriterTarget target = node.getTarget();
-        return (fragments, statistics) -> {
-            if (target instanceof CreateTarget) {
-                return metadata.finishCreateTable(session, ((CreateTarget) target).getHandle(), fragments, statistics);
-            }
-            else if (target instanceof InsertTarget) {
-                return metadata.finishInsert(session, ((InsertTarget) target).getHandle(), fragments, statistics);
-            }
-            else if (target instanceof TableWriterNode.RefreshMaterializedViewTarget) {
-                TableWriterNode.RefreshMaterializedViewTarget refreshTarget = (TableWriterNode.RefreshMaterializedViewTarget) target;
-                return metadata.finishRefreshMaterializedView(
-                        session,
-                        refreshTarget.getTableHandle(),
-                        refreshTarget.getInsertHandle(),
-                        fragments,
-                        statistics,
-                        refreshTarget.getSourceTableHandles());
-            }
-            else if (target instanceof DeleteTarget) {
-                metadata.finishDelete(session, ((DeleteTarget) target).getHandleOrElseThrow(), fragments);
-                return Optional.empty();
-            }
-            else if (target instanceof UpdateTarget) {
-                metadata.finishUpdate(session, ((UpdateTarget) target).getHandleOrElseThrow(), fragments);
-                return Optional.empty();
-            }
-            else {
-                throw new AssertionError("Unhandled target type: " + target.getClass().getName());
-            }
-        };
-    }
-
-    private static Function<Page, Page> enforceLoadedLayoutProcessor(List<Symbol> expectedLayout, Map<Symbol, Integer> inputLayout)
-    {
-        int[] channels = expectedLayout.stream()
-                .peek(symbol -> checkArgument(inputLayout.containsKey(symbol), "channel not found for symbol: %s", symbol))
-                .mapToInt(inputLayout::get)
-                .toArray();
-
-        if (Arrays.equals(channels, range(0, inputLayout.size()).toArray())) {
-            // this is an identity mapping, simply ensuring that the page is fully loaded is sufficient
-            return PageChannelSelector.identitySelection();
-        }
-
-        return new PageChannelSelector(channels);
-    }
-
-    private static List<Integer> getChannelsForSymbols(List<Symbol> symbols, Map<Symbol, Integer> layout)
-    {
-        ImmutableList.Builder<Integer> builder = ImmutableList.builder();
-        for (Symbol symbol : symbols) {
-            builder.add(layout.get(symbol));
-        }
-        return builder.build();
-    }
-
-    private static Function<Symbol, Integer> channelGetter(PhysicalOperation source)
-    {
-        return input -> {
-            checkArgument(source.getLayout().containsKey(input));
-            return source.getLayout().get(input);
-        };
-    }
-
-    private static Set<DynamicFilterId> getConsumedDynamicFilterIds(PlanNode node)
-    {
-        return extractExpressions(node)
-                .stream()
-                .flatMap(expression -> extractDynamicFilters(expression).getDynamicConjuncts().stream())
-                .map(DynamicFilters.Descriptor::getId)
-                .collect(toImmutableSet());
-    }
-
-    /**
-     * Encapsulates an physical operator plus the mapping of logical symbols to channel/field
-     */
-    private static class PhysicalOperation
-    {
-        private final List<OperatorFactoryWithTypes> operatorFactoriesWithTypes;
-        private final Map<Symbol, Integer> layout;
-        private final List<Type> types;
-
-        private final PipelineExecutionStrategy pipelineExecutionStrategy;
-
-        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PipelineExecutionStrategy pipelineExecutionStrategy)
-        {
-            this(operatorFactory, layout, context.getTypes(), Optional.empty(), pipelineExecutionStrategy);
-        }
-
-        public PhysicalOperation(OperatorFactory operatorFactory, Map<Symbol, Integer> layout, LocalExecutionPlanContext context, PhysicalOperation source)
-        {
-            this(operatorFactory, layout, context.getTypes(), Optional.of(requireNonNull(source, "source is null")), source.getPipelineExecutionStrategy());
-        }
-
-        public PhysicalOperation(OperatorFactory outputOperatorFactory, PhysicalOperation source)
-        {
-            this(outputOperatorFactory, ImmutableMap.of(), TypeProvider.empty(), Optional.of(requireNonNull(source, "source is null")), source.getPipelineExecutionStrategy());
-        }
-
-        private PhysicalOperation(
-                OperatorFactory operatorFactory,
-                Map<Symbol, Integer> layout,
-                TypeProvider typeProvider,
-                Optional<PhysicalOperation> source,
-                PipelineExecutionStrategy pipelineExecutionStrategy)
-        {
-            requireNonNull(operatorFactory, "operatorFactory is null");
-            requireNonNull(layout, "layout is null");
-            requireNonNull(typeProvider, "typeProvider is null");
-            requireNonNull(source, "source is null");
-            requireNonNull(pipelineExecutionStrategy, "pipelineExecutionStrategy is null");
-
-            this.types = toTypes(layout, typeProvider);
-            this.operatorFactoriesWithTypes = ImmutableList.<OperatorFactoryWithTypes>builder()
-                    .addAll(source.map(PhysicalOperation::getOperatorFactoriesWithTypes).orElse(ImmutableList.of()))
-                    .add(new OperatorFactoryWithTypes(operatorFactory, types))
-                    .build();
-            this.layout = ImmutableMap.copyOf(layout);
-            this.pipelineExecutionStrategy = pipelineExecutionStrategy;
-        }
-
-        private static List<Type> toTypes(Map<Symbol, Integer> layout, TypeProvider typeProvider)
-        {
-            // verify layout covers all values
-            int channelCount = layout.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
-            checkArgument(
-                    layout.size() == channelCount && ImmutableSet.copyOf(layout.values()).containsAll(ContiguousSet.create(closedOpen(0, channelCount), integers())),
-                    "Layout does not have a symbol for every output channel: %s", layout);
-            Map<Integer, Symbol> channelLayout = ImmutableBiMap.copyOf(layout).inverse();
-
-            return range(0, channelCount)
-                    .mapToObj(channelLayout::get)
-                    .map(typeProvider::get)
-                    .collect(toImmutableList());
-        }
-
-        public int symbolToChannel(Symbol input)
-        {
-            checkArgument(layout.containsKey(input));
-            return layout.get(input);
-        }
-
-        public List<Type> getTypes()
-        {
-            return types;
-        }
-
-        public Map<Symbol, Integer> getLayout()
-        {
-            return layout;
-        }
-
-        private List<OperatorFactory> getOperatorFactories()
-        {
-            return toOperatorFactories(operatorFactoriesWithTypes);
-        }
-
-        private List<OperatorFactoryWithTypes> getOperatorFactoriesWithTypes()
-        {
-            return operatorFactoriesWithTypes;
-        }
-
-        public PipelineExecutionStrategy getPipelineExecutionStrategy()
-        {
-            return pipelineExecutionStrategy;
-        }
-    }
-
-    private static class DriverFactoryParameters
-    {
-        private final LocalExecutionPlanContext subContext;
-        private final PhysicalOperation source;
-
-        public DriverFactoryParameters(LocalExecutionPlanContext subContext, PhysicalOperation source)
-        {
-            this.subContext = subContext;
-            this.source = source;
-        }
-
-        public LocalExecutionPlanContext getSubContext()
-        {
-            return subContext;
-        }
-
-        public PhysicalOperation getSource()
-        {
-            return source;
         }
     }
 }

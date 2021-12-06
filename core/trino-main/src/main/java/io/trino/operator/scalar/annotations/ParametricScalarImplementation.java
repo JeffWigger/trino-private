@@ -141,6 +141,83 @@ public class ParametricScalarImplementation
                 signature);
     }
 
+    private static MethodType javaMethodType(ParametricScalarImplementationChoice choice, BoundSignature signature)
+    {
+        // This method accomplishes two purposes:
+        // * Assert that the method signature is as expected.
+        //   This catches errors that would otherwise surface during bytecode generation and class loading.
+        // * Adapt the method signature when necessary (for example, when the parameter type or return type is declared as Object).
+        ImmutableList.Builder<Class<?>> methodHandleParameterTypes = ImmutableList.builder();
+        if (choice.getConstructor().isPresent()) {
+            methodHandleParameterTypes.add(Object.class);
+        }
+        if (choice.hasConnectorSession()) {
+            methodHandleParameterTypes.add(ConnectorSession.class);
+        }
+
+        List<InvocationArgumentConvention> argumentConventions = choice.getArgumentConventions();
+        int lambdaArgumentIndex = 0;
+        for (int i = 0; i < argumentConventions.size(); i++) {
+            InvocationArgumentConvention argumentConvention = argumentConventions.get(i);
+            Type signatureType = signature.getArgumentTypes().get(i);
+            switch (argumentConvention) {
+                case NEVER_NULL:
+                    methodHandleParameterTypes.add(signatureType.getJavaType());
+                    break;
+                case NULL_FLAG:
+                    methodHandleParameterTypes.add(signatureType.getJavaType());
+                    methodHandleParameterTypes.add(boolean.class);
+                    break;
+                case BOXED_NULLABLE:
+                    methodHandleParameterTypes.add(Primitives.wrap(signatureType.getJavaType()));
+                    break;
+                case BLOCK_POSITION:
+                    methodHandleParameterTypes.add(Block.class);
+                    methodHandleParameterTypes.add(int.class);
+                    break;
+                case FUNCTION:
+                    methodHandleParameterTypes.add(choice.getLambdaInterfaces().get(lambdaArgumentIndex));
+                    lambdaArgumentIndex++;
+                    break;
+                default:
+                    throw new UnsupportedOperationException("unknown argument convention: " + argumentConvention);
+            }
+        }
+
+        Class<?> methodHandleReturnType = signature.getReturnType().getJavaType();
+        if (choice.getReturnConvention().isNullable()) {
+            methodHandleReturnType = Primitives.wrap(methodHandleReturnType);
+        }
+
+        return MethodType.methodType(methodHandleReturnType, methodHandleParameterTypes.build());
+    }
+
+    private static boolean matches(List<FunctionArgumentDefinition> argumentDefinitions, List<InvocationArgumentConvention> argumentConventions)
+    {
+        if (argumentDefinitions.size() != argumentConventions.size()) {
+            return false;
+        }
+        for (int i = 0; i < argumentDefinitions.size(); i++) {
+            boolean expectedNullable = argumentDefinitions.get(i).isNullable();
+            InvocationArgumentConvention argumentConvention = argumentConventions.get(i);
+            if (argumentConvention == FUNCTION) {
+                // functions are never null
+                if (expectedNullable) {
+                    return false;
+                }
+            }
+            else {
+                // block and position can be nullable or not
+                if (argumentConvention != BLOCK_POSITION) {
+                    if (expectedNullable != argumentConvention.isNullable()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     @Override
     public boolean isNullable()
     {
@@ -224,83 +301,6 @@ public class ParametricScalarImplementation
     public List<ParametricScalarImplementationChoice> getChoices()
     {
         return choices;
-    }
-
-    private static MethodType javaMethodType(ParametricScalarImplementationChoice choice, BoundSignature signature)
-    {
-        // This method accomplishes two purposes:
-        // * Assert that the method signature is as expected.
-        //   This catches errors that would otherwise surface during bytecode generation and class loading.
-        // * Adapt the method signature when necessary (for example, when the parameter type or return type is declared as Object).
-        ImmutableList.Builder<Class<?>> methodHandleParameterTypes = ImmutableList.builder();
-        if (choice.getConstructor().isPresent()) {
-            methodHandleParameterTypes.add(Object.class);
-        }
-        if (choice.hasConnectorSession()) {
-            methodHandleParameterTypes.add(ConnectorSession.class);
-        }
-
-        List<InvocationArgumentConvention> argumentConventions = choice.getArgumentConventions();
-        int lambdaArgumentIndex = 0;
-        for (int i = 0; i < argumentConventions.size(); i++) {
-            InvocationArgumentConvention argumentConvention = argumentConventions.get(i);
-            Type signatureType = signature.getArgumentTypes().get(i);
-            switch (argumentConvention) {
-                case NEVER_NULL:
-                    methodHandleParameterTypes.add(signatureType.getJavaType());
-                    break;
-                case NULL_FLAG:
-                    methodHandleParameterTypes.add(signatureType.getJavaType());
-                    methodHandleParameterTypes.add(boolean.class);
-                    break;
-                case BOXED_NULLABLE:
-                    methodHandleParameterTypes.add(Primitives.wrap(signatureType.getJavaType()));
-                    break;
-                case BLOCK_POSITION:
-                    methodHandleParameterTypes.add(Block.class);
-                    methodHandleParameterTypes.add(int.class);
-                    break;
-                case FUNCTION:
-                    methodHandleParameterTypes.add(choice.getLambdaInterfaces().get(lambdaArgumentIndex));
-                    lambdaArgumentIndex++;
-                    break;
-                default:
-                    throw new UnsupportedOperationException("unknown argument convention: " + argumentConvention);
-            }
-        }
-
-        Class<?> methodHandleReturnType = signature.getReturnType().getJavaType();
-        if (choice.getReturnConvention().isNullable()) {
-            methodHandleReturnType = Primitives.wrap(methodHandleReturnType);
-        }
-
-        return MethodType.methodType(methodHandleReturnType, methodHandleParameterTypes.build());
-    }
-
-    private static boolean matches(List<FunctionArgumentDefinition> argumentDefinitions, List<InvocationArgumentConvention> argumentConventions)
-    {
-        if (argumentDefinitions.size() != argumentConventions.size()) {
-            return false;
-        }
-        for (int i = 0; i < argumentDefinitions.size(); i++) {
-            boolean expectedNullable = argumentDefinitions.get(i).isNullable();
-            InvocationArgumentConvention argumentConvention = argumentConventions.get(i);
-            if (argumentConvention == FUNCTION) {
-                // functions are never null
-                if (expectedNullable) {
-                    return false;
-                }
-            }
-            else {
-                // block and position can be nullable or not
-                if (argumentConvention != BLOCK_POSITION) {
-                    if (expectedNullable != argumentConvention.isNullable()) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return true;
     }
 
     public static final class Builder
@@ -442,6 +442,18 @@ public class ParametricScalarImplementation
         private final Map<String, Class<?>> specializedTypeParameters;
         private final Class<?> returnNativeContainerType;
 
+        private SpecializedSignature(
+                Signature signature,
+                List<Optional<Class<?>>> argumentNativeContainerTypes,
+                Map<String, Class<?>> specializedTypeParameters,
+                Class<?> returnNativeContainerType)
+        {
+            this.signature = signature;
+            this.argumentNativeContainerTypes = argumentNativeContainerTypes;
+            this.specializedTypeParameters = specializedTypeParameters;
+            this.returnNativeContainerType = returnNativeContainerType;
+        }
+
         @Override
         public boolean equals(Object o)
         {
@@ -463,18 +475,6 @@ public class ParametricScalarImplementation
         {
             return Objects.hash(signature, argumentNativeContainerTypes, specializedTypeParameters, returnNativeContainerType);
         }
-
-        private SpecializedSignature(
-                Signature signature,
-                List<Optional<Class<?>>> argumentNativeContainerTypes,
-                Map<String, Class<?>> specializedTypeParameters,
-                Class<?> returnNativeContainerType)
-        {
-            this.signature = signature;
-            this.argumentNativeContainerTypes = argumentNativeContainerTypes;
-            this.specializedTypeParameters = specializedTypeParameters;
-            this.returnNativeContainerType = returnNativeContainerType;
-        }
     }
 
     public static final class Parser
@@ -494,9 +494,8 @@ public class ParametricScalarImplementation
         private final List<ImplementationDependency> constructorDependencies = new ArrayList<>();
         private final List<LongVariableConstraint> longVariableConstraints;
         private final Class<?> returnNativeContainerType;
-        private boolean hasConnectorSession;
-
         private final ParametricScalarImplementationChoice choice;
+        private boolean hasConnectorSession;
 
         Parser(String functionName, Method method, Optional<Constructor<?>> constructor)
         {

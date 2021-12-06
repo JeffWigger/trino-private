@@ -20,11 +20,6 @@ import io.trino.spi.predicate.TupleDomain;
  */
 public interface SystemTable
 {
-    enum Distribution
-    {
-        ALL_NODES, ALL_COORDINATORS, SINGLE_COORDINATOR
-    }
-
     Distribution getDistribution();
 
     ConnectorTableMetadata getTableMetadata();
@@ -49,5 +44,10 @@ public interface SystemTable
     default ConnectorPageSource pageSource(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
     {
         throw new UnsupportedOperationException();
+    }
+
+    enum Distribution
+    {
+        ALL_NODES, ALL_COORDINATORS, SINGLE_COORDINATOR
     }
 }

@@ -63,38 +63,6 @@ public final class WorkProcessorUtils
         return new YieldingIterator<>(processor);
     }
 
-    private static class YieldingIterator<T>
-            extends AbstractIterator<Optional<T>>
-    {
-        @Nullable
-        WorkProcessor<T> processor;
-
-        YieldingIterator(WorkProcessor<T> processor)
-        {
-            this.processor = requireNonNull(processor, "processorParameter is null");
-        }
-
-        @Override
-        protected Optional<T> computeNext()
-        {
-            if (processor.process()) {
-                if (processor.isFinished()) {
-                    processor = null;
-                    return endOfData();
-                }
-
-                return Optional.of(processor.getResult());
-            }
-
-            if (processor.isBlocked()) {
-                throw new IllegalStateException("Cannot iterate over blocking WorkProcessor");
-            }
-
-            // yielded
-            return Optional.empty();
-        }
-    }
-
     static <T> WorkProcessor<T> fromIterator(Iterator<T> iterator)
     {
         requireNonNull(iterator, "iterator is null");
@@ -154,32 +122,6 @@ public final class WorkProcessorUtils
     static <T> WorkProcessor<T> yielding(WorkProcessor<T> processor, BooleanSupplier yieldSignal)
     {
         return WorkProcessor.create(new YieldingProcess<>(processor, yieldSignal));
-    }
-
-    private static class YieldingProcess<T>
-            implements WorkProcessor.Process<T>
-    {
-        final WorkProcessor<T> processor;
-        final BooleanSupplier yieldSignal;
-        boolean lastProcessYielded;
-
-        YieldingProcess(WorkProcessor<T> processor, BooleanSupplier yieldSignal)
-        {
-            this.processor = requireNonNull(processor, "processor is null");
-            this.yieldSignal = requireNonNull(yieldSignal, "yieldSignal is null");
-        }
-
-        @Override
-        public ProcessState<T> process()
-        {
-            if (!lastProcessYielded && yieldSignal.getAsBoolean()) {
-                lastProcessYielded = true;
-                return ProcessState.yield();
-            }
-            lastProcessYielded = false;
-
-            return getNextState(processor);
-        }
     }
 
     static <T> WorkProcessor<T> processEntryMonitor(WorkProcessor<T> processor, Runnable monitor)
@@ -345,6 +287,64 @@ public final class WorkProcessorUtils
     static <T> WorkProcessor<T> create(WorkProcessor.Process<T> process)
     {
         return new ProcessWorkProcessor<>(process);
+    }
+
+    private static class YieldingIterator<T>
+            extends AbstractIterator<Optional<T>>
+    {
+        @Nullable
+        WorkProcessor<T> processor;
+
+        YieldingIterator(WorkProcessor<T> processor)
+        {
+            this.processor = requireNonNull(processor, "processorParameter is null");
+        }
+
+        @Override
+        protected Optional<T> computeNext()
+        {
+            if (processor.process()) {
+                if (processor.isFinished()) {
+                    processor = null;
+                    return endOfData();
+                }
+
+                return Optional.of(processor.getResult());
+            }
+
+            if (processor.isBlocked()) {
+                throw new IllegalStateException("Cannot iterate over blocking WorkProcessor");
+            }
+
+            // yielded
+            return Optional.empty();
+        }
+    }
+
+    private static class YieldingProcess<T>
+            implements WorkProcessor.Process<T>
+    {
+        final WorkProcessor<T> processor;
+        final BooleanSupplier yieldSignal;
+        boolean lastProcessYielded;
+
+        YieldingProcess(WorkProcessor<T> processor, BooleanSupplier yieldSignal)
+        {
+            this.processor = requireNonNull(processor, "processor is null");
+            this.yieldSignal = requireNonNull(yieldSignal, "yieldSignal is null");
+        }
+
+        @Override
+        public ProcessState<T> process()
+        {
+            if (!lastProcessYielded && yieldSignal.getAsBoolean()) {
+                lastProcessYielded = true;
+                return ProcessState.yield();
+            }
+            lastProcessYielded = false;
+
+            return getNextState(processor);
+        }
     }
 
     private static class ProcessWorkProcessor<T>

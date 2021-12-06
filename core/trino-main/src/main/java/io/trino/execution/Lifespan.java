@@ -30,6 +30,12 @@ public class Lifespan
     private final boolean grouped;
     private final int groupId;
 
+    private Lifespan(boolean grouped, int groupId)
+    {
+        this.grouped = grouped;
+        this.groupId = groupId;
+    }
+
     public static Lifespan taskWide()
     {
         return TASK_WIDE;
@@ -40,10 +46,14 @@ public class Lifespan
         return new Lifespan(true, id);
     }
 
-    private Lifespan(boolean grouped, int groupId)
+    @JsonCreator
+    public static Lifespan jsonCreator(String value)
     {
-        this.grouped = grouped;
-        this.groupId = groupId;
+        if (value.equals("TaskWide")) {
+            return Lifespan.taskWide();
+        }
+        checkArgument(value.startsWith("Group"));
+        return Lifespan.driverGroup(parseInt(value.substring("Group".length())));
     }
 
     public boolean isTaskWide()
@@ -55,16 +65,6 @@ public class Lifespan
     {
         checkState(grouped);
         return groupId;
-    }
-
-    @JsonCreator
-    public static Lifespan jsonCreator(String value)
-    {
-        if (value.equals("TaskWide")) {
-            return Lifespan.taskWide();
-        }
-        checkArgument(value.startsWith("Group"));
-        return Lifespan.driverGroup(parseInt(value.substring("Group".length())));
     }
 
     @Override

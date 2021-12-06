@@ -42,8 +42,45 @@ public class MapBlock
     private final MapHashTables hashTables;
 
     private final long baseSizeInBytes;
-    private volatile long valueSizeInBytes = -1;
     private final long retainedSizeInBytes;
+    private volatile long valueSizeInBytes = -1;
+
+    /**
+     * Use createRowBlockInternal or fromKeyValueBlock instead of this method.  The caller of this method is assumed to have
+     * validated the arguments with validateConstructorArguments.
+     */
+    private MapBlock(
+            MapType mapType,
+            int startOffset,
+            int positionCount,
+            @Nullable boolean[] mapIsNull,
+            int[] offsets,
+            Block keyBlock,
+            Block valueBlock,
+            MapHashTables hashTables)
+    {
+        super(mapType);
+
+        int[] rawHashTables = hashTables.tryGet().orElse(null);
+        if (rawHashTables != null && rawHashTables.length < keyBlock.getPositionCount() * HASH_MULTIPLIER) {
+            throw new IllegalArgumentException(format("keyBlock/valueBlock size does not match hash table size: %s %s", keyBlock.getPositionCount(), rawHashTables.length));
+        }
+
+        this.startOffset = startOffset;
+        this.positionCount = positionCount;
+        this.mapIsNull = mapIsNull;
+        this.offsets = offsets;
+        this.keyBlock = keyBlock;
+        this.valueBlock = valueBlock;
+        this.hashTables = hashTables;
+
+        int entryCount = offsets[startOffset + positionCount] - offsets[startOffset];
+        this.baseSizeInBytes = Integer.BYTES * HASH_MULTIPLIER * (long) entryCount +
+                (Integer.BYTES + Byte.BYTES) * (long) this.positionCount +
+                calculateSize(keyBlock);
+
+        this.retainedSizeInBytes = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(mapIsNull);
+    }
 
     /**
      * Create a map block directly from columnar nulls, keys, values, and offsets into the keys and values.
@@ -123,43 +160,6 @@ public class MapBlock
         }
 
         requireNonNull(mapType, "mapType is null");
-    }
-
-    /**
-     * Use createRowBlockInternal or fromKeyValueBlock instead of this method.  The caller of this method is assumed to have
-     * validated the arguments with validateConstructorArguments.
-     */
-    private MapBlock(
-            MapType mapType,
-            int startOffset,
-            int positionCount,
-            @Nullable boolean[] mapIsNull,
-            int[] offsets,
-            Block keyBlock,
-            Block valueBlock,
-            MapHashTables hashTables)
-    {
-        super(mapType);
-
-        int[] rawHashTables = hashTables.tryGet().orElse(null);
-        if (rawHashTables != null && rawHashTables.length < keyBlock.getPositionCount() * HASH_MULTIPLIER) {
-            throw new IllegalArgumentException(format("keyBlock/valueBlock size does not match hash table size: %s %s", keyBlock.getPositionCount(), rawHashTables.length));
-        }
-
-        this.startOffset = startOffset;
-        this.positionCount = positionCount;
-        this.mapIsNull = mapIsNull;
-        this.offsets = offsets;
-        this.keyBlock = keyBlock;
-        this.valueBlock = valueBlock;
-        this.hashTables = hashTables;
-
-        int entryCount = offsets[startOffset + positionCount] - offsets[startOffset];
-        this.baseSizeInBytes = Integer.BYTES * HASH_MULTIPLIER * (long) entryCount +
-                (Integer.BYTES + Byte.BYTES) * (long) this.positionCount +
-                calculateSize(keyBlock);
-
-        this.retainedSizeInBytes = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(mapIsNull);
     }
 
     @Override

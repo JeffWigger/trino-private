@@ -30,6 +30,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class TestValueSet
 {
+    private static long real(float value)
+    {
+        return floatToRawIntBits(value);
+    }
+
     @Test
     public void testRejectNullOnCreate()
     {
@@ -103,10 +108,5 @@ public class TestValueSet
         // ValueSet.copyOf with NaN first, in case the method has a special treatment for first value
         assertThatThrownBy(() -> ValueSet.copyOf(REAL, List.of(real(Float.NaN), real(42), real(123), real(127))))
                 .hasMessage("cannot use NaN as range bound");
-    }
-
-    private static long real(float value)
-    {
-        return floatToRawIntBits(value);
     }
 }

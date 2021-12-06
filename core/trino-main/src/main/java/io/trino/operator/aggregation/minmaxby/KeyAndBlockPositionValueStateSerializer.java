@@ -30,18 +30,18 @@ import static java.util.Objects.requireNonNull;
 public abstract class KeyAndBlockPositionValueStateSerializer<T extends KeyAndBlockPositionValueState>
         implements AccumulatorStateSerializer<T>
 {
-    final Type firstType;
     protected final Type secondType;
-
-    abstract void readFirstField(Block block, int index, T state);
-
-    abstract void writeFirstField(BlockBuilder out, T state);
+    final Type firstType;
 
     KeyAndBlockPositionValueStateSerializer(Type firstType, Type secondType)
     {
         this.firstType = requireNonNull(firstType, "firstType is null");
         this.secondType = requireNonNull(secondType, "secondType is null");
     }
+
+    abstract void readFirstField(Block block, int index, T state);
+
+    abstract void writeFirstField(BlockBuilder out, T state);
 
     @Override
     public Type getSerializedType()

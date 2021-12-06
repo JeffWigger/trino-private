@@ -57,6 +57,28 @@ public class KillQueryProcedure
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
     }
 
+    public static TrinoException createKillQueryException(String message)
+    {
+        return new TrinoException(ADMINISTRATIVELY_KILLED, "Query killed. " +
+                (isNullOrEmpty(message) ? "No message provided." : "Message: " + message));
+    }
+
+    public static TrinoException createPreemptQueryException(String message)
+    {
+        return new TrinoException(ADMINISTRATIVELY_PREEMPTED, "Query preempted. " +
+                (isNullOrEmpty(message) ? "No message provided." : "Message: " + message));
+    }
+
+    private static QueryId parseQueryId(String queryId)
+    {
+        try {
+            return QueryId.valueOf(queryId);
+        }
+        catch (IllegalArgumentException e) {
+            throw new TrinoException(INVALID_PROCEDURE_ARGUMENT, e);
+        }
+    }
+
     @UsedByGeneratedCode
     public void killQuery(String queryId, String message, ConnectorSession session)
     {
@@ -96,27 +118,5 @@ public class KillQueryProcedure
                         .add(new Argument("message", VARCHAR))
                         .build(),
                 KILL_QUERY.bindTo(this));
-    }
-
-    public static TrinoException createKillQueryException(String message)
-    {
-        return new TrinoException(ADMINISTRATIVELY_KILLED, "Query killed. " +
-                (isNullOrEmpty(message) ? "No message provided." : "Message: " + message));
-    }
-
-    public static TrinoException createPreemptQueryException(String message)
-    {
-        return new TrinoException(ADMINISTRATIVELY_PREEMPTED, "Query preempted. " +
-                (isNullOrEmpty(message) ? "No message provided." : "Message: " + message));
-    }
-
-    private static QueryId parseQueryId(String queryId)
-    {
-        try {
-            return QueryId.valueOf(queryId);
-        }
-        catch (IllegalArgumentException e) {
-            throw new TrinoException(INVALID_PROCEDURE_ARGUMENT, e);
-        }
     }
 }

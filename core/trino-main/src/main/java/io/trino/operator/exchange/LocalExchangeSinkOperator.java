@@ -34,73 +34,10 @@ import static java.util.Objects.requireNonNull;
 public class LocalExchangeSinkOperator
         implements Operator
 {
-    public static class LocalExchangeSinkOperatorFactory
-            implements OperatorFactory, LocalPlannerAware
-    {
-        private final LocalExchangeFactory localExchangeFactory;
-
-        private final int operatorId;
-        // There will be a LocalExchangeSinkFactory per LocalExchangeSinkOperatorFactory per Driver Group.
-        // A LocalExchangeSinkOperatorFactory needs to have access to LocalExchangeSinkFactories for each Driver Group.
-        private final LocalExchangeSinkFactoryId sinkFactoryId;
-        private final PlanNodeId planNodeId;
-        private final Function<Page, Page> pagePreprocessor;
-        private boolean closed;
-
-        public LocalExchangeSinkOperatorFactory(LocalExchangeFactory localExchangeFactory, int operatorId, PlanNodeId planNodeId, LocalExchangeSinkFactoryId sinkFactoryId, Function<Page, Page> pagePreprocessor)
-        {
-            this.localExchangeFactory = requireNonNull(localExchangeFactory, "localExchangeFactory is null");
-
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.sinkFactoryId = requireNonNull(sinkFactoryId, "sinkFactoryId is null");
-            this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LocalExchangeSinkOperator.class.getSimpleName());
-
-            LocalExchangeSinkFactory localExchangeSinkFactory = localExchangeFactory.getLocalExchange(driverContext.getLifespan()).getSinkFactory(sinkFactoryId);
-
-            return new LocalExchangeSinkOperator(operatorContext, localExchangeSinkFactory.createSink(), pagePreprocessor);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            if (!closed) {
-                closed = true;
-                localExchangeFactory.closeSinks(sinkFactoryId);
-            }
-        }
-
-        @Override
-        public void noMoreOperators(Lifespan lifespan)
-        {
-            localExchangeFactory.getLocalExchange(lifespan).getSinkFactory(sinkFactoryId).close();
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new LocalExchangeSinkOperatorFactory(localExchangeFactory, operatorId, planNodeId, localExchangeFactory.newSinkFactoryId(), pagePreprocessor);
-        }
-
-        @Override
-        public void localPlannerComplete()
-        {
-            localExchangeFactory.noMoreSinkFactories();
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalExchangeSink sink;
     private final Function<Page, Page> pagePreprocessor;
     private ListenableFuture<Void> isBlocked = NOT_BLOCKED;
-
     LocalExchangeSinkOperator(OperatorContext operatorContext, LocalExchangeSink sink, Function<Page, Page> pagePreprocessor)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -163,5 +100,67 @@ public class LocalExchangeSinkOperator
     public void close()
     {
         finish();
+    }
+
+    public static class LocalExchangeSinkOperatorFactory
+            implements OperatorFactory, LocalPlannerAware
+    {
+        private final LocalExchangeFactory localExchangeFactory;
+
+        private final int operatorId;
+        // There will be a LocalExchangeSinkFactory per LocalExchangeSinkOperatorFactory per Driver Group.
+        // A LocalExchangeSinkOperatorFactory needs to have access to LocalExchangeSinkFactories for each Driver Group.
+        private final LocalExchangeSinkFactoryId sinkFactoryId;
+        private final PlanNodeId planNodeId;
+        private final Function<Page, Page> pagePreprocessor;
+        private boolean closed;
+
+        public LocalExchangeSinkOperatorFactory(LocalExchangeFactory localExchangeFactory, int operatorId, PlanNodeId planNodeId, LocalExchangeSinkFactoryId sinkFactoryId, Function<Page, Page> pagePreprocessor)
+        {
+            this.localExchangeFactory = requireNonNull(localExchangeFactory, "localExchangeFactory is null");
+
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.sinkFactoryId = requireNonNull(sinkFactoryId, "sinkFactoryId is null");
+            this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LocalExchangeSinkOperator.class.getSimpleName());
+
+            LocalExchangeSinkFactory localExchangeSinkFactory = localExchangeFactory.getLocalExchange(driverContext.getLifespan()).getSinkFactory(sinkFactoryId);
+
+            return new LocalExchangeSinkOperator(operatorContext, localExchangeSinkFactory.createSink(), pagePreprocessor);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            if (!closed) {
+                closed = true;
+                localExchangeFactory.closeSinks(sinkFactoryId);
+            }
+        }
+
+        @Override
+        public void noMoreOperators(Lifespan lifespan)
+        {
+            localExchangeFactory.getLocalExchange(lifespan).getSinkFactory(sinkFactoryId).close();
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new LocalExchangeSinkOperatorFactory(localExchangeFactory, operatorId, planNodeId, localExchangeFactory.newSinkFactoryId(), pagePreprocessor);
+        }
+
+        @Override
+        public void localPlannerComplete()
+        {
+            localExchangeFactory.noMoreSinkFactories();
+        }
     }
 }

@@ -41,61 +41,12 @@ import static java.lang.invoke.MethodHandles.lookup;
 public final class RealType
         extends AbstractIntType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(RealType.class, lookup(), long.class);
-
     public static final RealType REAL = new RealType();
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(RealType.class, lookup(), long.class);
 
     private RealType()
     {
         super(new TypeSignature(StandardTypes.REAL));
-    }
-
-    @Override
-    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
-    {
-        return TYPE_OPERATOR_DECLARATION;
-    }
-
-    @Override
-    public Object getObjectValue(ConnectorSession session, Block block, int position)
-    {
-        if (block.isNull(position)) {
-            return null;
-        }
-        return intBitsToFloat(block.getInt(position, 0));
-    }
-
-    @Override
-    public void writeLong(BlockBuilder blockBuilder, long value)
-    {
-        int floatValue;
-        try {
-            floatValue = toIntExact(value);
-        }
-        catch (ArithmeticException e) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, format("Value (%sb) is not a valid single-precision float", Long.toBinaryString(value)));
-        }
-        blockBuilder.writeInt(floatValue).closeEntry();
-    }
-
-    @Override
-    public boolean equals(Object other)
-    {
-        return other == REAL;
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return getClass().hashCode();
-    }
-
-    @Override
-    public Optional<Range> getRange()
-    {
-        // The range for real is undefined because NaN is a special value that
-        // is *not* in any reasonable definition of a range for this type.
-        return Optional.empty();
     }
 
     @ScalarOperator(EQUAL)
@@ -155,5 +106,53 @@ public final class RealType
     private static boolean lessThanOrEqualOperator(long left, long right)
     {
         return intBitsToFloat((int) left) <= intBitsToFloat((int) right);
+    }
+
+    @Override
+    public TypeOperatorDeclaration getTypeOperatorDeclaration(TypeOperators typeOperators)
+    {
+        return TYPE_OPERATOR_DECLARATION;
+    }
+
+    @Override
+    public Object getObjectValue(ConnectorSession session, Block block, int position)
+    {
+        if (block.isNull(position)) {
+            return null;
+        }
+        return intBitsToFloat(block.getInt(position, 0));
+    }
+
+    @Override
+    public void writeLong(BlockBuilder blockBuilder, long value)
+    {
+        int floatValue;
+        try {
+            floatValue = toIntExact(value);
+        }
+        catch (ArithmeticException e) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, format("Value (%sb) is not a valid single-precision float", Long.toBinaryString(value)));
+        }
+        blockBuilder.writeInt(floatValue).closeEntry();
+    }
+
+    @Override
+    public boolean equals(Object other)
+    {
+        return other == REAL;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return getClass().hashCode();
+    }
+
+    @Override
+    public Optional<Range> getRange()
+    {
+        // The range for real is undefined because NaN is a special value that
+        // is *not* in any reasonable definition of a range for this type.
+        return Optional.empty();
     }
 }

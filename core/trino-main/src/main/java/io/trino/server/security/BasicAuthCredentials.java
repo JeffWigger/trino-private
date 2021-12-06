@@ -34,6 +34,12 @@ public class BasicAuthCredentials
     private final String user;
     private final Optional<String> password;
 
+    public BasicAuthCredentials(String user, Optional<String> password)
+    {
+        this.user = requireNonNull(user, "user is null");
+        this.password = requireNonNull(password, "password is null");
+    }
+
     public static Optional<BasicAuthCredentials> extractBasicAuthCredentials(ContainerRequestContext request)
             throws AuthenticationException
     {
@@ -66,22 +72,6 @@ public class BasicAuthCredentials
         return Optional.of(new BasicAuthCredentials(user, password));
     }
 
-    public BasicAuthCredentials(String user, Optional<String> password)
-    {
-        this.user = requireNonNull(user, "user is null");
-        this.password = requireNonNull(password, "password is null");
-    }
-
-    public String getUser()
-    {
-        return user;
-    }
-
-    public Optional<String> getPassword()
-    {
-        return password;
-    }
-
     private static String decodeCredentials(String credentials)
             throws AuthenticationException
     {
@@ -95,5 +85,15 @@ public class BasicAuthCredentials
         catch (IllegalArgumentException e) {
             throw new AuthenticationException("Invalid base64 encoded credentials");
         }
+    }
+
+    public String getUser()
+    {
+        return user;
+    }
+
+    public Optional<String> getPassword()
+    {
+        return password;
     }
 }

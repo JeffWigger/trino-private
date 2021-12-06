@@ -26,6 +26,14 @@ class OperatorInputStats
         this.sumSquaredInputPositions = sumSquaredInputPositions;
     }
 
+    public static OperatorInputStats merge(OperatorInputStats first, OperatorInputStats second)
+    {
+        return new OperatorInputStats(
+                first.totalDrivers + second.totalDrivers,
+                first.inputPositions + second.inputPositions,
+                first.sumSquaredInputPositions + second.sumSquaredInputPositions);
+    }
+
     public long getTotalDrivers()
     {
         return totalDrivers;
@@ -39,13 +47,5 @@ class OperatorInputStats
     public double getSumSquaredInputPositions()
     {
         return sumSquaredInputPositions;
-    }
-
-    public static OperatorInputStats merge(OperatorInputStats first, OperatorInputStats second)
-    {
-        return new OperatorInputStats(
-                first.totalDrivers + second.totalDrivers,
-                first.inputPositions + second.inputPositions,
-                first.sumSquaredInputPositions + second.sumSquaredInputPositions);
     }
 }

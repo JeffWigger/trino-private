@@ -251,6 +251,11 @@ public class ExpressionInterpreter
         return new ExpressionInterpreter(resolved, metadata, session, analyzer.getExpressionTypes()).evaluate();
     }
 
+    private static boolean isArray(Type type)
+    {
+        return type instanceof ArrayType;
+    }
+
     public Type getType()
     {
         return expressionTypes.get(NodeRef.of(expression));
@@ -273,6 +278,47 @@ public class ExpressionInterpreter
     public Object optimize(SymbolResolver inputs)
     {
         return new Visitor(true).processWithExceptionHandling(expression, inputs);
+    }
+
+    private interface PagePositionContext
+    {
+        Block getBlock(int channel);
+
+        int getPosition(int channel);
+    }
+
+    private static class NoPagePositionContext
+            implements PagePositionContext
+    {
+        @Override
+        public Block getBlock(int channel)
+        {
+            throw new IllegalArgumentException("Context does not contain any blocks");
+        }
+
+        @Override
+        public int getPosition(int channel)
+        {
+            throw new IllegalArgumentException("Context does not have a position");
+        }
+    }
+
+    private static class LambdaSymbolResolver
+            implements SymbolResolver
+    {
+        private final Map<String, Object> values;
+
+        public LambdaSymbolResolver(Map<String, Object> values)
+        {
+            this.values = requireNonNull(values, "values is null");
+        }
+
+        @Override
+        public Object getValue(Symbol symbol)
+        {
+            checkState(values.containsKey(symbol.getName()), "values does not contain %s", symbol);
+            return values.get(symbol.getName());
+        }
     }
 
     private class Visitor
@@ -655,11 +701,11 @@ public class ExpressionInterpreter
                 Type type = type(node.getValue());
                 List<Expression> expressionValues = toExpressions(values, types);
                 List<Expression> simplifiedExpressionValues = Stream.concat(
-                        expressionValues.stream()
-                                .filter(expression -> isDeterministic(expression, metadata))
-                                .distinct(),
-                        expressionValues.stream()
-                                .filter((expression -> !isDeterministic(expression, metadata))))
+                                expressionValues.stream()
+                                        .filter(expression -> isDeterministic(expression, metadata))
+                                        .distinct(),
+                                expressionValues.stream()
+                                        .filter((expression -> !isDeterministic(expression, metadata))))
                         .collect(toImmutableList());
 
                 if (simplifiedExpressionValues.size() == 1) {
@@ -1412,52 +1458,6 @@ public class ExpressionInterpreter
         private List<Expression> toExpressions(List<Object> values, List<Type> types)
         {
             return literalEncoder.toExpressions(values, types);
-        }
-    }
-
-    private interface PagePositionContext
-    {
-        Block getBlock(int channel);
-
-        int getPosition(int channel);
-    }
-
-    private static class NoPagePositionContext
-            implements PagePositionContext
-    {
-        @Override
-        public Block getBlock(int channel)
-        {
-            throw new IllegalArgumentException("Context does not contain any blocks");
-        }
-
-        @Override
-        public int getPosition(int channel)
-        {
-            throw new IllegalArgumentException("Context does not have a position");
-        }
-    }
-
-    private static boolean isArray(Type type)
-    {
-        return type instanceof ArrayType;
-    }
-
-    private static class LambdaSymbolResolver
-            implements SymbolResolver
-    {
-        private final Map<String, Object> values;
-
-        public LambdaSymbolResolver(Map<String, Object> values)
-        {
-            this.values = requireNonNull(values, "values is null");
-        }
-
-        @Override
-        public Object getValue(Symbol symbol)
-        {
-            checkState(values.containsKey(symbol.getName()), "values does not contain %s", symbol);
-            return values.get(symbol.getName());
         }
     }
 }

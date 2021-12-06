@@ -205,6 +205,17 @@ public class PredicatePushDown
             this.dynamicFiltering = dynamicFiltering;
         }
 
+        private static Stream<Expression> tryConvertBetweenIntoComparisons(Expression clause)
+        {
+            if (clause instanceof BetweenPredicate) {
+                BetweenPredicate between = (BetweenPredicate) clause;
+                return Stream.of(
+                        new ComparisonExpression(GREATER_THAN_OR_EQUAL, between.getValue(), between.getMin()),
+                        new ComparisonExpression(LESS_THAN_OR_EQUAL, between.getValue(), between.getMax()));
+            }
+            return Stream.of(clause);
+        }
+
         @Override
         public PlanNode visitPlan(PlanNode node, RewriteContext<Expression> context)
         {
@@ -619,33 +630,33 @@ public class PredicatePushDown
             }
 
             List<DynamicFilterExpression> clauses = Streams.concat(
-                    equiJoinClauses
-                            .stream()
-                            .map(clause -> new DynamicFilterExpression(
-                                    new ComparisonExpression(EQUAL, clause.getLeft().toSymbolReference(), clause.getRight().toSymbolReference()))),
-                    joinFilterClauses.stream()
-                            .flatMap(Rewriter::tryConvertBetweenIntoComparisons)
-                            .filter(clause -> joinDynamicFilteringExpression(clause, node.getLeft().getOutputSymbols(), node.getRight().getOutputSymbols()))
-                            .map(expression -> {
-                                if (expression instanceof NotExpression) {
-                                    NotExpression notExpression = ((NotExpression) expression);
-                                    ComparisonExpression comparison = (ComparisonExpression) notExpression.getValue();
-                                    return new DynamicFilterExpression(new ComparisonExpression(EQUAL, comparison.getLeft(), comparison.getRight()), true);
-                                }
-                                return new DynamicFilterExpression((ComparisonExpression) expression);
-                            })
-                            .map(expression -> {
-                                ComparisonExpression comparison = expression.getComparison();
-                                Expression leftExpression = comparison.getLeft();
-                                Expression rightExpression = comparison.getRight();
-                                boolean alignedComparison = node.getLeft().getOutputSymbols().containsAll(extractUnique(leftExpression));
-                                return new DynamicFilterExpression(
-                                        new ComparisonExpression(
-                                                alignedComparison ? comparison.getOperator() : comparison.getOperator().flip(),
-                                                alignedComparison ? leftExpression : rightExpression,
-                                                alignedComparison ? rightExpression : leftExpression),
-                                        expression.isNullAllowed());
-                            }))
+                            equiJoinClauses
+                                    .stream()
+                                    .map(clause -> new DynamicFilterExpression(
+                                            new ComparisonExpression(EQUAL, clause.getLeft().toSymbolReference(), clause.getRight().toSymbolReference()))),
+                            joinFilterClauses.stream()
+                                    .flatMap(Rewriter::tryConvertBetweenIntoComparisons)
+                                    .filter(clause -> joinDynamicFilteringExpression(clause, node.getLeft().getOutputSymbols(), node.getRight().getOutputSymbols()))
+                                    .map(expression -> {
+                                        if (expression instanceof NotExpression) {
+                                            NotExpression notExpression = ((NotExpression) expression);
+                                            ComparisonExpression comparison = (ComparisonExpression) notExpression.getValue();
+                                            return new DynamicFilterExpression(new ComparisonExpression(EQUAL, comparison.getLeft(), comparison.getRight()), true);
+                                        }
+                                        return new DynamicFilterExpression((ComparisonExpression) expression);
+                                    })
+                                    .map(expression -> {
+                                        ComparisonExpression comparison = expression.getComparison();
+                                        Expression leftExpression = comparison.getLeft();
+                                        Expression rightExpression = comparison.getRight();
+                                        boolean alignedComparison = node.getLeft().getOutputSymbols().containsAll(extractUnique(leftExpression));
+                                        return new DynamicFilterExpression(
+                                                new ComparisonExpression(
+                                                        alignedComparison ? comparison.getOperator() : comparison.getOperator().flip(),
+                                                        alignedComparison ? leftExpression : rightExpression,
+                                                        alignedComparison ? rightExpression : leftExpression),
+                                                expression.isNullAllowed());
+                                    }))
                     .collect(toImmutableList());
 
             // New equiJoinClauses could potentially not contain symbols used in current dynamic filters.
@@ -683,66 +694,6 @@ public class PredicatePushDown
                     .collect(toImmutableList());
             // Return a mapping from build symbols to corresponding dynamic filter IDs:
             return new DynamicFiltersResult(buildSymbolToDynamicFilter.inverse(), predicates);
-        }
-
-        private static Stream<Expression> tryConvertBetweenIntoComparisons(Expression clause)
-        {
-            if (clause instanceof BetweenPredicate) {
-                BetweenPredicate between = (BetweenPredicate) clause;
-                return Stream.of(
-                        new ComparisonExpression(GREATER_THAN_OR_EQUAL, between.getValue(), between.getMin()),
-                        new ComparisonExpression(LESS_THAN_OR_EQUAL, between.getValue(), between.getMax()));
-            }
-            return Stream.of(clause);
-        }
-
-        private static class DynamicFilterExpression
-        {
-            private final ComparisonExpression comparison;
-            private final boolean nullAllowed;
-
-            private DynamicFilterExpression(ComparisonExpression comparison)
-            {
-                this(comparison, false);
-            }
-
-            private DynamicFilterExpression(ComparisonExpression comparison, boolean nullAllowed)
-            {
-                this.comparison = requireNonNull(comparison, "comparison is null");
-                this.nullAllowed = nullAllowed;
-            }
-
-            public ComparisonExpression getComparison()
-            {
-                return comparison;
-            }
-
-            public boolean isNullAllowed()
-            {
-                return nullAllowed;
-            }
-        }
-
-        private static class DynamicFiltersResult
-        {
-            private final Map<DynamicFilterId, Symbol> dynamicFilters;
-            private final List<Expression> predicates;
-
-            public DynamicFiltersResult(Map<DynamicFilterId, Symbol> dynamicFilters, List<Expression> predicates)
-            {
-                this.dynamicFilters = ImmutableMap.copyOf(dynamicFilters);
-                this.predicates = ImmutableList.copyOf(predicates);
-            }
-
-            public Map<DynamicFilterId, Symbol> getDynamicFilters()
-            {
-                return dynamicFilters;
-            }
-
-            public List<Expression> getPredicates()
-            {
-                return predicates;
-            }
         }
 
         @Override
@@ -944,42 +895,6 @@ public class PredicatePushDown
                     combineConjuncts(metadata, postJoinConjuncts.build()));
         }
 
-        private static class OuterJoinPushDownResult
-        {
-            private final Expression outerJoinPredicate;
-            private final Expression innerJoinPredicate;
-            private final Expression joinPredicate;
-            private final Expression postJoinPredicate;
-
-            private OuterJoinPushDownResult(Expression outerJoinPredicate, Expression innerJoinPredicate, Expression joinPredicate, Expression postJoinPredicate)
-            {
-                this.outerJoinPredicate = outerJoinPredicate;
-                this.innerJoinPredicate = innerJoinPredicate;
-                this.joinPredicate = joinPredicate;
-                this.postJoinPredicate = postJoinPredicate;
-            }
-
-            private Expression getOuterJoinPredicate()
-            {
-                return outerJoinPredicate;
-            }
-
-            private Expression getInnerJoinPredicate()
-            {
-                return innerJoinPredicate;
-            }
-
-            public Expression getJoinPredicate()
-            {
-                return joinPredicate;
-            }
-
-            private Expression getPostJoinPredicate()
-            {
-                return postJoinPredicate;
-            }
-        }
-
         private InnerJoinPushDownResult processInnerJoin(
                 Expression inheritedPredicate,
                 Expression leftEffectivePredicate,
@@ -1084,42 +999,6 @@ public class PredicatePushDown
                     combineConjuncts(metadata, rightPushDownConjuncts.build()),
                     combineConjuncts(metadata, joinConjuncts.build()),
                     TRUE_LITERAL);
-        }
-
-        private static class InnerJoinPushDownResult
-        {
-            private final Expression leftPredicate;
-            private final Expression rightPredicate;
-            private final Expression joinPredicate;
-            private final Expression postJoinPredicate;
-
-            private InnerJoinPushDownResult(Expression leftPredicate, Expression rightPredicate, Expression joinPredicate, Expression postJoinPredicate)
-            {
-                this.leftPredicate = leftPredicate;
-                this.rightPredicate = rightPredicate;
-                this.joinPredicate = joinPredicate;
-                this.postJoinPredicate = postJoinPredicate;
-            }
-
-            private Expression getLeftPredicate()
-            {
-                return leftPredicate;
-            }
-
-            private Expression getRightPredicate()
-            {
-                return rightPredicate;
-            }
-
-            private Expression getJoinPredicate()
-            {
-                return joinPredicate;
-            }
-
-            private Expression getPostJoinPredicate()
-            {
-                return postJoinPredicate;
-            }
         }
 
         private Expression extractJoinPredicate(JoinNode joinNode)
@@ -1604,6 +1483,127 @@ public class PredicatePushDown
             Set<Symbol> predicateSymbols = extractUnique(context.get());
             checkState(!predicateSymbols.contains(node.getIdColumn()), "UniqueId in predicate is not yet supported");
             return context.defaultRewrite(node, context.get());
+        }
+
+        private static class DynamicFilterExpression
+        {
+            private final ComparisonExpression comparison;
+            private final boolean nullAllowed;
+
+            private DynamicFilterExpression(ComparisonExpression comparison)
+            {
+                this(comparison, false);
+            }
+
+            private DynamicFilterExpression(ComparisonExpression comparison, boolean nullAllowed)
+            {
+                this.comparison = requireNonNull(comparison, "comparison is null");
+                this.nullAllowed = nullAllowed;
+            }
+
+            public ComparisonExpression getComparison()
+            {
+                return comparison;
+            }
+
+            public boolean isNullAllowed()
+            {
+                return nullAllowed;
+            }
+        }
+
+        private static class DynamicFiltersResult
+        {
+            private final Map<DynamicFilterId, Symbol> dynamicFilters;
+            private final List<Expression> predicates;
+
+            public DynamicFiltersResult(Map<DynamicFilterId, Symbol> dynamicFilters, List<Expression> predicates)
+            {
+                this.dynamicFilters = ImmutableMap.copyOf(dynamicFilters);
+                this.predicates = ImmutableList.copyOf(predicates);
+            }
+
+            public Map<DynamicFilterId, Symbol> getDynamicFilters()
+            {
+                return dynamicFilters;
+            }
+
+            public List<Expression> getPredicates()
+            {
+                return predicates;
+            }
+        }
+
+        private static class OuterJoinPushDownResult
+        {
+            private final Expression outerJoinPredicate;
+            private final Expression innerJoinPredicate;
+            private final Expression joinPredicate;
+            private final Expression postJoinPredicate;
+
+            private OuterJoinPushDownResult(Expression outerJoinPredicate, Expression innerJoinPredicate, Expression joinPredicate, Expression postJoinPredicate)
+            {
+                this.outerJoinPredicate = outerJoinPredicate;
+                this.innerJoinPredicate = innerJoinPredicate;
+                this.joinPredicate = joinPredicate;
+                this.postJoinPredicate = postJoinPredicate;
+            }
+
+            private Expression getOuterJoinPredicate()
+            {
+                return outerJoinPredicate;
+            }
+
+            private Expression getInnerJoinPredicate()
+            {
+                return innerJoinPredicate;
+            }
+
+            public Expression getJoinPredicate()
+            {
+                return joinPredicate;
+            }
+
+            private Expression getPostJoinPredicate()
+            {
+                return postJoinPredicate;
+            }
+        }
+
+        private static class InnerJoinPushDownResult
+        {
+            private final Expression leftPredicate;
+            private final Expression rightPredicate;
+            private final Expression joinPredicate;
+            private final Expression postJoinPredicate;
+
+            private InnerJoinPushDownResult(Expression leftPredicate, Expression rightPredicate, Expression joinPredicate, Expression postJoinPredicate)
+            {
+                this.leftPredicate = leftPredicate;
+                this.rightPredicate = rightPredicate;
+                this.joinPredicate = joinPredicate;
+                this.postJoinPredicate = postJoinPredicate;
+            }
+
+            private Expression getLeftPredicate()
+            {
+                return leftPredicate;
+            }
+
+            private Expression getRightPredicate()
+            {
+                return rightPredicate;
+            }
+
+            private Expression getJoinPredicate()
+            {
+                return joinPredicate;
+            }
+
+            private Expression getPostJoinPredicate()
+            {
+                return postJoinPredicate;
+            }
         }
     }
 }

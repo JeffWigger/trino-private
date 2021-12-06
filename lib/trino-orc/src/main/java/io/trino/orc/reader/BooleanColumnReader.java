@@ -52,23 +52,17 @@ public class BooleanColumnReader
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(BooleanColumnReader.class).instanceSize();
 
     private final OrcColumn column;
-
+    private final LocalMemoryContext systemMemoryContext;
     private int readOffset;
     private int nextBatchSize;
-
     private InputStreamSource<BooleanInputStream> presentStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream presentStream;
-
     private InputStreamSource<BooleanInputStream> dataStreamSource = missingStreamSource(BooleanInputStream.class);
     @Nullable
     private BooleanInputStream dataStream;
-
     private boolean rowGroupOpen;
-
     private byte[] nonNullValueTemp = new byte[0];
-
-    private final LocalMemoryContext systemMemoryContext;
 
     public BooleanColumnReader(Type type, OrcColumn column, LocalMemoryContext systemMemoryContext)
             throws OrcCorruptionException

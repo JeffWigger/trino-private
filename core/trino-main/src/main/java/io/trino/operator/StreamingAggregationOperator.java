@@ -47,6 +47,29 @@ import static java.util.Objects.requireNonNull;
 public class StreamingAggregationOperator
         implements WorkProcessorOperator
 {
+    private final WorkProcessor<Page> pages;
+
+    private StreamingAggregationOperator(
+            ProcessorContext processorContext,
+            WorkProcessor<Page> sourcePages,
+            List<Type> sourceTypes,
+            List<Type> groupByTypes,
+            List<Integer> groupByChannels,
+            Step step,
+            List<AccumulatorFactory> accumulatorFactories,
+            JoinCompiler joinCompiler)
+    {
+        pages = sourcePages
+                .transform(new StreamingAggregation(
+                        processorContext,
+                        sourceTypes,
+                        groupByTypes,
+                        groupByChannels,
+                        step,
+                        accumulatorFactories,
+                        joinCompiler));
+    }
+
     public static OperatorFactory createOperatorFactory(
             int operatorId,
             PlanNodeId planNodeId,
@@ -66,6 +89,12 @@ public class StreamingAggregationOperator
                 step,
                 accumulatorFactories,
                 joinCompiler));
+    }
+
+    @Override
+    public WorkProcessor<Page> getOutputPages()
+    {
+        return pages;
     }
 
     private static class Factory
@@ -139,35 +168,6 @@ public class StreamingAggregationOperator
         }
     }
 
-    private final WorkProcessor<Page> pages;
-
-    private StreamingAggregationOperator(
-            ProcessorContext processorContext,
-            WorkProcessor<Page> sourcePages,
-            List<Type> sourceTypes,
-            List<Type> groupByTypes,
-            List<Integer> groupByChannels,
-            Step step,
-            List<AccumulatorFactory> accumulatorFactories,
-            JoinCompiler joinCompiler)
-    {
-        pages = sourcePages
-                .transform(new StreamingAggregation(
-                        processorContext,
-                        sourceTypes,
-                        groupByTypes,
-                        groupByChannels,
-                        step,
-                        accumulatorFactories,
-                        joinCompiler));
-    }
-
-    @Override
-    public WorkProcessor<Page> getOutputPages()
-    {
-        return pages;
-    }
-
     private static class StreamingAggregation
             implements Transformation<Page, Page>
     {
@@ -178,10 +178,9 @@ public class StreamingAggregationOperator
         private final List<AccumulatorFactory> accumulatorFactories;
         private final Step step;
         private final PagesHashStrategy pagesHashStrategy;
-
-        private List<Aggregator> aggregates;
         private final PageBuilder pageBuilder;
         private final Deque<Page> outputPages = new LinkedList<>();
+        private List<Aggregator> aggregates;
         private Page currentGroup;
 
         private StreamingAggregation(
@@ -211,6 +210,25 @@ public class StreamingAggregationOperator
                             sourceTypes.stream()
                                     .map(type -> ImmutableList.<Block>of())
                                     .collect(toImmutableList()), OptionalInt.empty());
+        }
+
+        private static List<Aggregator> setupAggregates(Step step, List<AccumulatorFactory> accumulatorFactories)
+        {
+            ImmutableList.Builder<Aggregator> builder = ImmutableList.builder();
+            for (AccumulatorFactory factory : accumulatorFactories) {
+                builder.add(new Aggregator(factory, step));
+            }
+            return builder.build();
+        }
+
+        private static List<Type> toTypes(List<Type> groupByTypes, List<Aggregator> aggregates)
+        {
+            ImmutableList.Builder<Type> builder = ImmutableList.builder();
+            builder.addAll(groupByTypes);
+            aggregates.stream()
+                    .map(Aggregator::getType)
+                    .forEach(builder::add);
+            return builder.build();
         }
 
         @Override
@@ -344,25 +362,6 @@ public class StreamingAggregationOperator
             }
 
             return page.getPositionCount();
-        }
-
-        private static List<Aggregator> setupAggregates(Step step, List<AccumulatorFactory> accumulatorFactories)
-        {
-            ImmutableList.Builder<Aggregator> builder = ImmutableList.builder();
-            for (AccumulatorFactory factory : accumulatorFactories) {
-                builder.add(new Aggregator(factory, step));
-            }
-            return builder.build();
-        }
-
-        private static List<Type> toTypes(List<Type> groupByTypes, List<Aggregator> aggregates)
-        {
-            ImmutableList.Builder<Type> builder = ImmutableList.builder();
-            builder.addAll(groupByTypes);
-            aggregates.stream()
-                    .map(Aggregator::getType)
-                    .forEach(builder::add);
-            return builder.build();
         }
     }
 }

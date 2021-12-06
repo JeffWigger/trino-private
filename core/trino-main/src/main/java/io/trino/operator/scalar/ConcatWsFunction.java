@@ -60,37 +60,6 @@ public final class ConcatWsFunction
     private static final int MAX_INPUT_VALUES = 254;
     private static final int MAX_OUTPUT_LENGTH = DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 
-    @ScalarFunction("concat_ws")
-    public static final class ConcatArrayWs
-    {
-        @SqlType("varchar")
-        public static Slice concatWsArray(@SqlType("varchar") Slice separator, @SqlType("array(varchar)") Block elements)
-        {
-            return concatWs(
-                    separator,
-                    new SliceArray()
-                    {
-                        @Override
-                        public Slice getElement(int i)
-                        {
-                            if (elements.isNull(i)) {
-                                return null;
-                            }
-                            else {
-                                int sliceLength = elements.getSliceLength(i);
-                                return elements.getSlice(i, 0, sliceLength);
-                            }
-                        }
-
-                        @Override
-                        public int getCount()
-                        {
-                            return elements.getPositionCount();
-                        }
-                    });
-        }
-    }
-
     public ConcatWsFunction()
     {
         super(new FunctionMetadata(
@@ -107,27 +76,6 @@ public final class ConcatWsFunction
                 true,
                 "Concatenates elements using separator",
                 SCALAR));
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding binding)
-    {
-        int valueCount = binding.getArity() - 1;
-        if (valueCount < 1) {
-            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more arguments");
-        }
-
-        MethodHandle arrayMethodHandle = methodHandle(ConcatWsFunction.class, "concatWs", Slice.class, Slice[].class);
-        MethodHandle customMethodHandle = arrayMethodHandle.asCollector(Slice[].class, valueCount);
-
-        return new ChoicesScalarFunctionImplementation(
-                binding,
-                FAIL_ON_NULL,
-                ImmutableList.<InvocationConvention.InvocationArgumentConvention>builder()
-                        .add(NEVER_NULL)
-                        .addAll(Collections.nCopies(valueCount, BOXED_NULLABLE))
-                        .build(),
-                customMethodHandle);
     }
 
     @UsedByGeneratedCode
@@ -204,10 +152,62 @@ public final class ConcatWsFunction
         return result;
     }
 
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding binding)
+    {
+        int valueCount = binding.getArity() - 1;
+        if (valueCount < 1) {
+            throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more arguments");
+        }
+
+        MethodHandle arrayMethodHandle = methodHandle(ConcatWsFunction.class, "concatWs", Slice.class, Slice[].class);
+        MethodHandle customMethodHandle = arrayMethodHandle.asCollector(Slice[].class, valueCount);
+
+        return new ChoicesScalarFunctionImplementation(
+                binding,
+                FAIL_ON_NULL,
+                ImmutableList.<InvocationConvention.InvocationArgumentConvention>builder()
+                        .add(NEVER_NULL)
+                        .addAll(Collections.nCopies(valueCount, BOXED_NULLABLE))
+                        .build(),
+                customMethodHandle);
+    }
+
     private interface SliceArray
     {
         Slice getElement(int i);
 
         int getCount();
+    }
+
+    @ScalarFunction("concat_ws")
+    public static final class ConcatArrayWs
+    {
+        @SqlType("varchar")
+        public static Slice concatWsArray(@SqlType("varchar") Slice separator, @SqlType("array(varchar)") Block elements)
+        {
+            return concatWs(
+                    separator,
+                    new SliceArray()
+                    {
+                        @Override
+                        public Slice getElement(int i)
+                        {
+                            if (elements.isNull(i)) {
+                                return null;
+                            }
+                            else {
+                                int sliceLength = elements.getSliceLength(i);
+                                return elements.getSlice(i, 0, sliceLength);
+                            }
+                        }
+
+                        @Override
+                        public int getCount()
+                        {
+                            return elements.getPositionCount();
+                        }
+                    });
+        }
     }
 }

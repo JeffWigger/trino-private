@@ -53,6 +53,71 @@ public class InMemoryRecordSet
         this.records = records;
     }
 
+    public static Builder builder(ConnectorTableMetadata tableMetadata)
+    {
+        return builder(tableMetadata.getColumns());
+    }
+
+    public static Builder builder(List<ColumnMetadata> columns)
+    {
+        List<Type> columnTypes = new ArrayList<>();
+        for (ColumnMetadata column : columns) {
+            columnTypes.add(column.getType());
+        }
+        return builder(columnTypes);
+    }
+
+    public static Builder builder(Collection<Type> columnsTypes)
+    {
+        return new Builder(columnsTypes);
+    }
+
+    private static void checkArgument(boolean test, String message, Object... args)
+    {
+        if (!test) {
+            throw new IllegalArgumentException(format(message, args));
+        }
+    }
+
+    private static void checkState(boolean test, String message)
+    {
+        if (!test) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    private static long sizeOf(List<?> record)
+    {
+        long completedBytes = 0;
+        for (Object value : record) {
+            if (value == null) {
+                // do nothing
+            }
+            else if (value instanceof Boolean) {
+                completedBytes++;
+            }
+            else if (value instanceof Number) {
+                completedBytes += 8;
+            }
+            else if (value instanceof String) {
+                completedBytes += ((String) value).length();
+            }
+            else if (value instanceof byte[]) {
+                completedBytes += ((byte[]) value).length;
+            }
+            else if (value instanceof Block) {
+                completedBytes += ((Block) value).getSizeInBytes();
+            }
+            else if (value instanceof Slice) {
+                completedBytes += ((Slice) value).length();
+            }
+            else {
+                throw new IllegalArgumentException("Unknown type: " + value.getClass());
+            }
+        }
+        return completedBytes;
+    }
+
     @Override
     public List<Type> getColumnTypes()
     {
@@ -174,25 +239,6 @@ public class InMemoryRecordSet
         }
     }
 
-    public static Builder builder(ConnectorTableMetadata tableMetadata)
-    {
-        return builder(tableMetadata.getColumns());
-    }
-
-    public static Builder builder(List<ColumnMetadata> columns)
-    {
-        List<Type> columnTypes = new ArrayList<>();
-        for (ColumnMetadata column : columns) {
-            columnTypes.add(column.getType());
-        }
-        return builder(columnTypes);
-    }
-
-    public static Builder builder(Collection<Type> columnsTypes)
-    {
-        return new Builder(columnsTypes);
-    }
-
     public static class Builder
     {
         private final List<Type> types;
@@ -266,51 +312,5 @@ public class InMemoryRecordSet
         {
             return new InMemoryRecordSet(types, records);
         }
-    }
-
-    private static void checkArgument(boolean test, String message, Object... args)
-    {
-        if (!test) {
-            throw new IllegalArgumentException(format(message, args));
-        }
-    }
-
-    private static void checkState(boolean test, String message)
-    {
-        if (!test) {
-            throw new IllegalStateException(message);
-        }
-    }
-
-    private static long sizeOf(List<?> record)
-    {
-        long completedBytes = 0;
-        for (Object value : record) {
-            if (value == null) {
-                // do nothing
-            }
-            else if (value instanceof Boolean) {
-                completedBytes++;
-            }
-            else if (value instanceof Number) {
-                completedBytes += 8;
-            }
-            else if (value instanceof String) {
-                completedBytes += ((String) value).length();
-            }
-            else if (value instanceof byte[]) {
-                completedBytes += ((byte[]) value).length;
-            }
-            else if (value instanceof Block) {
-                completedBytes += ((Block) value).getSizeInBytes();
-            }
-            else if (value instanceof Slice) {
-                completedBytes += ((Slice) value).length();
-            }
-            else {
-                throw new IllegalArgumentException("Unknown type: " + value.getClass());
-            }
-        }
-        return completedBytes;
     }
 }

@@ -35,8 +35,8 @@ import static io.trino.spi.function.OperatorType.COMPARISON;
 @Description("Sorts the given array in ascending order according to the natural ordering of its elements.")
 public final class ArraySortFunction
 {
-    private final PageBuilder pageBuilder;
     private static final int INITIAL_LENGTH = 128;
+    private final PageBuilder pageBuilder;
     private final IntArrayList positions = new IntArrayList(INITIAL_LENGTH);
 
     @TypeParameter("E")

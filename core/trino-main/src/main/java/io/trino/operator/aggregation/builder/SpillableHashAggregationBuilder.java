@@ -47,7 +47,6 @@ import static java.lang.Math.max;
 public class SpillableHashAggregationBuilder
         implements HashAggregationBuilder
 {
-    private InMemoryHashAggregationBuilder hashAggregationBuilder;
     private final SpillerFactory spillerFactory;
     private final List<AccumulatorFactory> accumulatorFactories;
     private final AggregationNode.Step step;
@@ -60,13 +59,13 @@ public class SpillableHashAggregationBuilder
     private final LocalMemoryContext localRevocableMemoryContext;
     private final long memoryLimitForMerge;
     private final long memoryLimitForMergeWithMemory;
+    private final JoinCompiler joinCompiler;
+    private final BlockTypeOperators blockTypeOperators;
+    private InMemoryHashAggregationBuilder hashAggregationBuilder;
     private Optional<Spiller> spiller = Optional.empty();
     private Optional<MergingHashAggregationBuilder> merger = Optional.empty();
     private Optional<MergeHashSort> mergeHashSort = Optional.empty();
     private ListenableFuture<Void> spillInProgress = immediateVoidFuture();
-    private final JoinCompiler joinCompiler;
-    private final BlockTypeOperators blockTypeOperators;
-
     // todo get rid of that and only use revocable memory
     private long emptyHashAggregationBuilderSize;
 

@@ -27,17 +27,25 @@ import static java.lang.String.format;
 abstract class AbstractAggregatedMemoryContext
         implements AggregatedMemoryContext
 {
-    static final ListenableFuture<Void> NOT_BLOCKED = immediateVoidFuture();
-
     // When an aggregated memory context is closed, it force-frees the memory allocated by its
     // children local memory contexts. Since the memory pool API enforces a tag to be used for
     // reserve/free operations, we define this special tag to use with such free operations.
     protected static final String FORCE_FREE_TAG = "FORCE_FREE_OPERATION";
-
+    static final ListenableFuture<Void> NOT_BLOCKED = immediateVoidFuture();
     @GuardedBy("this")
     private long usedBytes;
     @GuardedBy("this")
     private boolean closed;
+
+    static long addExact(long usedBytes, long bytes)
+    {
+        try {
+            return Math.addExact(usedBytes, bytes);
+        }
+        catch (ArithmeticException e) {
+            throw new RuntimeException(format("Overflow detected. usedBytes: %d, bytes: %d", usedBytes, bytes), e);
+        }
+    }
 
     @Override
     public AbstractAggregatedMemoryContext newAggregatedMemoryContext()
@@ -95,14 +103,4 @@ abstract class AbstractAggregatedMemoryContext
     abstract AbstractAggregatedMemoryContext getParent();
 
     abstract void closeContext();
-
-    static long addExact(long usedBytes, long bytes)
-    {
-        try {
-            return Math.addExact(usedBytes, bytes);
-        }
-        catch (ArithmeticException e) {
-            throw new RuntimeException(format("Overflow detected. usedBytes: %d, bytes: %d", usedBytes, bytes), e);
-        }
-    }
 }

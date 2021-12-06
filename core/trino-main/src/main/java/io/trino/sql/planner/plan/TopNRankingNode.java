@@ -34,13 +34,6 @@ import static java.util.Objects.requireNonNull;
 public final class TopNRankingNode
         extends PlanNode
 {
-    public enum RankingType
-    {
-        ROW_NUMBER,
-        RANK,
-        DENSE_RANK
-    }
-
     private final PlanNode source;
     private final Specification specification;
     private final RankingType rankingType;
@@ -48,7 +41,6 @@ public final class TopNRankingNode
     private final int maxRankingPerPartition;
     private final boolean partial;
     private final Optional<Symbol> hashSymbol;
-
     @JsonCreator
     public TopNRankingNode(
             @JsonProperty("id") PlanNodeId id,
@@ -156,5 +148,12 @@ public final class TopNRankingNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         return new TopNRankingNode(getId(), Iterables.getOnlyElement(newChildren), specification, rankingType, rankingSymbol, maxRankingPerPartition, partial, hashSymbol);
+    }
+
+    public enum RankingType
+    {
+        ROW_NUMBER,
+        RANK,
+        DENSE_RANK
     }
 }

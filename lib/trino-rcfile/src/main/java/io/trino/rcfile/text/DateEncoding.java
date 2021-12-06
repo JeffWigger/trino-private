@@ -43,6 +43,12 @@ public class DateEncoding
         this.nullSequence = nullSequence;
     }
 
+    private static int parseDate(Slice slice, int offset, int length)
+    {
+        long millis = HIVE_DATE_PARSER.parseMillis(slice.toStringAscii(offset, length));
+        return toIntExact(MILLISECONDS.toDays(millis));
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -99,11 +105,5 @@ public class DateEncoding
     public void decodeValueInto(int depth, BlockBuilder builder, Slice slice, int offset, int length)
     {
         type.writeLong(builder, parseDate(slice, offset, length));
-    }
-
-    private static int parseDate(Slice slice, int offset, int length)
-    {
-        long millis = HIVE_DATE_PARSER.parseMillis(slice.toStringAscii(offset, length));
-        return toIntExact(MILLISECONDS.toDays(millis));
     }
 }

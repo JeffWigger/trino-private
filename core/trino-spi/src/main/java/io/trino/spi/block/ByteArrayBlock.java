@@ -144,9 +144,10 @@ public class ByteArrayBlock
     @Override
     public UpdatableBlock makeUpdatable()
     {
-        if (valueIsNull == null){
+        if (valueIsNull == null) {
             return new UpdatableByteArrayBlock(null, positionCount, new boolean[positionCount], compactArray(values, arrayOffset, positionCount));
-        }else {
+        }
+        else {
             return new UpdatableByteArrayBlock(null, positionCount, compactArray(valueIsNull, arrayOffset, positionCount), compactArray(values, arrayOffset, positionCount));
         }
     }

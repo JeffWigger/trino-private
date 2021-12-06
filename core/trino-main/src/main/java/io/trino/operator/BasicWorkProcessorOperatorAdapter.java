@@ -30,6 +30,59 @@ import static java.util.Objects.requireNonNull;
 public class BasicWorkProcessorOperatorAdapter
         implements AdapterWorkProcessorOperator
 {
+    private final PageBuffer pageBuffer;
+    private final WorkProcessorOperator operator;
+
+    private BasicWorkProcessorOperatorAdapter(
+            ProcessorContext processorContext,
+            BasicAdapterWorkProcessorOperatorFactory operatorFactory)
+    {
+        this.pageBuffer = new PageBuffer();
+        this.operator = requireNonNull(operatorFactory, "operatorFactory is null").createAdapterOperator(processorContext, pageBuffer.pages());
+    }
+
+    public static OperatorFactory createAdapterOperatorFactory(BasicAdapterWorkProcessorOperatorFactory operatorFactory)
+    {
+        return WorkProcessorOperatorAdapter.createAdapterOperatorFactory(new Factory(operatorFactory));
+    }
+
+    @Override
+    public void finish()
+    {
+        pageBuffer.finish();
+    }
+
+    @Override
+    public boolean needsInput()
+    {
+        return pageBuffer.isEmpty() && !pageBuffer.isFinished();
+    }
+
+    @Override
+    public void addInput(Page page)
+    {
+        pageBuffer.add(page);
+    }
+
+    @Override
+    public WorkProcessor<Page> getOutputPages()
+    {
+        return operator.getOutputPages();
+    }
+
+    @Override
+    public Optional<OperatorInfo> getOperatorInfo()
+    {
+        return operator.getOperatorInfo();
+    }
+
+    @Override
+    public void close()
+            throws Exception
+    {
+        operator.close();
+    }
+
     public interface BasicAdapterWorkProcessorOperatorFactory
             extends WorkProcessorOperatorFactory
     {
@@ -39,11 +92,6 @@ public class BasicWorkProcessorOperatorAdapter
         }
 
         BasicAdapterWorkProcessorOperatorFactory duplicate();
-    }
-
-    public static OperatorFactory createAdapterOperatorFactory(BasicAdapterWorkProcessorOperatorFactory operatorFactory)
-    {
-        return WorkProcessorOperatorAdapter.createAdapterOperatorFactory(new Factory(operatorFactory));
     }
 
     private static class Factory
@@ -103,53 +151,5 @@ public class BasicWorkProcessorOperatorAdapter
         {
             operatorFactory.close();
         }
-    }
-
-    private final PageBuffer pageBuffer;
-    private final WorkProcessorOperator operator;
-
-    private BasicWorkProcessorOperatorAdapter(
-            ProcessorContext processorContext,
-            BasicAdapterWorkProcessorOperatorFactory operatorFactory)
-    {
-        this.pageBuffer = new PageBuffer();
-        this.operator = requireNonNull(operatorFactory, "operatorFactory is null").createAdapterOperator(processorContext, pageBuffer.pages());
-    }
-
-    @Override
-    public void finish()
-    {
-        pageBuffer.finish();
-    }
-
-    @Override
-    public boolean needsInput()
-    {
-        return pageBuffer.isEmpty() && !pageBuffer.isFinished();
-    }
-
-    @Override
-    public void addInput(Page page)
-    {
-        pageBuffer.add(page);
-    }
-
-    @Override
-    public WorkProcessor<Page> getOutputPages()
-    {
-        return operator.getOutputPages();
-    }
-
-    @Override
-    public Optional<OperatorInfo> getOperatorInfo()
-    {
-        return operator.getOperatorInfo();
-    }
-
-    @Override
-    public void close()
-            throws Exception
-    {
-        operator.close();
     }
 }

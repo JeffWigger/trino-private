@@ -22,6 +22,13 @@ public class QuantileDigestParametricType
 {
     public static final QuantileDigestParametricType QDIGEST = new QuantileDigestParametricType();
 
+    private static void checkArgument(boolean argument, String format, Object... args)
+    {
+        if (!argument) {
+            throw new IllegalArgumentException(format(format, args));
+        }
+    }
+
     @Override
     public String getName()
     {
@@ -39,12 +46,5 @@ public class QuantileDigestParametricType
         // Validation check on the acceptable type (bigint, real, double) intentionally omitted
         // because this is validated in each function and to allow for consistent error messaging
         return new QuantileDigestType(parameters.get(0).getType());
-    }
-
-    private static void checkArgument(boolean argument, String format, Object... args)
-    {
-        if (!argument) {
-            throw new IllegalArgumentException(format(format, args));
-        }
     }
 }

@@ -25,31 +25,6 @@ import static org.testng.Assert.assertEquals;
 
 public class TestRcFileDecoderUtils
 {
-    @Test
-    public void testVInt()
-            throws Exception
-    {
-        Slice slice = Slices.allocate(100);
-        SliceOutput output = slice.getOutput();
-
-        assertVIntRoundTrip(output, 0);
-        assertVIntRoundTrip(output, 1);
-        assertVIntRoundTrip(output, -1);
-        assertVIntRoundTrip(output, Integer.MAX_VALUE);
-        assertVIntRoundTrip(output, Integer.MAX_VALUE + 1L);
-        assertVIntRoundTrip(output, Integer.MAX_VALUE - 1L);
-        assertVIntRoundTrip(output, Integer.MIN_VALUE);
-        assertVIntRoundTrip(output, Integer.MIN_VALUE + 1L);
-        assertVIntRoundTrip(output, Integer.MIN_VALUE - 1L);
-        assertVIntRoundTrip(output, Long.MAX_VALUE);
-        assertVIntRoundTrip(output, Long.MAX_VALUE - 1);
-        assertVIntRoundTrip(output, Long.MIN_VALUE + 1);
-
-        for (int value = -100_000; value < 100_000; value++) {
-            assertVIntRoundTrip(output, value);
-        }
-    }
-
     private static void assertVIntRoundTrip(SliceOutput output, long value)
             throws IOException
     {
@@ -89,5 +64,30 @@ public class TestRcFileDecoderUtils
             assertEquals(vIntNew, vLongOld);
         }
         return vLongOld;
+    }
+
+    @Test
+    public void testVInt()
+            throws Exception
+    {
+        Slice slice = Slices.allocate(100);
+        SliceOutput output = slice.getOutput();
+
+        assertVIntRoundTrip(output, 0);
+        assertVIntRoundTrip(output, 1);
+        assertVIntRoundTrip(output, -1);
+        assertVIntRoundTrip(output, Integer.MAX_VALUE);
+        assertVIntRoundTrip(output, Integer.MAX_VALUE + 1L);
+        assertVIntRoundTrip(output, Integer.MAX_VALUE - 1L);
+        assertVIntRoundTrip(output, Integer.MIN_VALUE);
+        assertVIntRoundTrip(output, Integer.MIN_VALUE + 1L);
+        assertVIntRoundTrip(output, Integer.MIN_VALUE - 1L);
+        assertVIntRoundTrip(output, Long.MAX_VALUE);
+        assertVIntRoundTrip(output, Long.MAX_VALUE - 1);
+        assertVIntRoundTrip(output, Long.MIN_VALUE + 1);
+
+        for (int value = -100_000; value < 100_000; value++) {
+            assertVIntRoundTrip(output, value);
+        }
     }
 }

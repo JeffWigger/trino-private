@@ -47,28 +47,22 @@ public class MemoryPool
 
     private final MemoryPoolId id;
     private final long maxBytes;
-
+    @GuardedBy("this")
+    // TODO: It would be better if we just tracked QueryContexts, but their lifecycle is managed by a weak reference, so we can't do that
+    private final Map<QueryId, Long> queryMemoryReservations = new HashMap<>();
+    // This map keeps track of all the tagged allocations, e.g., query-1 -> ['TableScanOperator': 10MB, 'LazyOutputBuffer': 5MB, ...]
+    @GuardedBy("this")
+    private final Map<QueryId, Map<String, Long>> taggedMemoryAllocations = new HashMap<>();
+    @GuardedBy("this")
+    private final Map<QueryId, Long> queryMemoryRevocableReservations = new HashMap<>();
+    private final List<MemoryPoolListener> listeners = new CopyOnWriteArrayList<>();
     @GuardedBy("this")
     private long reservedBytes;
     @GuardedBy("this")
     private long reservedRevocableBytes;
-
     @Nullable
     @GuardedBy("this")
     private NonCancellableMemoryFuture<Void> future;
-
-    @GuardedBy("this")
-    // TODO: It would be better if we just tracked QueryContexts, but their lifecycle is managed by a weak reference, so we can't do that
-    private final Map<QueryId, Long> queryMemoryReservations = new HashMap<>();
-
-    // This map keeps track of all the tagged allocations, e.g., query-1 -> ['TableScanOperator': 10MB, 'LazyOutputBuffer': 5MB, ...]
-    @GuardedBy("this")
-    private final Map<QueryId, Map<String, Long>> taggedMemoryAllocations = new HashMap<>();
-
-    @GuardedBy("this")
-    private final Map<QueryId, Long> queryMemoryRevocableReservations = new HashMap<>();
-
-    private final List<MemoryPoolListener> listeners = new CopyOnWriteArrayList<>();
 
     public MemoryPool(MemoryPoolId id, DataSize size)
     {
@@ -313,27 +307,6 @@ public class MemoryPool
                 .toString();
     }
 
-    private static class NonCancellableMemoryFuture<V>
-            extends AbstractFuture<V>
-    {
-        public static <V> NonCancellableMemoryFuture<V> create()
-        {
-            return new NonCancellableMemoryFuture<>();
-        }
-
-        @Override
-        public boolean set(@Nullable V value)
-        {
-            return super.set(value);
-        }
-
-        @Override
-        public boolean cancel(boolean mayInterruptIfRunning)
-        {
-            throw new UnsupportedOperationException("cancellation is not supported");
-        }
-    }
-
     private synchronized void updateTaggedMemoryAllocations(QueryId queryId, String allocationTag, long delta)
     {
         if (delta == 0) {
@@ -357,5 +330,26 @@ public class MemoryPool
     synchronized Map<QueryId, Map<String, Long>> getTaggedMemoryAllocations()
     {
         return ImmutableMap.copyOf(taggedMemoryAllocations);
+    }
+
+    private static class NonCancellableMemoryFuture<V>
+            extends AbstractFuture<V>
+    {
+        public static <V> NonCancellableMemoryFuture<V> create()
+        {
+            return new NonCancellableMemoryFuture<>();
+        }
+
+        @Override
+        public boolean set(@Nullable V value)
+        {
+            return super.set(value);
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning)
+        {
+            throw new UnsupportedOperationException("cancellation is not supported");
+        }
     }
 }

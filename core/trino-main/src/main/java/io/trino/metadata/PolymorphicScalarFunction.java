@@ -47,52 +47,6 @@ class PolymorphicScalarFunction
         this.choices = requireNonNull(choices, "choices is null");
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        ImmutableList.Builder<ScalarImplementationChoice> implementationChoices = ImmutableList.builder();
-
-        for (PolymorphicScalarFunctionChoice choice : choices) {
-            implementationChoices.add(getScalarFunctionImplementationChoice(functionBinding, choice));
-        }
-
-        return new ChoicesScalarFunctionImplementation(functionBinding, implementationChoices.build());
-    }
-
-    private ScalarImplementationChoice getScalarFunctionImplementationChoice(
-            FunctionBinding functionBinding,
-            PolymorphicScalarFunctionChoice choice)
-    {
-        List<Type> argumentTypes = functionBinding.getBoundSignature().getArgumentTypes();
-        Type returnType = functionBinding.getBoundSignature().getReturnType();
-        SpecializeContext context = new SpecializeContext(functionBinding, argumentTypes, returnType);
-        Optional<MethodAndNativeContainerTypes> matchingMethod = Optional.empty();
-
-        Optional<MethodsGroup> matchingMethodsGroup = Optional.empty();
-        for (MethodsGroup candidateMethodsGroup : choice.getMethodsGroups()) {
-            for (MethodAndNativeContainerTypes candidateMethod : candidateMethodsGroup.getMethods()) {
-                if (matchesParameterAndReturnTypes(candidateMethod, argumentTypes, returnType, choice.getArgumentConventions(), choice.getReturnConvention())) {
-                    if (matchingMethod.isPresent()) {
-                        throw new IllegalStateException("two matching methods (" + matchingMethod.get().getMethod().getName() + " and " + candidateMethod.getMethod().getName() + ") for parameter types " + argumentTypes);
-                    }
-
-                    matchingMethod = Optional.of(candidateMethod);
-                    matchingMethodsGroup = Optional.of(candidateMethodsGroup);
-                }
-            }
-        }
-        checkState(matchingMethod.isPresent(), "no matching method for parameter types %s", argumentTypes);
-
-        List<Object> extraParameters = computeExtraParameters(matchingMethodsGroup.get(), context);
-        MethodHandle methodHandle = applyExtraParameters(matchingMethod.get().getMethod(), extraParameters, choice.getArgumentConventions());
-        return new ScalarImplementationChoice(
-                choice.getReturnConvention(),
-                choice.getArgumentConventions(),
-                ImmutableList.of(),
-                methodHandle,
-                Optional.empty());
-    }
-
     private static boolean matchesParameterAndReturnTypes(
             MethodAndNativeContainerTypes methodAndNativeContainerTypes,
             List<Type> resolvedTypes,
@@ -145,6 +99,63 @@ class PolymorphicScalarFunction
         return methodsGroup.getExtraParametersFunction().map(function -> function.apply(context)).orElse(emptyList());
     }
 
+    private static Class<?> getNullAwareContainerType(Class<?> clazz, InvocationReturnConvention returnConvention)
+    {
+        switch (returnConvention) {
+            case NULLABLE_RETURN:
+                return Primitives.wrap(clazz);
+            case FAIL_ON_NULL:
+                return clazz;
+        }
+        throw new UnsupportedOperationException("Unknown return convention: " + returnConvention);
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        ImmutableList.Builder<ScalarImplementationChoice> implementationChoices = ImmutableList.builder();
+
+        for (PolymorphicScalarFunctionChoice choice : choices) {
+            implementationChoices.add(getScalarFunctionImplementationChoice(functionBinding, choice));
+        }
+
+        return new ChoicesScalarFunctionImplementation(functionBinding, implementationChoices.build());
+    }
+
+    private ScalarImplementationChoice getScalarFunctionImplementationChoice(
+            FunctionBinding functionBinding,
+            PolymorphicScalarFunctionChoice choice)
+    {
+        List<Type> argumentTypes = functionBinding.getBoundSignature().getArgumentTypes();
+        Type returnType = functionBinding.getBoundSignature().getReturnType();
+        SpecializeContext context = new SpecializeContext(functionBinding, argumentTypes, returnType);
+        Optional<MethodAndNativeContainerTypes> matchingMethod = Optional.empty();
+
+        Optional<MethodsGroup> matchingMethodsGroup = Optional.empty();
+        for (MethodsGroup candidateMethodsGroup : choice.getMethodsGroups()) {
+            for (MethodAndNativeContainerTypes candidateMethod : candidateMethodsGroup.getMethods()) {
+                if (matchesParameterAndReturnTypes(candidateMethod, argumentTypes, returnType, choice.getArgumentConventions(), choice.getReturnConvention())) {
+                    if (matchingMethod.isPresent()) {
+                        throw new IllegalStateException("two matching methods (" + matchingMethod.get().getMethod().getName() + " and " + candidateMethod.getMethod().getName() + ") for parameter types " + argumentTypes);
+                    }
+
+                    matchingMethod = Optional.of(candidateMethod);
+                    matchingMethodsGroup = Optional.of(candidateMethodsGroup);
+                }
+            }
+        }
+        checkState(matchingMethod.isPresent(), "no matching method for parameter types %s", argumentTypes);
+
+        List<Object> extraParameters = computeExtraParameters(matchingMethodsGroup.get(), context);
+        MethodHandle methodHandle = applyExtraParameters(matchingMethod.get().getMethod(), extraParameters, choice.getArgumentConventions());
+        return new ScalarImplementationChoice(
+                choice.getReturnConvention(),
+                choice.getArgumentConventions(),
+                ImmutableList.of(),
+                methodHandle,
+                Optional.empty());
+    }
+
     private MethodHandle applyExtraParameters(Method matchingMethod, List<Object> extraParameters, List<InvocationArgumentConvention> argumentConventions)
     {
         int expectedArgumentsCount = extraParameters.size() + argumentConventions.stream()
@@ -160,17 +171,6 @@ class PolymorphicScalarFunction
                 matchingMethodArgumentCount - extraParameters.size(),
                 extraParameters.toArray());
         return matchingMethodHandle;
-    }
-
-    private static Class<?> getNullAwareContainerType(Class<?> clazz, InvocationReturnConvention returnConvention)
-    {
-        switch (returnConvention) {
-            case NULLABLE_RETURN:
-                return Primitives.wrap(clazz);
-            case FAIL_ON_NULL:
-                return clazz;
-        }
-        throw new UnsupportedOperationException("Unknown return convention: " + returnConvention);
     }
 
     static final class PolymorphicScalarFunctionChoice

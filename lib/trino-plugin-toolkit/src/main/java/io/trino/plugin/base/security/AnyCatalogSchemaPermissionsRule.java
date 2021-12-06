@@ -35,6 +35,16 @@ public class AnyCatalogSchemaPermissionsRule
         this.schemaRegex = schemaRegex;
     }
 
+    private static boolean patternEquals(Optional<Pattern> left, Optional<Pattern> right)
+    {
+        if (left.isEmpty() || right.isEmpty()) {
+            return left.isEmpty() == right.isEmpty();
+        }
+        Pattern leftPattern = left.get();
+        Pattern rightPattern = right.get();
+        return leftPattern.pattern().equals(rightPattern.pattern()) && leftPattern.flags() == rightPattern.flags();
+    }
+
     public boolean match(String user, Set<String> roles, Set<String> groups, String catalogName, String schemaName)
     {
         return userRegex.map(regex -> regex.matcher(user).matches()).orElse(true) &&
@@ -59,16 +69,6 @@ public class AnyCatalogSchemaPermissionsRule
                 patternEquals(groupRegex, that.groupRegex) &&
                 patternEquals(catalogRegex, that.catalogRegex) &&
                 patternEquals(schemaRegex, that.schemaRegex);
-    }
-
-    private static boolean patternEquals(Optional<Pattern> left, Optional<Pattern> right)
-    {
-        if (left.isEmpty() || right.isEmpty()) {
-            return left.isEmpty() == right.isEmpty();
-        }
-        Pattern leftPattern = left.get();
-        Pattern rightPattern = right.get();
-        return leftPattern.pattern().equals(rightPattern.pattern()) && leftPattern.flags() == rightPattern.flags();
     }
 
     @Override

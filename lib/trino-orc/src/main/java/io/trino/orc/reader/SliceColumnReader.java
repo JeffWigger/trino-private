@@ -67,6 +67,33 @@ public class SliceColumnReader
         dictionaryReader = new SliceDictionaryColumnReader(column, systemMemoryContext.newLocalMemoryContext(SliceColumnReader.class.getSimpleName()), maxCodePointCount, charType);
     }
 
+    private static int getMaxCodePointCount(Type type)
+    {
+        if (type instanceof VarcharType) {
+            VarcharType varcharType = (VarcharType) type;
+            return varcharType.isUnbounded() ? -1 : varcharType.getBoundedLength();
+        }
+        if (type instanceof CharType) {
+            return ((CharType) type).getLength();
+        }
+        if (type instanceof VarbinaryType) {
+            return -1;
+        }
+        throw new IllegalArgumentException("Unsupported encoding " + type.getDisplayName());
+    }
+
+    public static int computeTruncatedLength(Slice slice, int offset, int length, int maxCodePointCount, boolean isCharType)
+    {
+        if (isCharType) {
+            // truncate the characters and then remove the trailing white spaces
+            return byteCountWithoutTrailingSpace(slice, offset, length, maxCodePointCount);
+        }
+        if (maxCodePointCount >= 0 && length > maxCodePointCount) {
+            return byteCount(slice, offset, length, maxCodePointCount);
+        }
+        return length;
+    }
+
     @Override
     public Block readBlock()
             throws IOException
@@ -111,33 +138,6 @@ public class SliceColumnReader
         return toStringHelper(this)
                 .addValue(column)
                 .toString();
-    }
-
-    private static int getMaxCodePointCount(Type type)
-    {
-        if (type instanceof VarcharType) {
-            VarcharType varcharType = (VarcharType) type;
-            return varcharType.isUnbounded() ? -1 : varcharType.getBoundedLength();
-        }
-        if (type instanceof CharType) {
-            return ((CharType) type).getLength();
-        }
-        if (type instanceof VarbinaryType) {
-            return -1;
-        }
-        throw new IllegalArgumentException("Unsupported encoding " + type.getDisplayName());
-    }
-
-    public static int computeTruncatedLength(Slice slice, int offset, int length, int maxCodePointCount, boolean isCharType)
-    {
-        if (isCharType) {
-            // truncate the characters and then remove the trailing white spaces
-            return byteCountWithoutTrailingSpace(slice, offset, length, maxCodePointCount);
-        }
-        if (maxCodePointCount >= 0 && length > maxCodePointCount) {
-            return byteCount(slice, offset, length, maxCodePointCount);
-        }
-        return length;
     }
 
     @Override

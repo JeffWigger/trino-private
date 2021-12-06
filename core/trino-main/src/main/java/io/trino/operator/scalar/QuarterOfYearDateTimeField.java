@@ -26,11 +26,9 @@ import org.joda.time.field.ScaledDurationField;
 public final class QuarterOfYearDateTimeField
         extends DateTimeFieldType
 {
-    private static final long serialVersionUID = -5677872459807379123L;
-
-    private static final DurationFieldType QUARTER_OF_YEAR_DURATION_FIELD_TYPE = new QuarterOfYearDurationFieldType();
-
     public static final DateTimeFieldType QUARTER_OF_YEAR = new QuarterOfYearDateTimeField();
+    private static final long serialVersionUID = -5677872459807379123L;
+    private static final DurationFieldType QUARTER_OF_YEAR_DURATION_FIELD_TYPE = new QuarterOfYearDurationFieldType();
 
     private QuarterOfYearDateTimeField()
     {

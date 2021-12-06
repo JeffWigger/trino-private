@@ -31,6 +31,30 @@ class WindowOperatorStats
     private final long totalIndexesCount;
     private final long totalPartitionsCount;
 
+    private WindowOperatorStats(
+            double partitionRowsSumSquaredDiffs,
+            double positionsInIndexesSumSquaredDiffs,
+            double sizeOfIndexesSumSquaredDiffs,
+            double indexCountPerDriverSumSquaredDiffs,
+            double rowCountPerDriverSumSquaredDiffs,
+            long totalRowCount,
+            long totalIndexesCount,
+            long totalPartitionsCount,
+            int activeDrivers,
+            int totalDrivers)
+    {
+        this.partitionRowsSumSquaredDiffs = partitionRowsSumSquaredDiffs;
+        this.positionsInIndexesSumSquaredDiffs = positionsInIndexesSumSquaredDiffs;
+        this.sizeOfIndexesSumSquaredDiffs = sizeOfIndexesSumSquaredDiffs;
+        this.indexCountPerDriverSumSquaredDiffs = indexCountPerDriverSumSquaredDiffs;
+        this.rowCountPerDriverSumSquaredDiffs = rowCountPerDriverSumSquaredDiffs;
+        this.totalRowCount = totalRowCount;
+        this.totalIndexesCount = totalIndexesCount;
+        this.totalPartitionsCount = totalPartitionsCount;
+        this.activeDrivers = activeDrivers;
+        this.totalDrivers = totalDrivers;
+    }
+
     public static WindowOperatorStats create(WindowInfo info)
     {
         int activeDrivers = 0;
@@ -117,30 +141,6 @@ class WindowOperatorStats
         // It's mostly to help driving window function improvements by better understanding why some queries are slower than others.
 
         return windowInfo.getTotalRowsCount() > 0;
-    }
-
-    private WindowOperatorStats(
-            double partitionRowsSumSquaredDiffs,
-            double positionsInIndexesSumSquaredDiffs,
-            double sizeOfIndexesSumSquaredDiffs,
-            double indexCountPerDriverSumSquaredDiffs,
-            double rowCountPerDriverSumSquaredDiffs,
-            long totalRowCount,
-            long totalIndexesCount,
-            long totalPartitionsCount,
-            int activeDrivers,
-            int totalDrivers)
-    {
-        this.partitionRowsSumSquaredDiffs = partitionRowsSumSquaredDiffs;
-        this.positionsInIndexesSumSquaredDiffs = positionsInIndexesSumSquaredDiffs;
-        this.sizeOfIndexesSumSquaredDiffs = sizeOfIndexesSumSquaredDiffs;
-        this.indexCountPerDriverSumSquaredDiffs = indexCountPerDriverSumSquaredDiffs;
-        this.rowCountPerDriverSumSquaredDiffs = rowCountPerDriverSumSquaredDiffs;
-        this.totalRowCount = totalRowCount;
-        this.totalIndexesCount = totalIndexesCount;
-        this.totalPartitionsCount = totalPartitionsCount;
-        this.activeDrivers = activeDrivers;
-        this.totalDrivers = totalDrivers;
     }
 
     @Override

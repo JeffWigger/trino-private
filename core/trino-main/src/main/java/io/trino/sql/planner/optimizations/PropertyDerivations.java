@@ -166,6 +166,88 @@ public final class PropertyDerivations
         return node.accept(new Visitor(metadata, typeOperators, session, types, typeAnalyzer), inputProperties);
     }
 
+    static boolean spillPossible(Session session, JoinNode.Type joinType)
+    {
+        if (!SystemSessionProperties.isSpillEnabled(session)) {
+            return false;
+        }
+        switch (joinType) {
+            case INNER:
+            case LEFT:
+                // Even though join might not have "spillable" property set yet
+                // it might still be set as spillable later on by AddLocalExchanges.
+                return true;
+            case RIGHT:
+            case FULL:
+                // Currently there is no spill support for outer on the build side.
+                return false;
+        }
+        throw new IllegalStateException("Unknown join type: " + joinType);
+    }
+
+    public static Optional<Symbol> filterIfMissing(Collection<Symbol> columns, Symbol column)
+    {
+        if (columns.contains(column)) {
+            return Optional.of(column);
+        }
+
+        return Optional.empty();
+    }
+
+    // Used to filter columns that are not exposed by join node
+    // Or, if they are part of the equalities, to translate them
+    // to the other symbol if that's exposed, instead.
+    public static Optional<Symbol> filterOrRewrite(Collection<Symbol> columns, Collection<JoinNode.EquiJoinClause> equalities, Symbol column)
+    {
+        // symbol is exposed directly, so no translation needed
+        if (columns.contains(column)) {
+            return Optional.of(column);
+        }
+
+        // if the column is part of the equality conditions and its counterpart
+        // is exposed, use that, instead
+        for (JoinNode.EquiJoinClause equality : equalities) {
+            if (equality.getLeft().equals(column) && columns.contains(equality.getRight())) {
+                return Optional.of(equality.getRight());
+            }
+            else if (equality.getRight().equals(column) && columns.contains(equality.getLeft())) {
+                return Optional.of(equality.getLeft());
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private static Optional<Symbol> rewriteExpression(Map<Symbol, Expression> assignments, Expression expression)
+    {
+        // Only simple coalesce expressions supported currently
+        if (!(expression instanceof CoalesceExpression)) {
+            return Optional.empty();
+        }
+
+        Set<Expression> arguments = ImmutableSet.copyOf(((CoalesceExpression) expression).getOperands());
+        if (!arguments.stream().allMatch(SymbolReference.class::isInstance)) {
+            return Optional.empty();
+        }
+
+        // We are using the property that the result of coalesce from full outer join keys would not be null despite of the order
+        // of the arguments. Thus we extract and compare the symbols of the CoalesceExpression as a set rather than compare the
+        // CoalesceExpression directly.
+        for (Map.Entry<Symbol, Expression> entry : assignments.entrySet()) {
+            if (entry.getValue() instanceof CoalesceExpression) {
+                Set<Expression> candidateArguments = ImmutableSet.copyOf(((CoalesceExpression) entry.getValue()).getOperands());
+                if (!candidateArguments.stream().allMatch(SymbolReference.class::isInstance)) {
+                    return Optional.empty();
+                }
+
+                if (candidateArguments.equals(arguments)) {
+                    return Optional.of(entry.getKey());
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     private static class Visitor
             extends PlanVisitor<ActualProperties, List<ActualProperties>>
     {
@@ -182,6 +264,49 @@ public final class PropertyDerivations
             this.session = session;
             this.types = types;
             this.typeAnalyzer = typeAnalyzer;
+        }
+
+        public static Map<Symbol, Symbol> exchangeInputToOutput(ExchangeNode node, int sourceIndex)
+        {
+            List<Symbol> inputSymbols = node.getInputs().get(sourceIndex);
+            Map<Symbol, Symbol> inputToOutput = new HashMap<>();
+            for (int i = 0; i < node.getOutputSymbols().size(); i++) {
+                inputToOutput.put(inputSymbols.get(i), node.getOutputSymbols().get(i));
+            }
+            return inputToOutput;
+        }
+
+        private static Optional<List<Symbol>> translateToNonConstantSymbols(
+                Set<ColumnHandle> columnHandles,
+                Map<ColumnHandle, Symbol> assignments,
+                Map<ColumnHandle, NullableValue> globalConstants)
+        {
+            // Strip off the constants from the partitioning columns (since those are not required for translation)
+            Set<ColumnHandle> constantsStrippedColumns = columnHandles.stream()
+                    .filter(column -> !globalConstants.containsKey(column))
+                    .collect(toImmutableSet());
+
+            ImmutableSet.Builder<Symbol> builder = ImmutableSet.builder();
+            for (ColumnHandle column : constantsStrippedColumns) {
+                Symbol translated = assignments.get(column);
+                if (translated == null) {
+                    return Optional.empty();
+                }
+                builder.add(translated);
+            }
+
+            return Optional.of(ImmutableList.copyOf(builder.build()));
+        }
+
+        private static Map<Symbol, Symbol> computeIdentityTranslations(Map<Symbol, Expression> assignments)
+        {
+            Map<Symbol, Symbol> inputToOutput = new HashMap<>();
+            for (Map.Entry<Symbol, Expression> assignment : assignments.entrySet()) {
+                if (assignment.getValue() instanceof SymbolReference) {
+                    inputToOutput.put(Symbol.from(assignment.getValue()), assignment.getKey());
+                }
+            }
+            return inputToOutput;
         }
 
         @Override
@@ -585,16 +710,6 @@ public final class PropertyDerivations
                     .build();
         }
 
-        public static Map<Symbol, Symbol> exchangeInputToOutput(ExchangeNode node, int sourceIndex)
-        {
-            List<Symbol> inputSymbols = node.getInputs().get(sourceIndex);
-            Map<Symbol, Symbol> inputToOutput = new HashMap<>();
-            for (int i = 0; i < node.getOutputSymbols().size(); i++) {
-                inputToOutput.put(inputSymbols.get(i), node.getOutputSymbols().get(i));
-            }
-            return inputToOutput;
-        }
-
         @Override
         public ActualProperties visitExchange(ExchangeNode node, List<ActualProperties> inputProperties)
         {
@@ -860,120 +975,5 @@ public final class PropertyDerivations
             }
             return arbitraryPartition();
         }
-
-        private static Optional<List<Symbol>> translateToNonConstantSymbols(
-                Set<ColumnHandle> columnHandles,
-                Map<ColumnHandle, Symbol> assignments,
-                Map<ColumnHandle, NullableValue> globalConstants)
-        {
-            // Strip off the constants from the partitioning columns (since those are not required for translation)
-            Set<ColumnHandle> constantsStrippedColumns = columnHandles.stream()
-                    .filter(column -> !globalConstants.containsKey(column))
-                    .collect(toImmutableSet());
-
-            ImmutableSet.Builder<Symbol> builder = ImmutableSet.builder();
-            for (ColumnHandle column : constantsStrippedColumns) {
-                Symbol translated = assignments.get(column);
-                if (translated == null) {
-                    return Optional.empty();
-                }
-                builder.add(translated);
-            }
-
-            return Optional.of(ImmutableList.copyOf(builder.build()));
-        }
-
-        private static Map<Symbol, Symbol> computeIdentityTranslations(Map<Symbol, Expression> assignments)
-        {
-            Map<Symbol, Symbol> inputToOutput = new HashMap<>();
-            for (Map.Entry<Symbol, Expression> assignment : assignments.entrySet()) {
-                if (assignment.getValue() instanceof SymbolReference) {
-                    inputToOutput.put(Symbol.from(assignment.getValue()), assignment.getKey());
-                }
-            }
-            return inputToOutput;
-        }
-    }
-
-    static boolean spillPossible(Session session, JoinNode.Type joinType)
-    {
-        if (!SystemSessionProperties.isSpillEnabled(session)) {
-            return false;
-        }
-        switch (joinType) {
-            case INNER:
-            case LEFT:
-                // Even though join might not have "spillable" property set yet
-                // it might still be set as spillable later on by AddLocalExchanges.
-                return true;
-            case RIGHT:
-            case FULL:
-                // Currently there is no spill support for outer on the build side.
-                return false;
-        }
-        throw new IllegalStateException("Unknown join type: " + joinType);
-    }
-
-    public static Optional<Symbol> filterIfMissing(Collection<Symbol> columns, Symbol column)
-    {
-        if (columns.contains(column)) {
-            return Optional.of(column);
-        }
-
-        return Optional.empty();
-    }
-
-    // Used to filter columns that are not exposed by join node
-    // Or, if they are part of the equalities, to translate them
-    // to the other symbol if that's exposed, instead.
-    public static Optional<Symbol> filterOrRewrite(Collection<Symbol> columns, Collection<JoinNode.EquiJoinClause> equalities, Symbol column)
-    {
-        // symbol is exposed directly, so no translation needed
-        if (columns.contains(column)) {
-            return Optional.of(column);
-        }
-
-        // if the column is part of the equality conditions and its counterpart
-        // is exposed, use that, instead
-        for (JoinNode.EquiJoinClause equality : equalities) {
-            if (equality.getLeft().equals(column) && columns.contains(equality.getRight())) {
-                return Optional.of(equality.getRight());
-            }
-            else if (equality.getRight().equals(column) && columns.contains(equality.getLeft())) {
-                return Optional.of(equality.getLeft());
-            }
-        }
-
-        return Optional.empty();
-    }
-
-    private static Optional<Symbol> rewriteExpression(Map<Symbol, Expression> assignments, Expression expression)
-    {
-        // Only simple coalesce expressions supported currently
-        if (!(expression instanceof CoalesceExpression)) {
-            return Optional.empty();
-        }
-
-        Set<Expression> arguments = ImmutableSet.copyOf(((CoalesceExpression) expression).getOperands());
-        if (!arguments.stream().allMatch(SymbolReference.class::isInstance)) {
-            return Optional.empty();
-        }
-
-        // We are using the property that the result of coalesce from full outer join keys would not be null despite of the order
-        // of the arguments. Thus we extract and compare the symbols of the CoalesceExpression as a set rather than compare the
-        // CoalesceExpression directly.
-        for (Map.Entry<Symbol, Expression> entry : assignments.entrySet()) {
-            if (entry.getValue() instanceof CoalesceExpression) {
-                Set<Expression> candidateArguments = ImmutableSet.copyOf(((CoalesceExpression) entry.getValue()).getOperands());
-                if (!candidateArguments.stream().allMatch(SymbolReference.class::isInstance)) {
-                    return Optional.empty();
-                }
-
-                if (candidateArguments.equals(arguments)) {
-                    return Optional.of(entry.getKey());
-                }
-            }
-        }
-        return Optional.empty();
     }
 }

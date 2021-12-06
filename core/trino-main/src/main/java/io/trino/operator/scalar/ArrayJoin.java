@@ -73,53 +73,6 @@ public final class ArrayJoin
 
     private static final MethodHandle STATE_FACTORY = methodHandle(ArrayJoin.class, "createState");
 
-    public static class ArrayJoinWithNullReplacement
-            extends SqlScalarFunction
-    {
-        private static final MethodHandle METHOD_HANDLE = methodHandle(
-                ArrayJoin.class,
-                "arrayJoin",
-                MethodHandle.class,
-                Object.class,
-                ConnectorSession.class,
-                Block.class,
-                Slice.class,
-                Slice.class);
-
-        public ArrayJoinWithNullReplacement()
-        {
-            super(new FunctionMetadata(
-                    new Signature(
-                            FUNCTION_NAME,
-                            ImmutableList.of(typeVariable("T")),
-                            ImmutableList.of(),
-                            VARCHAR.getTypeSignature(),
-                            ImmutableList.of(arrayType(new TypeSignature("T")), VARCHAR.getTypeSignature(), VARCHAR.getTypeSignature()),
-                            false),
-                    false,
-                    ImmutableList.of(
-                            new FunctionArgumentDefinition(false),
-                            new FunctionArgumentDefinition(false),
-                            new FunctionArgumentDefinition(false)),
-                    false,
-                    true,
-                    DESCRIPTION,
-                    SCALAR));
-        }
-
-        @Override
-        public FunctionDependencyDeclaration getFunctionDependencies()
-        {
-            return arrayJoinFunctionDependencies();
-        }
-
-        @Override
-        public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-        {
-            return specializeArrayJoin(functionBinding, functionDependencies, METHOD_HANDLE);
-        }
-    }
-
     private ArrayJoin()
     {
         super(new FunctionMetadata(
@@ -146,23 +99,11 @@ public final class ArrayJoin
         return new PageBuilder(ImmutableList.of(VARCHAR));
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return arrayJoinFunctionDependencies();
-    }
-
     private static FunctionDependencyDeclaration arrayJoinFunctionDependencies()
     {
         return FunctionDependencyDeclaration.builder()
                 .addCastSignature(new TypeSignature("T"), VARCHAR.getTypeSignature())
                 .build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        return specializeArrayJoin(functionBinding, functionDependencies, METHOD_HANDLE);
     }
 
     private static ChoicesScalarFunctionImplementation specializeArrayJoin(
@@ -264,5 +205,64 @@ public final class ArrayJoin
         blockBuilder.closeEntry();
         pageBuilder.declarePosition();
         return VARCHAR.getSlice(blockBuilder, blockBuilder.getPositionCount() - 1);
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return arrayJoinFunctionDependencies();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        return specializeArrayJoin(functionBinding, functionDependencies, METHOD_HANDLE);
+    }
+
+    public static class ArrayJoinWithNullReplacement
+            extends SqlScalarFunction
+    {
+        private static final MethodHandle METHOD_HANDLE = methodHandle(
+                ArrayJoin.class,
+                "arrayJoin",
+                MethodHandle.class,
+                Object.class,
+                ConnectorSession.class,
+                Block.class,
+                Slice.class,
+                Slice.class);
+
+        public ArrayJoinWithNullReplacement()
+        {
+            super(new FunctionMetadata(
+                    new Signature(
+                            FUNCTION_NAME,
+                            ImmutableList.of(typeVariable("T")),
+                            ImmutableList.of(),
+                            VARCHAR.getTypeSignature(),
+                            ImmutableList.of(arrayType(new TypeSignature("T")), VARCHAR.getTypeSignature(), VARCHAR.getTypeSignature()),
+                            false),
+                    false,
+                    ImmutableList.of(
+                            new FunctionArgumentDefinition(false),
+                            new FunctionArgumentDefinition(false),
+                            new FunctionArgumentDefinition(false)),
+                    false,
+                    true,
+                    DESCRIPTION,
+                    SCALAR));
+        }
+
+        @Override
+        public FunctionDependencyDeclaration getFunctionDependencies()
+        {
+            return arrayJoinFunctionDependencies();
+        }
+
+        @Override
+        public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+        {
+            return specializeArrayJoin(functionBinding, functionDependencies, METHOD_HANDLE);
+        }
     }
 }

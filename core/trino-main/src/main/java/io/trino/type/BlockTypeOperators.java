@@ -75,37 +75,9 @@ public final class BlockTypeOperators
         return getBlockOperator(type, BlockPositionEqual.class, () -> typeOperators.getEqualOperator(type, BLOCK_EQUAL_CONVENTION));
     }
 
-    public interface BlockPositionEqual
-    {
-        Boolean equal(Block left, int leftPosition, Block right, int rightPosition);
-
-        default boolean equalNullSafe(Block leftBlock, int leftPosition, Block rightBlock, int rightPosition)
-        {
-            boolean leftIsNull = leftBlock.isNull(leftPosition);
-            boolean rightIsNull = rightBlock.isNull(rightPosition);
-            if (leftIsNull || rightIsNull) {
-                return leftIsNull && rightIsNull;
-            }
-            return equal(leftBlock, leftPosition, rightBlock, rightPosition);
-        }
-    }
-
     public BlockPositionHashCode getHashCodeOperator(Type type)
     {
         return getBlockOperator(type, BlockPositionHashCode.class, () -> typeOperators.getHashCodeOperator(type, HASH_CODE_CONVENTION));
-    }
-
-    public interface BlockPositionHashCode
-    {
-        long hashCode(Block block, int position);
-
-        default long hashCodeNullSafe(Block block, int position)
-        {
-            if (block.isNull(position)) {
-                return NULL_HASH_CODE;
-            }
-            return hashCode(block, position);
-        }
     }
 
     public BlockPositionXxHash64 getXxHash64Operator(Type type)
@@ -113,19 +85,9 @@ public final class BlockTypeOperators
         return getBlockOperator(type, BlockPositionXxHash64.class, () -> typeOperators.getXxHash64Operator(type, XX_HASH_64_CONVENTION));
     }
 
-    public interface BlockPositionXxHash64
-    {
-        long xxHash64(Block block, int position);
-    }
-
     public BlockPositionIsDistinctFrom getDistinctFromOperator(Type type)
     {
         return getBlockOperator(type, BlockPositionIsDistinctFrom.class, () -> typeOperators.getDistinctFromOperator(type, IS_DISTINCT_FROM_CONVENTION));
-    }
-
-    public interface BlockPositionIsDistinctFrom
-    {
-        boolean isDistinctFrom(Block left, int leftPosition, Block right, int rightPosition);
     }
 
     public BlockPositionComparison getComparisonOperator(Type type)
@@ -133,60 +95,14 @@ public final class BlockTypeOperators
         return getBlockOperator(type, BlockPositionComparison.class, () -> typeOperators.getComparisonOperator(type, COMPARISON_CONVENTION));
     }
 
-    public interface BlockPositionComparison
-    {
-        long compare(Block left, int leftPosition, Block right, int rightPosition);
-
-        default BlockPositionComparison reversed()
-        {
-            return ReversedBlockPositionComparison.createReversedBlockPositionComparison(this);
-        }
-    }
-
-    private static class ReversedBlockPositionComparison
-            implements BlockPositionComparison
-    {
-        private final BlockPositionComparison comparison;
-
-        static BlockPositionComparison createReversedBlockPositionComparison(BlockPositionComparison comparison)
-        {
-            if (comparison instanceof ReversedBlockPositionComparison) {
-                return ((ReversedBlockPositionComparison) comparison).comparison;
-            }
-            return new ReversedBlockPositionComparison(comparison);
-        }
-
-        private ReversedBlockPositionComparison(BlockPositionComparison comparison)
-        {
-            this.comparison = comparison;
-        }
-
-        @Override
-        public long compare(Block leftBlock, int leftIndex, Block rightBlock, int rightIndex)
-        {
-            // TODO generate this so it becomes mono monomorphic
-            return comparison.compare(rightBlock, rightIndex, leftBlock, leftIndex);
-        }
-    }
-
     public BlockPositionOrdering generateBlockPositionOrdering(Type type, SortOrder sortOrder)
     {
         return getBlockOperator(type, BlockPositionOrdering.class, () -> typeOperators.getOrderingOperator(type, sortOrder, ORDERING_CONVENTION), Optional.of(sortOrder));
     }
 
-    public interface BlockPositionOrdering
-    {
-        int order(Block left, int leftPosition, Block right, int rightPosition);
-    }
-
     public BlockPositionLessThan generateBlockPositionLessThan(Type type)
     {
         return getBlockOperator(type, BlockPositionLessThan.class, () -> typeOperators.getLessThanOperator(type, LESS_THAN_CONVENTION));
-    }
-
-    public interface BlockPositionLessThan
-    {
-        boolean lessThan(Block left, int leftPosition, Block right, int rightPosition);
     }
 
     private <T> T getBlockOperator(Type type, Class<T> operatorInterface, Supplier<MethodHandle> methodHandleSupplier)
@@ -206,6 +122,121 @@ public final class BlockTypeOperators
         catch (ExecutionException | UncheckedExecutionException e) {
             throwIfUnchecked(e.getCause());
             throw new RuntimeException(e.getCause());
+        }
+    }
+
+    // stats
+    @Managed
+    public long cacheSize()
+    {
+        return generatedBlockOperatorCache.size();
+    }
+
+    @Managed
+    public Double getCacheHitRate()
+    {
+        return generatedBlockOperatorCache.stats().hitRate();
+    }
+
+    @Managed
+    public Double getCacheMissRate()
+    {
+        return generatedBlockOperatorCache.stats().missRate();
+    }
+
+    @Managed
+    public long getCacheRequestCount()
+    {
+        return generatedBlockOperatorCache.stats().requestCount();
+    }
+
+    @Managed
+    public void cacheReset()
+    {
+        generatedBlockOperatorCache.invalidateAll();
+    }
+
+    public interface BlockPositionEqual
+    {
+        Boolean equal(Block left, int leftPosition, Block right, int rightPosition);
+
+        default boolean equalNullSafe(Block leftBlock, int leftPosition, Block rightBlock, int rightPosition)
+        {
+            boolean leftIsNull = leftBlock.isNull(leftPosition);
+            boolean rightIsNull = rightBlock.isNull(rightPosition);
+            if (leftIsNull || rightIsNull) {
+                return leftIsNull && rightIsNull;
+            }
+            return equal(leftBlock, leftPosition, rightBlock, rightPosition);
+        }
+    }
+
+    public interface BlockPositionHashCode
+    {
+        long hashCode(Block block, int position);
+
+        default long hashCodeNullSafe(Block block, int position)
+        {
+            if (block.isNull(position)) {
+                return NULL_HASH_CODE;
+            }
+            return hashCode(block, position);
+        }
+    }
+
+    public interface BlockPositionXxHash64
+    {
+        long xxHash64(Block block, int position);
+    }
+
+    public interface BlockPositionIsDistinctFrom
+    {
+        boolean isDistinctFrom(Block left, int leftPosition, Block right, int rightPosition);
+    }
+
+    public interface BlockPositionComparison
+    {
+        long compare(Block left, int leftPosition, Block right, int rightPosition);
+
+        default BlockPositionComparison reversed()
+        {
+            return ReversedBlockPositionComparison.createReversedBlockPositionComparison(this);
+        }
+    }
+
+    public interface BlockPositionOrdering
+    {
+        int order(Block left, int leftPosition, Block right, int rightPosition);
+    }
+
+    public interface BlockPositionLessThan
+    {
+        boolean lessThan(Block left, int leftPosition, Block right, int rightPosition);
+    }
+
+    private static class ReversedBlockPositionComparison
+            implements BlockPositionComparison
+    {
+        private final BlockPositionComparison comparison;
+
+        private ReversedBlockPositionComparison(BlockPositionComparison comparison)
+        {
+            this.comparison = comparison;
+        }
+
+        static BlockPositionComparison createReversedBlockPositionComparison(BlockPositionComparison comparison)
+        {
+            if (comparison instanceof ReversedBlockPositionComparison) {
+                return ((ReversedBlockPositionComparison) comparison).comparison;
+            }
+            return new ReversedBlockPositionComparison(comparison);
+        }
+
+        @Override
+        public long compare(Block leftBlock, int leftIndex, Block rightBlock, int rightIndex)
+        {
+            // TODO generate this so it becomes mono monomorphic
+            return comparison.compare(rightBlock, rightIndex, leftBlock, leftIndex);
         }
     }
 
@@ -278,36 +309,5 @@ public final class BlockTypeOperators
             operator = compileSingleAccessMethod(suggestedClassName, operatorInterface, methodHandle);
             return operator;
         }
-    }
-
-    // stats
-    @Managed
-    public long cacheSize()
-    {
-        return generatedBlockOperatorCache.size();
-    }
-
-    @Managed
-    public Double getCacheHitRate()
-    {
-        return generatedBlockOperatorCache.stats().hitRate();
-    }
-
-    @Managed
-    public Double getCacheMissRate()
-    {
-        return generatedBlockOperatorCache.stats().missRate();
-    }
-
-    @Managed
-    public long getCacheRequestCount()
-    {
-        return generatedBlockOperatorCache.stats().requestCount();
-    }
-
-    @Managed
-    public void cacheReset()
-    {
-        generatedBlockOperatorCache.invalidateAll();
     }
 }

@@ -75,6 +75,129 @@ public class NumericHistogram
         input.readBytes(Slices.wrappedDoubleArray(weights), nextIndex * SizeOf.SIZE_OF_DOUBLE);
     }
 
+    private static PriorityQueue<Entry> mergeBuckets(double[] values, double[] weights, int count, int targetCount)
+    {
+        checkArgument(targetCount > 0, "targetCount must be > 0");
+
+        PriorityQueue<Entry> queue = initializeQueue(values, weights, count);
+
+        while (count > targetCount) {
+            Entry current = queue.poll();
+            if (!current.isValid()) {
+                // ignore entries that have already been replaced
+                continue;
+            }
+
+            count--;
+
+            Entry right = current.getRight();
+
+            // right is guaranteed to exist because we set the penalty of the last bucket to infinity
+            // so the first current in the queue can never be the last bucket
+            checkState(right != null, "Expected right to be != null");
+            checkState(right.isValid(), "Expected right to be valid");
+
+            // merge "current" with "right"
+            double newWeight = current.getWeight() + right.getWeight();
+            double newValue = (current.getValue() * current.getWeight() + right.getValue() * right.getWeight()) / newWeight;
+
+            // mark "right" as invalid so we can skip it if it shows up as we poll from the head of the queue
+            right.invalidate();
+
+            // compute the merged entry linked to right of right
+            Entry merged = new Entry(current.getId(), newValue, newWeight, right.getRight());
+            queue.add(merged);
+
+            Entry left = current.getLeft();
+            if (left != null) {
+                checkState(left.isValid(), "Expected left to be valid");
+
+                // replace "left" with a new entry with a penalty adjusted to account for (newValue, newWeight)
+                left.invalidate();
+
+                // create a new left entry linked to the merged entry
+                queue.add(new Entry(left.getId(), left.getValue(), left.getWeight(), left.getLeft(), merged));
+            }
+        }
+
+        return queue;
+    }
+
+    /**
+     * Copy two arrays back-to-back onto the target array starting at offset 0
+     */
+    private static void concat(double[] target, double[] first, int firstLength, double[] second, int secondLength)
+    {
+        System.arraycopy(first, 0, target, 0, firstLength);
+        System.arraycopy(second, 0, target, firstLength, secondLength);
+    }
+
+    /**
+     * Simple pass that merges entries with the same value
+     */
+    private static int mergeSameBuckets(double[] values, double[] weights, int nextIndex)
+    {
+        sort(values, weights, nextIndex);
+
+        int current = 0;
+        for (int i = 1; i < nextIndex; i++) {
+            if (values[current] == values[i]) {
+                weights[current] += weights[i];
+            }
+            else {
+                current++;
+                values[current] = values[i];
+                weights[current] = weights[i];
+            }
+        }
+        return current + 1;
+    }
+
+    /**
+     * Create a priority queue with an entry for each bucket, ordered by the penalty score with respect to the bucket to its right
+     * The inputs must be sorted by "value" in increasing order
+     * The last bucket has a penalty of infinity
+     * Entries are doubly-linked to keep track of the relative position of each bucket
+     */
+    private static PriorityQueue<Entry> initializeQueue(double[] values, double[] weights, int nextIndex)
+    {
+        checkArgument(nextIndex > 0, "nextIndex must be > 0");
+
+        PriorityQueue<Entry> queue = new PriorityQueue<>(nextIndex);
+
+        Entry right = new Entry(nextIndex - 1, values[nextIndex - 1], weights[nextIndex - 1], null);
+        queue.add(right);
+        for (int i = nextIndex - 2; i >= 0; i--) {
+            Entry current = new Entry(i, values[i], weights[i], right);
+            queue.add(current);
+            right = current;
+        }
+
+        return queue;
+    }
+
+    private static void sort(final double[] values, final double[] weights, int nextIndex)
+    {
+        // sort x and y value arrays based on the x values
+        Arrays.quickSort(0, nextIndex, (a, b) -> Doubles.compare(values[a], values[b]), (a, b) -> {
+            double temp = values[a];
+            values[a] = values[b];
+            values[b] = temp;
+
+            temp = weights[a];
+            weights[a] = weights[b];
+            weights[b] = temp;
+        });
+    }
+
+    private static double computePenalty(double value1, double value2, double weight1, double weight2)
+    {
+        double weight = value2 + weight2;
+        double squaredDifference = (value1 - weight1) * (value1 - weight1);
+        double proportionsProduct = (value2 * weight2) / ((value2 + weight2) * (value2 + weight2));
+        return weight * squaredDifference * proportionsProduct;
+    }
+
     public Slice serialize()
     {
         compact();
@@ -165,54 +288,6 @@ public class NumericHistogram
         store(mergeBuckets(values, weights, nextIndex, maxBuckets));
     }
 
-    private static PriorityQueue<Entry> mergeBuckets(double[] values, double[] weights, int count, int targetCount)
-    {
-        checkArgument(targetCount > 0, "targetCount must be > 0");
-
-        PriorityQueue<Entry> queue = initializeQueue(values, weights, count);
-
-        while (count > targetCount) {
-            Entry current = queue.poll();
-            if (!current.isValid()) {
-                // ignore entries that have already been replaced
-                continue;
-            }
-
-            count--;
-
-            Entry right = current.getRight();
-
-            // right is guaranteed to exist because we set the penalty of the last bucket to infinity
-            // so the first current in the queue can never be the last bucket
-            checkState(right != null, "Expected right to be != null");
-            checkState(right.isValid(), "Expected right to be valid");
-
-            // merge "current" with "right"
-            double newWeight = current.getWeight() + right.getWeight();
-            double newValue = (current.getValue() * current.getWeight() + right.getValue() * right.getWeight()) / newWeight;
-
-            // mark "right" as invalid so we can skip it if it shows up as we poll from the head of the queue
-            right.invalidate();
-
-            // compute the merged entry linked to right of right
-            Entry merged = new Entry(current.getId(), newValue, newWeight, right.getRight());
-            queue.add(merged);
-
-            Entry left = current.getLeft();
-            if (left != null) {
-                checkState(left.isValid(), "Expected left to be valid");
-
-                // replace "left" with a new entry with a penalty adjusted to account for (newValue, newWeight)
-                left.invalidate();
-
-                // create a new left entry linked to the merged entry
-                queue.add(new Entry(left.getId(), left.getValue(), left.getWeight(), left.getLeft(), merged));
-            }
-        }
-
-        return queue;
-    }
-
     /**
      * Dump the entries in the queue back into the bucket arrays
      * The values are guaranteed to be sorted in increasing order after this method completes
@@ -228,81 +303,6 @@ public class NumericHistogram
             }
         }
         sort(values, weights, nextIndex);
-    }
-
-    /**
-     * Copy two arrays back-to-back onto the target array starting at offset 0
-     */
-    private static void concat(double[] target, double[] first, int firstLength, double[] second, int secondLength)
-    {
-        System.arraycopy(first, 0, target, 0, firstLength);
-        System.arraycopy(second, 0, target, firstLength, secondLength);
-    }
-
-    /**
-     * Simple pass that merges entries with the same value
-     */
-    private static int mergeSameBuckets(double[] values, double[] weights, int nextIndex)
-    {
-        sort(values, weights, nextIndex);
-
-        int current = 0;
-        for (int i = 1; i < nextIndex; i++) {
-            if (values[current] == values[i]) {
-                weights[current] += weights[i];
-            }
-            else {
-                current++;
-                values[current] = values[i];
-                weights[current] = weights[i];
-            }
-        }
-        return current + 1;
-    }
-
-    /**
-     * Create a priority queue with an entry for each bucket, ordered by the penalty score with respect to the bucket to its right
-     * The inputs must be sorted by "value" in increasing order
-     * The last bucket has a penalty of infinity
-     * Entries are doubly-linked to keep track of the relative position of each bucket
-     */
-    private static PriorityQueue<Entry> initializeQueue(double[] values, double[] weights, int nextIndex)
-    {
-        checkArgument(nextIndex > 0, "nextIndex must be > 0");
-
-        PriorityQueue<Entry> queue = new PriorityQueue<>(nextIndex);
-
-        Entry right = new Entry(nextIndex - 1, values[nextIndex - 1], weights[nextIndex - 1], null);
-        queue.add(right);
-        for (int i = nextIndex - 2; i >= 0; i--) {
-            Entry current = new Entry(i, values[i], weights[i], right);
-            queue.add(current);
-            right = current;
-        }
-
-        return queue;
-    }
-
-    private static void sort(final double[] values, final double[] weights, int nextIndex)
-    {
-        // sort x and y value arrays based on the x values
-        Arrays.quickSort(0, nextIndex, (a, b) -> Doubles.compare(values[a], values[b]), (a, b) -> {
-            double temp = values[a];
-            values[a] = values[b];
-            values[b] = temp;
-
-            temp = weights[a];
-            weights[a] = weights[b];
-            weights[b] = temp;
-        });
-    }
-
-    private static double computePenalty(double value1, double value2, double weight1, double weight2)
-    {
-        double weight = value2 + weight2;
-        double squaredDifference = (value1 - weight1) * (value1 - weight1);
-        double proportionsProduct = (value2 * weight2) / ((value2 + weight2) * (value2 + weight2));
-        return weight * squaredDifference * proportionsProduct;
     }
 
     private static class Entry

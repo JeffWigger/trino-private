@@ -56,6 +56,17 @@ public class StaticCatalogStore
         this.disabledCatalogs = ImmutableSet.copyOf(disabledCatalogs);
     }
 
+    private static List<File> listFiles(File installedPluginsDir)
+    {
+        if (installedPluginsDir != null && installedPluginsDir.isDirectory()) {
+            File[] files = installedPluginsDir.listFiles();
+            if (files != null) {
+                return ImmutableList.copyOf(files);
+            }
+        }
+        return ImmutableList.of();
+    }
+
     public void loadCatalogs()
             throws Exception
     {
@@ -87,16 +98,5 @@ public class StaticCatalogStore
 
         connectorManager.createCatalog(catalogName, connectorName, ImmutableMap.copyOf(properties));
         log.info("-- Added catalog %s using connector %s --", catalogName, connectorName);
-    }
-
-    private static List<File> listFiles(File installedPluginsDir)
-    {
-        if (installedPluginsDir != null && installedPluginsDir.isDirectory()) {
-            File[] files = installedPluginsDir.listFiles();
-            if (files != null) {
-                return ImmutableList.copyOf(files);
-            }
-        }
-        return ImmutableList.of();
     }
 }

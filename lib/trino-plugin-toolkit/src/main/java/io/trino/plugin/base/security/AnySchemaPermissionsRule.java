@@ -33,6 +33,16 @@ public class AnySchemaPermissionsRule
         this.schemaRegex = schemaRegex;
     }
 
+    private static boolean patternEquals(Optional<Pattern> left, Optional<Pattern> right)
+    {
+        if (left.isEmpty() || right.isEmpty()) {
+            return left.isEmpty() == right.isEmpty();
+        }
+        Pattern leftPattern = left.get();
+        Pattern rightPattern = right.get();
+        return leftPattern.pattern().equals(rightPattern.pattern()) && leftPattern.flags() == rightPattern.flags();
+    }
+
     public boolean match(String user, Set<String> roles, Set<String> groups, String schemaName)
     {
         return userRegex.map(regex -> regex.matcher(user).matches()).orElse(true) &&
@@ -55,16 +65,6 @@ public class AnySchemaPermissionsRule
                 patternEquals(roleRegex, that.roleRegex) &&
                 patternEquals(groupRegex, that.groupRegex) &&
                 patternEquals(schemaRegex, that.schemaRegex);
-    }
-
-    private static boolean patternEquals(Optional<Pattern> left, Optional<Pattern> right)
-    {
-        if (left.isEmpty() || right.isEmpty()) {
-            return left.isEmpty() == right.isEmpty();
-        }
-        Pattern leftPattern = left.get();
-        Pattern rightPattern = right.get();
-        return leftPattern.pattern().equals(rightPattern.pattern()) && leftPattern.flags() == rightPattern.flags();
     }
 
     @Override

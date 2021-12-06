@@ -70,18 +70,15 @@ import static java.util.Objects.requireNonNull;
 public class OrderingCompiler
 {
     private static final Logger log = Logger.get(OrderingCompiler.class);
-
+    private final TypeOperators typeOperators;
     private final LoadingCache<PagesIndexComparatorCacheKey, PagesIndexOrdering> pagesIndexOrderings = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
             .build(CacheLoader.from(key -> internalCompilePagesIndexOrdering(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
-
     private final LoadingCache<PagesIndexComparatorCacheKey, PageWithPositionComparator> pageWithPositionComparators = CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(1000)
             .build(CacheLoader.from(key -> internalCompilePageWithPositionComparator(key.getSortTypes(), key.getSortChannels(), key.getSortOrders())));
-
-    private final TypeOperators typeOperators;
 
     @Inject
     public OrderingCompiler(TypeOperators typeOperators)

@@ -37,9 +37,7 @@ import static java.util.Objects.requireNonNull;
 @ThreadSafe
 public class TaskHandle
 {
-    private final TaskId taskId;
     protected final DoubleSupplier utilizationSupplier;
-
     @GuardedBy("this")
     protected final Queue<PrioritizedSplitRunner> queuedLeafSplits = new ArrayDeque<>(10);
     @GuardedBy("this")
@@ -47,17 +45,16 @@ public class TaskHandle
     @GuardedBy("this")
     protected final List<PrioritizedSplitRunner> runningIntermediateSplits = new ArrayList<>(10);
     @GuardedBy("this")
+    protected final SplitConcurrencyController concurrencyController;
+    protected final AtomicReference<Priority> priority = new AtomicReference<>(new Priority(0, 0));
+    private final TaskId taskId;
+    private final AtomicInteger nextSplitId = new AtomicInteger();
+    private final MultilevelSplitQueue splitQueue;
+    private final OptionalInt maxDriversPerTask;
+    @GuardedBy("this")
     protected long scheduledNanos;
     @GuardedBy("this")
     private boolean destroyed;
-    @GuardedBy("this")
-    protected final SplitConcurrencyController concurrencyController;
-
-    private final AtomicInteger nextSplitId = new AtomicInteger();
-
-    protected final AtomicReference<Priority> priority = new AtomicReference<>(new Priority(0, 0));
-    private final MultilevelSplitQueue splitQueue;
-    private final OptionalInt maxDriversPerTask;
 
     public TaskHandle(
             TaskId taskId,

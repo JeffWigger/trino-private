@@ -101,6 +101,116 @@ public class TestTupleDomainParquetPredicate
 {
     private static final ParquetDataSourceId ID = new ParquetDataSourceId("testFile");
 
+    private static BooleanStatistics booleanColumnStats(boolean minimum, boolean maximum)
+    {
+        BooleanStatistics statistics = new BooleanStatistics();
+        statistics.setMinMax(minimum, maximum);
+        return statistics;
+    }
+
+    private static BinaryStatistics stringColumnStats(String minimum, String maximum)
+    {
+        BinaryStatistics statistics = new BinaryStatistics();
+        statistics.setMinMax(Binary.fromString(minimum), Binary.fromString(maximum));
+        return statistics;
+    }
+
+    private static BinaryStatistics timestampColumnStats(LocalDateTime minimum, LocalDateTime maximum)
+    {
+        BinaryStatistics statistics = new BinaryStatistics();
+        statistics.setMinMax(Binary.fromConstantByteArray(toParquetEncoding(minimum)), Binary.fromConstantByteArray(toParquetEncoding(maximum)));
+        return statistics;
+    }
+
+    private static byte[] toParquetEncoding(LocalDateTime timestamp)
+    {
+        long startOfDay = timestamp.toLocalDate().atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli();
+        long timeOfDayNanos = (long) ((timestamp.atZone(ZoneOffset.UTC).toInstant().toEpochMilli() - startOfDay) * Math.pow(10, 6)) + timestamp.getNano() % NANOSECONDS_PER_MILLISECOND;
+
+        Slice slice = Slices.allocate(12);
+        slice.setLong(0, timeOfDayNanos);
+        slice.setInt(8, millisToJulianDay(timestamp.atZone(ZoneOffset.UTC).toInstant().toEpochMilli()));
+        return slice.byteArray();
+    }
+
+    private static int millisToJulianDay(long timestamp)
+    {
+        return toIntExact(MILLISECONDS.toDays(timestamp) + JULIAN_EPOCH_OFFSET_DAYS);
+    }
+
+    private static FloatStatistics floatColumnStats(float minimum, float maximum)
+    {
+        return floatColumnStats(minimum, maximum, false);
+    }
+
+    private static FloatStatistics floatColumnStats(float minimum, float maximum, boolean hasNulls)
+    {
+        FloatStatistics statistics = new FloatStatistics();
+        statistics.setMinMax(minimum, maximum);
+        if (hasNulls) {
+            statistics.setNumNulls(1);
+        }
+        return statistics;
+    }
+
+    private static DoubleStatistics doubleColumnStats(double minimum, double maximum)
+    {
+        return doubleColumnStats(minimum, maximum, false);
+    }
+
+    private static DoubleStatistics doubleColumnStats(double minimum, double maximum, boolean hasNulls)
+    {
+        DoubleStatistics statistics = new DoubleStatistics();
+        statistics.setMinMax(minimum, maximum);
+        if (hasNulls) {
+            statistics.setNumNulls(1);
+        }
+        return statistics;
+    }
+
+    private static IntStatistics intColumnStats(int minimum, int maximum)
+    {
+        IntStatistics statistics = new IntStatistics();
+        statistics.setMinMax(minimum, maximum);
+        return statistics;
+    }
+
+    private static LongStatistics longColumnStats(long minimum, long maximum)
+    {
+        LongStatistics statistics = new LongStatistics();
+        statistics.setMinMax(minimum, maximum);
+        return statistics;
+    }
+
+    private static BinaryStatistics binaryColumnStats(long minimum, long maximum)
+    {
+        return binaryColumnStats(BigInteger.valueOf(minimum), BigInteger.valueOf(maximum));
+    }
+
+    private static BinaryStatistics binaryColumnStats(BigInteger minimum, BigInteger maximum)
+    {
+        BinaryStatistics statistics = new BinaryStatistics();
+        statistics.setMinMax(
+                Binary.fromConstantByteArray(minimum.toByteArray()),
+                Binary.fromConstantByteArray(maximum.toByteArray()));
+        return statistics;
+    }
+
+    private static LongStatistics longOnlyNullsStats(long numNulls)
+    {
+        LongStatistics statistics = new LongStatistics();
+        statistics.setNumNulls(numNulls);
+        return statistics;
+    }
+
+    private static LongTimestamp longTimestamp(long precision, LocalDateTime start)
+    {
+        checkArgument(precision > MAX_SHORT_PRECISION && precision <= TimestampType.MAX_PRECISION, "Precision is out of range");
+        return new LongTimestamp(
+                start.atZone(ZoneOffset.UTC).toInstant().getEpochSecond() * MICROSECONDS_PER_SECOND + start.getLong(MICRO_OF_SECOND),
+                toIntExact(round((start.getNano() % PICOSECONDS_PER_NANOSECOND) * PICOSECONDS_PER_NANOSECOND, toIntExact(TimestampType.MAX_PRECISION - precision))));
+    }
+
     @Test
     public void testBoolean()
             throws ParquetCorruptionException
@@ -112,13 +222,6 @@ public class TestTupleDomainParquetPredicate
         assertEquals(getDomain(BOOLEAN, 10, booleanColumnStats(false, false), ID, column, UTC), singleValue(BOOLEAN, false));
 
         assertEquals(getDomain(BOOLEAN, 20, booleanColumnStats(false, true), ID, column, UTC), all(BOOLEAN));
-    }
-
-    private static BooleanStatistics booleanColumnStats(boolean minimum, boolean maximum)
-    {
-        BooleanStatistics statistics = new BooleanStatistics();
-        statistics.setMinMax(minimum, maximum);
-        return statistics;
     }
 
     @Test
@@ -328,13 +431,6 @@ public class TestTupleDomainParquetPredicate
                 .withMessage("Corrupted statistics for column \"StringColumn\" in Parquet file \"testFile\": [min: 0x7461636F, max: 0x6170706C65, num_nulls: 0]");
     }
 
-    private static BinaryStatistics stringColumnStats(String minimum, String maximum)
-    {
-        BinaryStatistics statistics = new BinaryStatistics();
-        statistics.setMinMax(Binary.fromString(minimum), Binary.fromString(maximum));
-        return statistics;
-    }
-
     @Test
     public void testFloat()
             throws Exception
@@ -408,29 +504,6 @@ public class TestTupleDomainParquetPredicate
         assertEquals(
                 getDomain(timestampType, 10, timestampColumnStats(baseTime.minusSeconds(10), baseTime), ID, column, UTC),
                 create(ValueSet.all(timestampType), false));
-    }
-
-    private static BinaryStatistics timestampColumnStats(LocalDateTime minimum, LocalDateTime maximum)
-    {
-        BinaryStatistics statistics = new BinaryStatistics();
-        statistics.setMinMax(Binary.fromConstantByteArray(toParquetEncoding(minimum)), Binary.fromConstantByteArray(toParquetEncoding(maximum)));
-        return statistics;
-    }
-
-    private static byte[] toParquetEncoding(LocalDateTime timestamp)
-    {
-        long startOfDay = timestamp.toLocalDate().atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli();
-        long timeOfDayNanos = (long) ((timestamp.atZone(ZoneOffset.UTC).toInstant().toEpochMilli() - startOfDay) * Math.pow(10, 6)) + timestamp.getNano() % NANOSECONDS_PER_MILLISECOND;
-
-        Slice slice = Slices.allocate(12);
-        slice.setLong(0, timeOfDayNanos);
-        slice.setInt(8, millisToJulianDay(timestamp.atZone(ZoneOffset.UTC).toInstant().toEpochMilli()));
-        return slice.byteArray();
-    }
-
-    private static int millisToJulianDay(long timestamp)
-    {
-        return toIntExact(MILLISECONDS.toDays(timestamp) + JULIAN_EPOCH_OFFSET_DAYS);
     }
 
     @Test
@@ -511,71 +584,6 @@ public class TestTupleDomainParquetPredicate
         return withColumnDomains(predicateColumns);
     }
 
-    private static FloatStatistics floatColumnStats(float minimum, float maximum)
-    {
-        return floatColumnStats(minimum, maximum, false);
-    }
-
-    private static FloatStatistics floatColumnStats(float minimum, float maximum, boolean hasNulls)
-    {
-        FloatStatistics statistics = new FloatStatistics();
-        statistics.setMinMax(minimum, maximum);
-        if (hasNulls) {
-            statistics.setNumNulls(1);
-        }
-        return statistics;
-    }
-
-    private static DoubleStatistics doubleColumnStats(double minimum, double maximum)
-    {
-        return doubleColumnStats(minimum, maximum, false);
-    }
-
-    private static DoubleStatistics doubleColumnStats(double minimum, double maximum, boolean hasNulls)
-    {
-        DoubleStatistics statistics = new DoubleStatistics();
-        statistics.setMinMax(minimum, maximum);
-        if (hasNulls) {
-            statistics.setNumNulls(1);
-        }
-        return statistics;
-    }
-
-    private static IntStatistics intColumnStats(int minimum, int maximum)
-    {
-        IntStatistics statistics = new IntStatistics();
-        statistics.setMinMax(minimum, maximum);
-        return statistics;
-    }
-
-    private static LongStatistics longColumnStats(long minimum, long maximum)
-    {
-        LongStatistics statistics = new LongStatistics();
-        statistics.setMinMax(minimum, maximum);
-        return statistics;
-    }
-
-    private static BinaryStatistics binaryColumnStats(long minimum, long maximum)
-    {
-        return binaryColumnStats(BigInteger.valueOf(minimum), BigInteger.valueOf(maximum));
-    }
-
-    private static BinaryStatistics binaryColumnStats(BigInteger minimum, BigInteger maximum)
-    {
-        BinaryStatistics statistics = new BinaryStatistics();
-        statistics.setMinMax(
-                Binary.fromConstantByteArray(minimum.toByteArray()),
-                Binary.fromConstantByteArray(maximum.toByteArray()));
-        return statistics;
-    }
-
-    private static LongStatistics longOnlyNullsStats(long numNulls)
-    {
-        LongStatistics statistics = new LongStatistics();
-        statistics.setNumNulls(numNulls);
-        return statistics;
-    }
-
     private DictionaryDescriptor floatDictionaryDescriptor(float... values)
             throws Exception
     {
@@ -602,13 +610,5 @@ public class TestTupleDomainParquetPredicate
         return new DictionaryDescriptor(
                 new ColumnDescriptor(new String[] {"dummy"}, new PrimitiveType(OPTIONAL, PrimitiveType.PrimitiveTypeName.DOUBLE, 0, ""), 1, 1),
                 Optional.of(new DictionaryPage(Slices.wrappedBuffer(buf.toByteArray()), values.length, PLAIN_DICTIONARY)));
-    }
-
-    private static LongTimestamp longTimestamp(long precision, LocalDateTime start)
-    {
-        checkArgument(precision > MAX_SHORT_PRECISION && precision <= TimestampType.MAX_PRECISION, "Precision is out of range");
-        return new LongTimestamp(
-                start.atZone(ZoneOffset.UTC).toInstant().getEpochSecond() * MICROSECONDS_PER_SECOND + start.getLong(MICRO_OF_SECOND),
-                toIntExact(round((start.getNano() % PICOSECONDS_PER_NANOSECOND) * PICOSECONDS_PER_NANOSECOND, toIntExact(TimestampType.MAX_PRECISION - precision))));
     }
 }

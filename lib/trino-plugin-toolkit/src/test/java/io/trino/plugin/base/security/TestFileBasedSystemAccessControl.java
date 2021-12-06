@@ -113,6 +113,23 @@ public class TestFileBasedSystemAccessControl
     private static final String SET_SYSTEM_SESSION_PROPERTY_ACCESS_DENIED_MESSAGE = "Access Denied: Cannot set system session property .*";
     private static final String SET_CATALOG_SESSION_PROPERTY_ACCESS_DENIED_MESSAGE = "Access Denied: Cannot set catalog session property .*";
 
+    private static void assertViewExpressionEquals(Optional<ViewExpression> result, ViewExpression expected)
+    {
+        assertTrue(result.isPresent());
+        ViewExpression actual = result.get();
+        assertEquals(actual.getIdentity(), expected.getIdentity(), "Identity");
+        assertEquals(actual.getCatalog(), expected.getCatalog(), "Catalog");
+        assertEquals(actual.getSchema(), expected.getSchema(), "Schema");
+        assertEquals(actual.getExpression(), expected.getExpression(), "Expression");
+    }
+
+    private static void assertAccessDenied(ThrowingCallable callable, String expectedMessage)
+    {
+        assertThatThrownBy(callable)
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageMatching(expectedMessage);
+    }
+
     @Test
     public void testEmptyFile()
     {
@@ -1156,16 +1173,6 @@ public class TestFileBasedSystemAccessControl
                 new ViewExpression("filter-user", Optional.of("some-catalog"), Optional.of("bobschema"), "starts_with(value, 'filter-with-user')"));
     }
 
-    private static void assertViewExpressionEquals(Optional<ViewExpression> result, ViewExpression expected)
-    {
-        assertTrue(result.isPresent());
-        ViewExpression actual = result.get();
-        assertEquals(actual.getIdentity(), expected.getIdentity(), "Identity");
-        assertEquals(actual.getCatalog(), expected.getCatalog(), "Catalog");
-        assertEquals(actual.getSchema(), expected.getSchema(), "Schema");
-        assertEquals(actual.getExpression(), expected.getExpression(), "Expression");
-    }
-
     @Test
     public void testEverythingImplemented()
     {
@@ -1227,12 +1234,5 @@ public class TestFileBasedSystemAccessControl
     private String getResourcePath(String resourceName)
     {
         return requireNonNull(this.getClass().getClassLoader().getResource(resourceName), "Resource does not exist: " + resourceName).getPath();
-    }
-
-    private static void assertAccessDenied(ThrowingCallable callable, String expectedMessage)
-    {
-        assertThatThrownBy(callable)
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageMatching(expectedMessage);
     }
 }

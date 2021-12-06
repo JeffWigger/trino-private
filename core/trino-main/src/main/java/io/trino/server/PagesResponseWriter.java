@@ -51,16 +51,6 @@ public class PagesResponseWriter
 
     private static final MediaType TRINO_PAGES_TYPE = MediaType.valueOf(TRINO_PAGES);
     private static final Type LIST_GENERIC_TOKEN;
-
-    static {
-        try {
-            LIST_GENERIC_TOKEN = List.class.getMethod("get", int.class).getGenericReturnType();
-        }
-        catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private final boolean dataIntegrityVerificationEnabled;
 
     @Inject
@@ -109,6 +99,15 @@ public class PagesResponseWriter
             if (!(e.getCause() instanceof EOFException)) {
                 throw e;
             }
+        }
+    }
+
+    static {
+        try {
+            LIST_GENERIC_TOKEN = List.class.getMethod("get", int.class).getGenericReturnType();
+        }
+        catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
         }
     }
 }

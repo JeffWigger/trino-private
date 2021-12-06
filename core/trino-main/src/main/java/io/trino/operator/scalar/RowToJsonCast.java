@@ -71,40 +71,6 @@ public class RowToJsonCast
         this.legacyRowToJson = legacyRowToJson;
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        Type type = functionBinding.getTypeVariable("T");
-        checkCondition(canCastToJson(type), INVALID_CAST_ARGUMENT, "Cannot cast %s to JSON", type);
-
-        List<Type> fieldTypes = type.getTypeParameters();
-
-        List<JsonGeneratorWriter> fieldWriters = new ArrayList<>(fieldTypes.size());
-        MethodHandle methodHandle;
-        if (legacyRowToJson) {
-            for (Type fieldType : fieldTypes) {
-                fieldWriters.add(createJsonGeneratorWriter(fieldType, true));
-            }
-            methodHandle = LEGACY_METHOD_HANDLE.bindTo(fieldWriters);
-        }
-        else {
-            List<TypeSignatureParameter> typeSignatureParameters = type.getTypeSignature().getParameters();
-            List<String> fieldNames = new ArrayList<>(fieldTypes.size());
-            for (int i = 0; i < fieldTypes.size(); i++) {
-                fieldNames.add(typeSignatureParameters.get(i).getNamedTypeSignature().getName().orElse(""));
-                fieldWriters.add(createJsonGeneratorWriter(fieldTypes.get(i), false));
-            }
-            methodHandle = METHOD_HANDLE.bindTo(fieldNames).bindTo(fieldWriters);
-        }
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Slice toJsonObject(List<String> fieldNames, List<JsonGeneratorWriter> fieldWriters, Block block)
     {
@@ -142,5 +108,39 @@ public class RowToJsonCast
         catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        Type type = functionBinding.getTypeVariable("T");
+        checkCondition(canCastToJson(type), INVALID_CAST_ARGUMENT, "Cannot cast %s to JSON", type);
+
+        List<Type> fieldTypes = type.getTypeParameters();
+
+        List<JsonGeneratorWriter> fieldWriters = new ArrayList<>(fieldTypes.size());
+        MethodHandle methodHandle;
+        if (legacyRowToJson) {
+            for (Type fieldType : fieldTypes) {
+                fieldWriters.add(createJsonGeneratorWriter(fieldType, true));
+            }
+            methodHandle = LEGACY_METHOD_HANDLE.bindTo(fieldWriters);
+        }
+        else {
+            List<TypeSignatureParameter> typeSignatureParameters = type.getTypeSignature().getParameters();
+            List<String> fieldNames = new ArrayList<>(fieldTypes.size());
+            for (int i = 0; i < fieldTypes.size(); i++) {
+                fieldNames.add(typeSignatureParameters.get(i).getNamedTypeSignature().getName().orElse(""));
+                fieldWriters.add(createJsonGeneratorWriter(fieldTypes.get(i), false));
+            }
+            methodHandle = METHOD_HANDLE.bindTo(fieldNames).bindTo(fieldWriters);
+        }
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

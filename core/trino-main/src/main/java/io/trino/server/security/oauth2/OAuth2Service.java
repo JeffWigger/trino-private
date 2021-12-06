@@ -67,17 +67,15 @@ import static javax.ws.rs.core.Response.Status.BAD_REQUEST;
 
 public class OAuth2Service
 {
-    private static final Logger LOG = Logger.get(OAuth2Service.class);
-
     public static final String REDIRECT_URI = "redirect_uri";
     public static final String STATE = "state";
     public static final String NONCE = "nonce";
     public static final String OPENID_SCOPE = "openid";
-
+    public static final String HANDLER_STATE_CLAIM = "handler_state";
+    private static final Logger LOG = Logger.get(OAuth2Service.class);
     private static final String STATE_AUDIENCE_UI = "trino_oauth_ui";
     private static final String FAILURE_REPLACEMENT_TEXT = "<!-- ERROR_MESSAGE -->";
     private static final Random SECURE_RANDOM = new SecureRandom();
-    public static final String HANDLER_STATE_CLAIM = "handler_state";
     private static final JsonResponseHandler<Map<String, Object>> USERINFO_RESPONSE_HANDLER = createJsonResponseHandler(mapJsonCodec(String.class, Object.class));
 
     private final OAuth2Client client;
@@ -132,6 +130,62 @@ public class OAuth2Service
         this.tokenHandler = requireNonNull(tokenHandler, "tokenHandler is null");
 
         this.webUiOAuthEnabled = requireNonNull(webUiOAuthEnabled, "webUiOAuthEnabled is null").isPresent();
+    }
+
+    private static Instant determineExpiration(Optional<Instant> validUntil, Date expiration)
+            throws ChallengeFailedException
+    {
+        if (validUntil.isPresent()) {
+            if (expiration != null) {
+                return Ordering.natural().min(validUntil.get(), expiration.toInstant());
+            }
+
+            return validUntil.get();
+        }
+
+        if (expiration != null) {
+            return expiration.toInstant();
+        }
+
+        throw new ChallengeFailedException("no valid expiration date");
+    }
+
+    private static byte[] secureRandomBytes(int count)
+    {
+        byte[] bytes = new byte[count];
+        SECURE_RANDOM.nextBytes(bytes);
+        return bytes;
+    }
+
+    private static String getOAuth2ErrorMessage(String errorCode)
+    {
+        switch (errorCode) {
+            case "access_denied":
+                return "OAuth2 server denied the login";
+            case "unauthorized_client":
+                return "OAuth2 server does not allow request from this Trino server";
+            case "server_error":
+                return "OAuth2 server had a failure";
+            case "temporarily_unavailable":
+                return "OAuth2 server is temporarily unavailable";
+            default:
+                return "OAuth2 unknown error code: " + errorCode;
+        }
+    }
+
+    private static String randomNonce()
+    {
+        // https://developers.login.gov/oidc/#authorization
+        // min 22 chars so 24 chars obtained by encoding random 18 bytes using Base64 should be enough
+        return BaseEncoding.base64Url().encode(secureRandomBytes(18));
+    }
+
+    @VisibleForTesting
+    public static String hashNonce(String nonce)
+    {
+        return sha256()
+                .hashString(nonce, UTF_8)
+                .toString();
     }
 
     public Response startOAuth2Challenge(UriInfo uriInfo)
@@ -245,24 +299,6 @@ public class OAuth2Service
                     .entity(getInternalFailureHtml("Authentication response could not be verified"))
                     .build();
         }
-    }
-
-    private static Instant determineExpiration(Optional<Instant> validUntil, Date expiration)
-            throws ChallengeFailedException
-    {
-        if (validUntil.isPresent()) {
-            if (expiration != null) {
-                return Ordering.natural().min(validUntil.get(), expiration.toInstant());
-            }
-
-            return validUntil.get();
-        }
-
-        if (expiration != null) {
-            return expiration.toInstant();
-        }
-
-        throw new ChallengeFailedException("no valid expiration date");
     }
 
     private Claims parseState(String state)
@@ -391,43 +427,5 @@ public class OAuth2Service
     public String getInternalFailureHtml(String errorMessage)
     {
         return failureHtml.replace(FAILURE_REPLACEMENT_TEXT, nullToEmpty(errorMessage));
-    }
-
-    private static byte[] secureRandomBytes(int count)
-    {
-        byte[] bytes = new byte[count];
-        SECURE_RANDOM.nextBytes(bytes);
-        return bytes;
-    }
-
-    private static String getOAuth2ErrorMessage(String errorCode)
-    {
-        switch (errorCode) {
-            case "access_denied":
-                return "OAuth2 server denied the login";
-            case "unauthorized_client":
-                return "OAuth2 server does not allow request from this Trino server";
-            case "server_error":
-                return "OAuth2 server had a failure";
-            case "temporarily_unavailable":
-                return "OAuth2 server is temporarily unavailable";
-            default:
-                return "OAuth2 unknown error code: " + errorCode;
-        }
-    }
-
-    private static String randomNonce()
-    {
-        // https://developers.login.gov/oidc/#authorization
-        // min 22 chars so 24 chars obtained by encoding random 18 bytes using Base64 should be enough
-        return BaseEncoding.base64Url().encode(secureRandomBytes(18));
-    }
-
-    @VisibleForTesting
-    public static String hashNonce(String nonce)
-    {
-        return sha256()
-                .hashString(nonce, UTF_8)
-                .toString();
     }
 }

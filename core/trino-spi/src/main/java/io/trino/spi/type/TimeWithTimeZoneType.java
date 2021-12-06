@@ -35,6 +35,12 @@ public abstract class TimeWithTimeZoneType
 
     private final int precision;
 
+    protected TimeWithTimeZoneType(int precision, Class<?> javaType)
+    {
+        super(new TypeSignature(StandardTypes.TIME_WITH_TIME_ZONE, TypeSignatureParameter.numericParameter(precision)), javaType);
+        this.precision = precision;
+    }
+
     public static TimeWithTimeZoneType createTimeWithTimeZoneType(int precision)
     {
         if (precision == DEFAULT_PRECISION) {
@@ -51,12 +57,6 @@ public abstract class TimeWithTimeZoneType
         }
 
         return new LongTimeWithTimeZoneType(precision);
-    }
-
-    protected TimeWithTimeZoneType(int precision, Class<?> javaType)
-    {
-        super(new TypeSignature(StandardTypes.TIME_WITH_TIME_ZONE, TypeSignatureParameter.numericParameter(precision)), javaType);
-        this.precision = precision;
     }
 
     public int getPrecision()

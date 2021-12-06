@@ -37,17 +37,15 @@ public class SingleTypedHistogram
     private static final float FILL_RATIO = 0.75f;
 
     private final int expectedSize;
-    private int hashCapacity;
-    private int maxFill;
-    private int mask;
-
     private final Type type;
     private final BlockPositionEqual equalOperator;
     private final BlockPositionHashCode hashCodeOperator;
     private final BlockBuilder values;
-
-    private IntBigArray hashPositions;
     private final LongBigArray counts;
+    private int hashCapacity;
+    private int maxFill;
+    private int mask;
+    private IntBigArray hashPositions;
 
     private SingleTypedHistogram(Type type, BlockPositionEqual equalOperator, BlockPositionHashCode hashCodeOperator, int expectedSize, int hashCapacity, BlockBuilder values)
     {
@@ -78,11 +76,6 @@ public class SingleTypedHistogram
                 type.createBlockBuilder(null, computeBucketCount(expectedSize)));
     }
 
-    private static int computeBucketCount(int expectedSize)
-    {
-        return arraySize(expectedSize, FILL_RATIO);
-    }
-
     public SingleTypedHistogram(Block block, Type type, BlockPositionEqual equalOperator, BlockPositionHashCode hashCodeOperator, int expectedSize)
     {
         this(type, equalOperator, hashCodeOperator, expectedSize);
@@ -90,6 +83,27 @@ public class SingleTypedHistogram
         for (int i = 0; i < block.getPositionCount(); i += 2) {
             add(i, block, BIGINT.getLong(block, i + 1));
         }
+    }
+
+    private static int computeBucketCount(int expectedSize)
+    {
+        return arraySize(expectedSize, FILL_RATIO);
+    }
+
+    private static int getBucketId(long rawHash, int mask)
+    {
+        return ((int) murmurHash3(rawHash)) & mask;
+    }
+
+    private static int calculateMaxFill(int hashSize)
+    {
+        checkArgument(hashSize > 0, "hashSize must be greater than 0");
+        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
+        if (maxFill == hashSize) {
+            maxFill--;
+        }
+        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
+        return maxFill;
     }
 
     @Override
@@ -214,21 +228,5 @@ public class SingleTypedHistogram
         hashPositions = newHashPositions;
 
         this.counts.ensureCapacity(maxFill);
-    }
-
-    private static int getBucketId(long rawHash, int mask)
-    {
-        return ((int) murmurHash3(rawHash)) & mask;
-    }
-
-    private static int calculateMaxFill(int hashSize)
-    {
-        checkArgument(hashSize > 0, "hashSize must be greater than 0");
-        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
-        if (maxFill == hashSize) {
-            maxFill--;
-        }
-        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
-        return maxFill;
     }
 }

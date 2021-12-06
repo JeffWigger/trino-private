@@ -72,6 +72,24 @@ public class SetOperationNodeTranslator
         this.rowNumberFunction = metadata.resolveFunction(QualifiedName.of("row_number"), ImmutableList.of());
     }
 
+    private static PlanNode appendMarkers(PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, PlanNode source, int markerIndex, List<Symbol> markers, Map<Symbol, SymbolReference> projections)
+    {
+        Assignments.Builder assignments = Assignments.builder();
+        // add existing intersect symbols to projection
+        for (Map.Entry<Symbol, SymbolReference> entry : projections.entrySet()) {
+            Symbol symbol = symbolAllocator.newSymbol(entry.getKey().getName(), symbolAllocator.getTypes().get(entry.getKey()));
+            assignments.put(symbol, entry.getValue());
+        }
+
+        // add extra marker fields to the projection
+        for (int i = 0; i < markers.size(); ++i) {
+            Expression expression = (i == markerIndex) ? TRUE_LITERAL : new Cast(new NullLiteral(), toSqlType(BOOLEAN));
+            assignments.put(symbolAllocator.newSymbol(markers.get(i).getName(), BOOLEAN), expression);
+        }
+
+        return new ProjectNode(idAllocator.getNextId(), source, assignments.build());
+    }
+
     public TranslationResult makeSetContainmentPlanForDistinct(SetOperationNode node)
     {
         checkArgument(!(node instanceof UnionNode), "Cannot simplify a UnionNode");
@@ -132,24 +150,6 @@ public class SetOperationNodeTranslator
             result.add(appendMarkers(idAllocator, symbolAllocator, nodes.get(i), i, markers, node.sourceSymbolMap(i)));
         }
         return result.build();
-    }
-
-    private static PlanNode appendMarkers(PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, PlanNode source, int markerIndex, List<Symbol> markers, Map<Symbol, SymbolReference> projections)
-    {
-        Assignments.Builder assignments = Assignments.builder();
-        // add existing intersect symbols to projection
-        for (Map.Entry<Symbol, SymbolReference> entry : projections.entrySet()) {
-            Symbol symbol = symbolAllocator.newSymbol(entry.getKey().getName(), symbolAllocator.getTypes().get(entry.getKey()));
-            assignments.put(symbol, entry.getValue());
-        }
-
-        // add extra marker fields to the projection
-        for (int i = 0; i < markers.size(); ++i) {
-            Expression expression = (i == markerIndex) ? TRUE_LITERAL : new Cast(new NullLiteral(), toSqlType(BOOLEAN));
-            assignments.put(symbolAllocator.newSymbol(markers.get(i).getName(), BOOLEAN), expression);
-        }
-
-        return new ProjectNode(idAllocator.getNextId(), source, assignments.build());
     }
 
     private UnionNode union(List<PlanNode> nodes, List<Symbol> outputs)

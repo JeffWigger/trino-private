@@ -63,6 +63,11 @@ public final class InvokeFunction
                 SCALAR));
     }
 
+    public static Object invoke(InvokeLambda function)
+    {
+        return function.apply();
+    }
+
     @Override
     protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -76,11 +81,6 @@ public final class InvokeFunction
                         METHOD_HANDLE.type()
                                 .changeReturnType(Primitives.wrap(returnType.getJavaType()))),
                 Optional.empty());
-    }
-
-    public static Object invoke(InvokeLambda function)
-    {
-        return function.apply();
     }
 
     @FunctionalInterface

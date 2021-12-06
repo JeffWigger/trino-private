@@ -93,7 +93,13 @@ public class ParquetReader
     private final DateTimeZone timeZone;
     private final AggregatedMemoryContext systemMemoryContext;
     private final Optional<FilterPredicate> filter;
-
+    private final PrimitiveColumnReader[] columnReaders;
+    private final long[] maxBytesPerCell;
+    private final ParquetReaderOptions options;
+    private final Multimap<ChunkKey, ChunkReader> chunkReaders;
+    private final List<Optional<ColumnIndexStore>> columnIndexStore;
+    private final List<RowRanges> blockRowRanges;
+    private final Map<ColumnPath, ColumnDescriptor> paths = new HashMap<>();
     private int currentRowGroup = -1;
     private BlockMetaData currentBlockMetadata;
     private long currentGroupRowCount;
@@ -108,17 +114,9 @@ public class ParquetReader
     private long nextRowInGroup;
     private int batchSize;
     private int nextBatchSize = INITIAL_BATCH_SIZE;
-    private final PrimitiveColumnReader[] columnReaders;
-    private final long[] maxBytesPerCell;
     private long maxCombinedBytesPerRow;
-    private final ParquetReaderOptions options;
     private int maxBatchSize = MAX_VECTOR_LENGTH;
-
     private AggregatedMemoryContext currentRowGroupMemoryContext;
-    private final Multimap<ChunkKey, ChunkReader> chunkReaders;
-    private final List<Optional<ColumnIndexStore>> columnIndexStore;
-    private final List<RowRanges> blockRowRanges;
-    private final Map<ColumnPath, ColumnDescriptor> paths = new HashMap<>();
 
     public ParquetReader(
             Optional<String> fileCreatedBy,
@@ -201,6 +199,13 @@ public class ParquetReader
         }
 
         this.chunkReaders = dataSource.planRead(ranges);
+    }
+
+    private static <T> List<T> listWithNulls(int size)
+    {
+        return Stream.generate(() -> (T) null)
+                .limit(size)
+                .collect(Collectors.toCollection(ArrayList<T>::new));
     }
 
     @Override
@@ -454,13 +459,6 @@ public class ParquetReader
     public AggregatedMemoryContext getSystemMemoryContext()
     {
         return systemMemoryContext;
-    }
-
-    private static <T> List<T> listWithNulls(int size)
-    {
-        return Stream.generate(() -> (T) null)
-                .limit(size)
-                .collect(Collectors.toCollection(ArrayList<T>::new));
     }
 
     private RowRanges getRowRanges(FilterPredicate filter, int blockIndex)

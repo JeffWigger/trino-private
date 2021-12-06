@@ -32,12 +32,6 @@ public class RuleIndex
         this.rulesByRootType = ImmutableListMultimap.copyOf(rulesByRootType);
     }
 
-    public Stream<Rule<?>> getCandidates(Object object)
-    {
-        return supertypes(object.getClass())
-                .flatMap(clazz -> rulesByRootType.get(clazz).stream());
-    }
-
     private static Stream<Class<?>> supertypes(Class<?> type)
     {
         return TypeToken.of(type).getTypes().stream()
@@ -47,6 +41,12 @@ public class RuleIndex
     public static Builder builder()
     {
         return new Builder();
+    }
+
+    public Stream<Rule<?>> getCandidates(Object object)
+    {
+        return supertypes(object.getClass())
+                .flatMap(clazz -> rulesByRootType.get(clazz).stream());
     }
 
     public static class Builder

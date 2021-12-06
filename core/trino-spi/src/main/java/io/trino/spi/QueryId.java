@@ -25,13 +25,7 @@ import static java.util.Objects.requireNonNull;
 
 public final class QueryId
 {
-    @JsonCreator
-    public static QueryId valueOf(String queryId)
-    {
-        List<String> ids = parseDottedId(queryId, 1, "queryId");
-        return new QueryId(ids.get(0));
-    }
-
+    private static final Pattern ID_PATTERN = Pattern.compile("[_a-z0-9]+");
     private final String id;
 
     public QueryId(String id)
@@ -39,42 +33,12 @@ public final class QueryId
         this.id = validateId(id);
     }
 
-    public String getId()
+    @JsonCreator
+    public static QueryId valueOf(String queryId)
     {
-        return id;
+        List<String> ids = parseDottedId(queryId, 1, "queryId");
+        return new QueryId(ids.get(0));
     }
-
-    @Override
-    @JsonValue
-    public String toString()
-    {
-        return id;
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(id);
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null || getClass() != obj.getClass()) {
-            return false;
-        }
-        QueryId other = (QueryId) obj;
-        return Objects.equals(this.id, other.id);
-    }
-
-    //
-    // Id helper methods
-    //
-
-    private static final Pattern ID_PATTERN = Pattern.compile("[_a-z0-9]+");
 
     public static String validateId(String id)
     {
@@ -105,5 +69,40 @@ public final class QueryId
         if (!condition) {
             throw new IllegalArgumentException(format(message, messageArgs));
         }
+    }
+
+    //
+    // Id helper methods
+    //
+
+    public String getId()
+    {
+        return id;
+    }
+
+    @Override
+    @JsonValue
+    public String toString()
+    {
+        return id;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(id);
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        QueryId other = (QueryId) obj;
+        return Objects.equals(this.id, other.id);
     }
 }

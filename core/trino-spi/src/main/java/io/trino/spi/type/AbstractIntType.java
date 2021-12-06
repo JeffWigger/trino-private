@@ -45,6 +45,42 @@ public abstract class AbstractIntType
         super(signature, long.class);
     }
 
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long left, long right)
+    {
+        return left == right;
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long value)
+    {
+        return AbstractLongType.hash((int) value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long value)
+    {
+        return XxHash64.hash((int) value);
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Integer.compare((int) left, (int) right);
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return ((int) left) < ((int) right);
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return ((int) left) <= ((int) right);
+    }
+
     @Override
     public final int getFixedSize()
     {
@@ -130,41 +166,5 @@ public abstract class AbstractIntType
     public final BlockBuilder createFixedSizeBlockBuilder(int positionCount)
     {
         return new IntArrayBlockBuilder(null, positionCount);
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
-    {
-        return left == right;
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long value)
-    {
-        return AbstractLongType.hash((int) value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long value)
-    {
-        return XxHash64.hash((int) value);
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Integer.compare((int) left, (int) right);
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return ((int) left) < ((int) right);
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return ((int) left) <= ((int) right);
     }
 }

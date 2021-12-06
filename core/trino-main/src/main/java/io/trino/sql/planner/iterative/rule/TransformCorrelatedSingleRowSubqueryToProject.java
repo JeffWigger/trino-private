@@ -52,6 +52,11 @@ public class TransformCorrelatedSingleRowSubqueryToProject
     private static final Pattern<CorrelatedJoinNode> PATTERN = correlatedJoin()
             .with(filter().equalTo(TRUE_LITERAL));
 
+    private static boolean isSingleRowValuesWithNoColumns(ValuesNode values)
+    {
+        return values.getRowCount() == 1 && values.getOutputSymbols().isEmpty();
+    }
+
     @Override
     public Pattern<CorrelatedJoinNode> getPattern()
     {
@@ -91,10 +96,5 @@ public class TransformCorrelatedSingleRowSubqueryToProject
     private ProjectNode projectNode(PlanNode source, Assignments assignments, Context context)
     {
         return new ProjectNode(context.getIdAllocator().getNextId(), source, assignments);
-    }
-
-    private static boolean isSingleRowValuesWithNoColumns(ValuesNode values)
-    {
-        return values.getRowCount() == 1 && values.getOutputSymbols().isEmpty();
     }
 }

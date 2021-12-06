@@ -56,111 +56,25 @@ public class DynamicFilterSourceOperator
         implements Operator
 {
     private static final int EXPECTED_BLOCK_BUILDER_SIZE = 8;
-
-    public static class Channel
-    {
-        private final DynamicFilterId filterId;
-        private final Type type;
-        private final int index;
-
-        public Channel(DynamicFilterId filterId, Type type, int index)
-        {
-            this.filterId = filterId;
-            this.type = type;
-            this.index = index;
-        }
-    }
-
-    public static class DynamicFilterSourceOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Consumer<TupleDomain<DynamicFilterId>> dynamicPredicateConsumer;
-        private final List<Channel> channels;
-        private final int maxDisinctValues;
-        private final DataSize maxFilterSize;
-        private final int minMaxCollectionLimit;
-        private final BlockTypeOperators blockTypeOperators;
-
-        private boolean closed;
-
-        public DynamicFilterSourceOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                Consumer<TupleDomain<DynamicFilterId>> dynamicPredicateConsumer,
-                List<Channel> channels,
-                int maxDisinctValues,
-                DataSize maxFilterSize,
-                int minMaxCollectionLimit,
-                BlockTypeOperators blockTypeOperators)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.dynamicPredicateConsumer = requireNonNull(dynamicPredicateConsumer, "dynamicPredicateConsumer is null");
-            this.channels = requireNonNull(channels, "channels is null");
-            verify(channels.stream().map(channel -> channel.filterId).collect(toSet()).size() == channels.size(),
-                    "duplicate dynamic filters are not allowed");
-            verify(channels.stream().map(channel -> channel.index).collect(toSet()).size() == channels.size(),
-                    "duplicate channel indices are not allowed");
-            this.maxDisinctValues = maxDisinctValues;
-            this.maxFilterSize = maxFilterSize;
-            this.minMaxCollectionLimit = minMaxCollectionLimit;
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            return new DynamicFilterSourceOperator(
-                    driverContext.addOperatorContext(operatorId, planNodeId, DynamicFilterSourceOperator.class.getSimpleName()),
-                    dynamicPredicateConsumer,
-                    channels,
-                    planNodeId,
-                    maxDisinctValues,
-                    maxFilterSize,
-                    minMaxCollectionLimit,
-                    blockTypeOperators);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            checkState(!closed, "Factory is already closed");
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            throw new UnsupportedOperationException("duplicate() is not supported for DynamicFilterSourceOperatorFactory");
-        }
-    }
-
     private final OperatorContext context;
-    private boolean finished;
-    private Page current;
     private final Consumer<TupleDomain<DynamicFilterId>> dynamicPredicateConsumer;
     private final int maxDistinctValues;
     private final long maxFilterSizeInBytes;
-
     private final List<Channel> channels;
     private final List<Integer> minMaxChannels;
     private final List<BlockPositionComparison> minMaxComparisons;
-
+    private boolean finished;
+    private Page current;
     // May be dropped if the predicate becomes too large.
     @Nullable
     private BlockBuilder[] blockBuilders;
     @Nullable
     private TypedSet[] valueSets;
-
     private int minMaxCollectionLimit;
     @Nullable
     private Block[] minValues;
     @Nullable
     private Block[] maxValues;
-
     private DynamicFilterSourceOperator(
             OperatorContext context,
             Consumer<TupleDomain<DynamicFilterId>> dynamicPredicateConsumer,
@@ -421,5 +335,86 @@ public class DynamicFilterSourceOperator
     public boolean isFinished()
     {
         return current == null && finished;
+    }
+
+    public static class Channel
+    {
+        private final DynamicFilterId filterId;
+        private final Type type;
+        private final int index;
+
+        public Channel(DynamicFilterId filterId, Type type, int index)
+        {
+            this.filterId = filterId;
+            this.type = type;
+            this.index = index;
+        }
+    }
+
+    public static class DynamicFilterSourceOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Consumer<TupleDomain<DynamicFilterId>> dynamicPredicateConsumer;
+        private final List<Channel> channels;
+        private final int maxDisinctValues;
+        private final DataSize maxFilterSize;
+        private final int minMaxCollectionLimit;
+        private final BlockTypeOperators blockTypeOperators;
+
+        private boolean closed;
+
+        public DynamicFilterSourceOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                Consumer<TupleDomain<DynamicFilterId>> dynamicPredicateConsumer,
+                List<Channel> channels,
+                int maxDisinctValues,
+                DataSize maxFilterSize,
+                int minMaxCollectionLimit,
+                BlockTypeOperators blockTypeOperators)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.dynamicPredicateConsumer = requireNonNull(dynamicPredicateConsumer, "dynamicPredicateConsumer is null");
+            this.channels = requireNonNull(channels, "channels is null");
+            verify(channels.stream().map(channel -> channel.filterId).collect(toSet()).size() == channels.size(),
+                    "duplicate dynamic filters are not allowed");
+            verify(channels.stream().map(channel -> channel.index).collect(toSet()).size() == channels.size(),
+                    "duplicate channel indices are not allowed");
+            this.maxDisinctValues = maxDisinctValues;
+            this.maxFilterSize = maxFilterSize;
+            this.minMaxCollectionLimit = minMaxCollectionLimit;
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            return new DynamicFilterSourceOperator(
+                    driverContext.addOperatorContext(operatorId, planNodeId, DynamicFilterSourceOperator.class.getSimpleName()),
+                    dynamicPredicateConsumer,
+                    channels,
+                    planNodeId,
+                    maxDisinctValues,
+                    maxFilterSize,
+                    minMaxCollectionLimit,
+                    blockTypeOperators);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            checkState(!closed, "Factory is already closed");
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            throw new UnsupportedOperationException("duplicate() is not supported for DynamicFilterSourceOperatorFactory");
+        }
     }
 }

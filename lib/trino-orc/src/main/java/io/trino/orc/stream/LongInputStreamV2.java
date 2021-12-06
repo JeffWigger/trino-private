@@ -31,27 +31,37 @@ public class LongInputStreamV2
 {
     private static final int MIN_REPEAT_SIZE = 3;
     private static final int MAX_LITERAL_SIZE = 512;
-
-    private enum EncodingType
-    {
-        SHORT_REPEAT, DIRECT, PATCHED_BASE, DELTA
-    }
-
     private final LongBitPacker packer = new LongBitPacker();
     private final OrcInputStream input;
     private final boolean signed;
     private final long[] literals = new long[MAX_LITERAL_SIZE];
+    private final boolean skipCorrupt;
     private int numLiterals;
     private int used;
-    private final boolean skipCorrupt;
     private long lastReadInputCheckpoint;
-
     public LongInputStreamV2(OrcInputStream input, boolean signed, boolean skipCorrupt)
     {
         this.input = input;
         this.signed = signed;
         this.skipCorrupt = skipCorrupt;
         lastReadInputCheckpoint = input.getCheckpoint();
+    }
+
+    /**
+     * Read n bytes in big endian order and convert to long.
+     */
+    private static long bytesToLongBE(InputStream input, int n)
+            throws IOException
+    {
+        long out = 0;
+        long val;
+        while (n > 0) {
+            n--;
+            // store it in a long and then shift else integer overflow will occur
+            val = input.read();
+            out |= (val << (n * 8));
+        }
+        return out;
     }
 
     // This comes from the Apache Hive ORC code
@@ -305,23 +315,6 @@ public class LongInputStreamV2
         }
     }
 
-    /**
-     * Read n bytes in big endian order and convert to long.
-     */
-    private static long bytesToLongBE(InputStream input, int n)
-            throws IOException
-    {
-        long out = 0;
-        long val;
-        while (n > 0) {
-            n--;
-            // store it in a long and then shift else integer overflow will occur
-            val = input.read();
-            out |= (val << (n * 8));
-        }
-        return out;
-    }
-
     @Override
     public long next()
             throws IOException
@@ -441,5 +434,10 @@ public class LongInputStreamV2
             used += consume;
             items -= consume;
         }
+    }
+
+    private enum EncodingType
+    {
+        SHORT_REPEAT, DIRECT, PATCHED_BASE, DELTA
     }
 }

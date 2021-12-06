@@ -64,12 +64,6 @@ public class FilterAndProjectOperator
                 .withProcessStateMonitor(state -> memoryTrackingContext.localSystemMemoryContext().setBytes(localAggregatedMemoryContext.getBytes()));
     }
 
-    @Override
-    public WorkProcessor<Page> getOutputPages()
-    {
-        return pages;
-    }
-
     public static OperatorFactory createOperatorFactory(
             int operatorId,
             PlanNodeId planNodeId,
@@ -85,6 +79,12 @@ public class FilterAndProjectOperator
                 types,
                 minOutputPageSize,
                 minOutputPageRowCount));
+    }
+
+    @Override
+    public WorkProcessor<Page> getOutputPages()
+    {
+        return pages;
     }
 
     private static class Factory

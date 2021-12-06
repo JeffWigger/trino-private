@@ -25,6 +25,19 @@ import static java.util.Objects.requireNonNull;
 
 public class StageId
 {
+    private final QueryId queryId;
+    private final int id;
+
+    public StageId(String queryId, int id)
+    {
+        this(new QueryId(queryId), id);
+    }
+    public StageId(QueryId queryId, int id)
+    {
+        this.queryId = requireNonNull(queryId, "queryId is null");
+        this.id = id;
+    }
+
     @JsonCreator
     public static StageId valueOf(String stageId)
     {
@@ -36,20 +49,6 @@ public class StageId
     {
         checkArgument(ids.size() == 2, "Expected two ids but got: %s", ids);
         return new StageId(new QueryId(ids.get(0)), Integer.parseInt(ids.get(1)));
-    }
-
-    private final QueryId queryId;
-    private final int id;
-
-    public StageId(String queryId, int id)
-    {
-        this(new QueryId(queryId), id);
-    }
-
-    public StageId(QueryId queryId, int id)
-    {
-        this.queryId = requireNonNull(queryId, "queryId is null");
-        this.id = id;
     }
 
     public QueryId getQueryId()

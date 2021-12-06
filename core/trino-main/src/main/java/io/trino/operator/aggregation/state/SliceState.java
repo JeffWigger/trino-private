@@ -21,10 +21,6 @@ import io.trino.spi.type.Type;
 public interface SliceState
         extends AccumulatorState
 {
-    Slice getSlice();
-
-    void setSlice(Slice value);
-
     static void write(Type type, SliceState state, BlockBuilder out)
     {
         if (state.getSlice() == null) {
@@ -34,4 +30,8 @@ public interface SliceState
             type.writeSlice(out, state.getSlice());
         }
     }
+
+    Slice getSlice();
+
+    void setSlice(Slice value);
 }

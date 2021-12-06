@@ -319,6 +319,296 @@ public class ExpressionAnalyzer
         this.getResolvedWindow = requireNonNull(getResolvedWindow, "getResolvedWindow is null");
     }
 
+    public static boolean isPatternRecognitionFunction(FunctionCall node)
+    {
+        QualifiedName qualifiedName = node.getName();
+        if (qualifiedName.getParts().size() > 1) {
+            return false;
+        }
+        Identifier identifier = qualifiedName.getOriginalParts().get(0);
+        if (identifier.isDelimited()) {
+            return false;
+        }
+        String name = identifier.getValue().toUpperCase(ENGLISH);
+        return name.equals("FIRST") ||
+                name.equals("LAST") ||
+                name.equals("PREV") ||
+                name.equals("NEXT") ||
+                name.equals("CLASSIFIER") ||
+                name.equals("MATCH_NUMBER");
+    }
+
+    public static ExpressionAnalysis analyzePatternRecognitionExpression(
+            Session session,
+            Metadata metadata,
+            GroupProvider groupProvider,
+            AccessControl accessControl,
+            SqlParser sqlParser,
+            Scope scope,
+            Analysis analysis,
+            Expression expression,
+            WarningCollector warningCollector,
+            Set<String> labels)
+    {
+        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, TypeProvider.empty(), warningCollector);
+        analyzer.analyze(expression, scope, labels);
+
+        updateAnalysis(analysis, analyzer, session, accessControl);
+
+        return new ExpressionAnalysis(
+                analyzer.getExpressionTypes(),
+                analyzer.getExpressionCoercions(),
+                analyzer.getSubqueryInPredicates(),
+                analyzer.getSubqueries(),
+                analyzer.getExistsSubqueries(),
+                analyzer.getColumnReferences(),
+                analyzer.getTypeOnlyCoercions(),
+                analyzer.getQuantifiedComparisons(),
+                analyzer.getWindowFunctions());
+    }
+
+    public static ExpressionAnalysis analyzeExpressions(
+            Session session,
+            Metadata metadata,
+            GroupProvider groupProvider,
+            AccessControl accessControl,
+            SqlParser sqlParser,
+            TypeProvider types,
+            Iterable<Expression> expressions,
+            Map<NodeRef<Parameter>, Expression> parameters,
+            WarningCollector warningCollector,
+            boolean isDescribe)
+    {
+        Analysis analysis = new Analysis(null, parameters, isDescribe);
+        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, types, warningCollector);
+        for (Expression expression : expressions) {
+            analyzer.analyze(
+                    expression,
+                    Scope.builder()
+                            .withRelationType(RelationId.anonymous(), new RelationType())
+                            .build());
+        }
+
+        return new ExpressionAnalysis(
+                analyzer.getExpressionTypes(),
+                analyzer.getExpressionCoercions(),
+                analyzer.getSubqueryInPredicates(),
+                analyzer.getSubqueries(),
+                analyzer.getExistsSubqueries(),
+                analyzer.getColumnReferences(),
+                analyzer.getTypeOnlyCoercions(),
+                analyzer.getQuantifiedComparisons(),
+                analyzer.getWindowFunctions());
+    }
+
+    public static ExpressionAnalysis analyzeExpression(
+            Session session,
+            Metadata metadata,
+            GroupProvider groupProvider,
+            AccessControl accessControl,
+            SqlParser sqlParser,
+            Scope scope,
+            Analysis analysis,
+            Expression expression,
+            WarningCollector warningCollector,
+            CorrelationSupport correlationSupport)
+    {
+        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, TypeProvider.empty(), warningCollector);
+        analyzer.analyze(expression, scope, correlationSupport);
+
+        updateAnalysis(analysis, analyzer, session, accessControl);
+        analysis.addExpressionFields(expression, analyzer.getSourceFields());
+
+        return new ExpressionAnalysis(
+                analyzer.getExpressionTypes(),
+                analyzer.getExpressionCoercions(),
+                analyzer.getSubqueryInPredicates(),
+                analyzer.getSubqueries(),
+                analyzer.getExistsSubqueries(),
+                analyzer.getColumnReferences(),
+                analyzer.getTypeOnlyCoercions(),
+                analyzer.getQuantifiedComparisons(),
+                analyzer.getWindowFunctions());
+    }
+
+    public static ExpressionAnalysis analyzeWindow(
+            Session session,
+            Metadata metadata,
+            GroupProvider groupProvider,
+            AccessControl accessControl,
+            SqlParser sqlParser,
+            Scope scope,
+            Analysis analysis,
+            WarningCollector warningCollector,
+            CorrelationSupport correlationSupport,
+            ResolvedWindow window,
+            Node originalNode)
+    {
+        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, TypeProvider.empty(), warningCollector);
+        analyzer.analyzeWindow(window, scope, originalNode, correlationSupport);
+
+        updateAnalysis(analysis, analyzer, session, accessControl);
+
+        return new ExpressionAnalysis(
+                analyzer.getExpressionTypes(),
+                analyzer.getExpressionCoercions(),
+                analyzer.getSubqueryInPredicates(),
+                analyzer.getSubqueries(),
+                analyzer.getExistsSubqueries(),
+                analyzer.getColumnReferences(),
+                analyzer.getTypeOnlyCoercions(),
+                analyzer.getQuantifiedComparisons(),
+                analyzer.getWindowFunctions());
+    }
+
+    private static void updateAnalysis(Analysis analysis, ExpressionAnalyzer analyzer, Session session, AccessControl accessControl)
+    {
+        analysis.addTypes(analyzer.getExpressionTypes());
+        analysis.addCoercions(
+                analyzer.getExpressionCoercions(),
+                analyzer.getTypeOnlyCoercions(),
+                analyzer.getSortKeyCoercionsForFrameBoundCalculation(),
+                analyzer.getSortKeyCoercionsForFrameBoundComparison());
+        analysis.addFrameBoundCalculations(analyzer.getFrameBoundCalculations());
+        analyzer.getResolvedFunctions().entrySet()
+                .forEach(entry -> analysis.addResolvedFunction(entry.getKey().getNode(), entry.getValue(), session.getUser()));
+        analysis.addColumnReferences(analyzer.getColumnReferences());
+        analysis.addLambdaArgumentReferences(analyzer.getLambdaArgumentReferences());
+        analysis.addTableColumnReferences(accessControl, session.getIdentity(), analyzer.getTableColumnReferences());
+        analysis.addLabelDereferences(analyzer.getLabelDereferences());
+        analysis.addPatternRecognitionFunctions(analyzer.getPatternRecognitionFunctions());
+        analysis.setRanges(analyzer.getRanges());
+        analysis.setUndefinedLabels(analyzer.getUndefinedLabels());
+        analysis.setMeasureDefinitions(analyzer.getMeasureDefinitions());
+        analysis.addPredicateCoercions(analyzer.getPredicateCoercions());
+    }
+
+    public static ExpressionAnalyzer create(
+            Analysis analysis,
+            Session session,
+            Metadata metadata,
+            SqlParser sqlParser,
+            GroupProvider groupProvider,
+            AccessControl accessControl,
+            TypeProvider types,
+            WarningCollector warningCollector)
+    {
+        return new ExpressionAnalyzer(
+                metadata,
+                accessControl,
+                (node, correlationSupport) -> new StatementAnalyzer(analysis, metadata, sqlParser, groupProvider, accessControl, session, warningCollector, correlationSupport),
+                session,
+                types,
+                analysis.getParameters(),
+                warningCollector,
+                analysis.isDescribe(),
+                analysis::getType,
+                analysis::getWindow);
+    }
+
+    public static ExpressionAnalyzer createConstantAnalyzer(
+            Metadata metadata,
+            AccessControl accessControl,
+            Session session,
+            Map<NodeRef<Parameter>, Expression> parameters,
+            WarningCollector warningCollector)
+    {
+        return createWithoutSubqueries(
+                metadata,
+                accessControl,
+                session,
+                parameters,
+                EXPRESSION_NOT_CONSTANT,
+                "Constant expression cannot contain a subquery",
+                warningCollector,
+                false);
+    }
+
+    public static ExpressionAnalyzer createConstantAnalyzer(
+            Metadata metadata,
+            AccessControl accessControl,
+            Session session,
+            Map<NodeRef<Parameter>, Expression> parameters,
+            WarningCollector warningCollector,
+            boolean isDescribe)
+    {
+        return createWithoutSubqueries(
+                metadata,
+                accessControl,
+                session,
+                parameters,
+                EXPRESSION_NOT_CONSTANT,
+                "Constant expression cannot contain a subquery",
+                warningCollector,
+                isDescribe);
+    }
+
+    public static ExpressionAnalyzer createWithoutSubqueries(
+            Metadata metadata,
+            AccessControl accessControl,
+            Session session,
+            Map<NodeRef<Parameter>, Expression> parameters,
+            ErrorCodeSupplier errorCode,
+            String message,
+            WarningCollector warningCollector,
+            boolean isDescribe)
+    {
+        return createWithoutSubqueries(
+                metadata,
+                accessControl,
+                session,
+                TypeProvider.empty(),
+                parameters,
+                node -> semanticException(errorCode, node, message),
+                warningCollector,
+                isDescribe);
+    }
+
+    public static ExpressionAnalyzer createWithoutSubqueries(
+            Metadata metadata,
+            AccessControl accessControl,
+            Session session,
+            TypeProvider symbolTypes,
+            Map<NodeRef<Parameter>, Expression> parameters,
+            Function<? super Node, ? extends RuntimeException> statementAnalyzerRejection,
+            WarningCollector warningCollector,
+            boolean isDescribe)
+    {
+        return new ExpressionAnalyzer(
+                metadata,
+                accessControl,
+                (node, correlationSupport) -> {
+                    throw statementAnalyzerRejection.apply(node);
+                },
+                session,
+                symbolTypes,
+                parameters,
+                warningCollector,
+                isDescribe,
+                expression -> {throw new IllegalStateException("Cannot access preanalyzed types");},
+                functionCall -> {throw new IllegalStateException("Cannot access resolved windows");});
+    }
+
+    public static boolean isNumericType(Type type)
+    {
+        return type.equals(BIGINT) ||
+                type.equals(INTEGER) ||
+                type.equals(SMALLINT) ||
+                type.equals(TINYINT) ||
+                type.equals(DOUBLE) ||
+                type.equals(REAL) ||
+                type instanceof DecimalType;
+    }
+
+    private static boolean isExactNumericWithScaleZero(Type type)
+    {
+        return type.equals(BIGINT) ||
+                type.equals(INTEGER) ||
+                type.equals(SMALLINT) ||
+                type.equals(TINYINT) ||
+                type instanceof DecimalType && ((DecimalType) type).getScale() == 0;
+    }
+
     public Map<NodeRef<FunctionCall>, ResolvedFunction> getResolvedFunctions()
     {
         return unmodifiableMap(resolvedFunctions);
@@ -481,6 +771,140 @@ public class ExpressionAnalyzer
     public Map<NodeRef<WindowOperation>, MeasureDefinition> getMeasureDefinitions()
     {
         return measureDefinitions;
+    }
+
+    private static class Context
+    {
+        private final Scope scope;
+
+        // functionInputTypes and nameToLambdaDeclarationMap can be null or non-null independently. All 4 combinations are possible.
+
+        // The list of types when expecting a lambda (i.e. processing lambda parameters of a function); null otherwise.
+        // Empty list represents expecting a lambda with no arguments.
+        private final List<Type> functionInputTypes;
+        // The mapping from names to corresponding lambda argument declarations when inside a lambda; null otherwise.
+        // Empty map means that the all lambda expressions surrounding the current node has no arguments.
+        private final Map<FieldId, LambdaArgumentDeclaration> fieldToLambdaArgumentDeclaration;
+
+        // Primary row pattern variables and named unions (subsets) of variables
+        // necessary for the analysis of expressions in the context of row pattern recognition
+        private final Set<String> labels;
+
+        private final CorrelationSupport correlationSupport;
+
+        private Context(
+                Scope scope,
+                List<Type> functionInputTypes,
+                Map<FieldId, LambdaArgumentDeclaration> fieldToLambdaArgumentDeclaration,
+                Set<String> labels,
+                CorrelationSupport correlationSupport)
+        {
+            this.scope = requireNonNull(scope, "scope is null");
+            this.functionInputTypes = functionInputTypes;
+            this.fieldToLambdaArgumentDeclaration = fieldToLambdaArgumentDeclaration;
+            this.labels = labels;
+            this.correlationSupport = requireNonNull(correlationSupport, "correlationSupport is null");
+        }
+
+        public static Context notInLambda(Scope scope, CorrelationSupport correlationSupport)
+        {
+            return new Context(scope, null, null, null, correlationSupport);
+        }
+
+        public static Context patternRecognition(Scope scope, Set<String> labels)
+        {
+            return new Context(scope, null, null, requireNonNull(labels, "labels is null"), CorrelationSupport.DISALLOWED);
+        }
+
+        public Context inLambda(Scope scope, Map<FieldId, LambdaArgumentDeclaration> fieldToLambdaArgumentDeclaration)
+        {
+            return new Context(scope, null, requireNonNull(fieldToLambdaArgumentDeclaration, "fieldToLambdaArgumentDeclaration is null"), labels, correlationSupport);
+        }
+
+        public Context expectingLambda(List<Type> functionInputTypes)
+        {
+            return new Context(scope, requireNonNull(functionInputTypes, "functionInputTypes is null"), this.fieldToLambdaArgumentDeclaration, labels, correlationSupport);
+        }
+
+        public Context notExpectingLambda()
+        {
+            return new Context(scope, null, this.fieldToLambdaArgumentDeclaration, labels, correlationSupport);
+        }
+
+        public Context patternRecognition(Set<String> labels)
+        {
+            return new Context(scope, functionInputTypes, fieldToLambdaArgumentDeclaration, requireNonNull(labels, "labels is null"), CorrelationSupport.DISALLOWED);
+        }
+
+        public Context notExpectingLabels()
+        {
+            return new Context(scope, functionInputTypes, fieldToLambdaArgumentDeclaration, null, correlationSupport);
+        }
+
+        Scope getScope()
+        {
+            return scope;
+        }
+
+        public boolean isInLambda()
+        {
+            return fieldToLambdaArgumentDeclaration != null;
+        }
+
+        public boolean isExpectingLambda()
+        {
+            return functionInputTypes != null;
+        }
+
+        public boolean isPatternRecognition()
+        {
+            return labels != null;
+        }
+
+        public Map<FieldId, LambdaArgumentDeclaration> getFieldToLambdaArgumentDeclaration()
+        {
+            checkState(isInLambda());
+            return fieldToLambdaArgumentDeclaration;
+        }
+
+        public List<Type> getFunctionInputTypes()
+        {
+            checkState(isExpectingLambda());
+            return functionInputTypes;
+        }
+
+        public Set<String> getLabels()
+        {
+            checkState(isPatternRecognition());
+            return labels;
+        }
+
+        public CorrelationSupport getCorrelationSupport()
+        {
+            return correlationSupport;
+        }
+    }
+
+    public static class LabelPrefixedReference
+    {
+        private final String label;
+        private final Identifier column;
+
+        public LabelPrefixedReference(String label, Identifier column)
+        {
+            this.label = requireNonNull(label, "label is null");
+            this.column = requireNonNull(column, "column is null");
+        }
+
+        public String getLabel()
+        {
+            return label;
+        }
+
+        public Identifier getColumn()
+        {
+            return column;
+        }
     }
 
     private class Visitor
@@ -1641,8 +2065,8 @@ public class ExpressionAnalyzer
 
             // Pattern navigation function must contain at least one column reference or CLASSIFIER() function
             List<Expression> unlabeledInputColumns = Streams.concat(
-                    extractExpressions(ImmutableList.of(node.getArguments().get(0)), Identifier.class).stream(),
-                    extractExpressions(ImmutableList.of(node.getArguments().get(0)), DereferenceExpression.class).stream())
+                            extractExpressions(ImmutableList.of(node.getArguments().get(0)), Identifier.class).stream(),
+                            extractExpressions(ImmutableList.of(node.getArguments().get(0)), DereferenceExpression.class).stream())
                     .filter(expression -> columnReferences.containsKey(NodeRef.of(expression)))
                     .collect(toImmutableList());
             List<Expression> labeledInputColumns = extractExpressions(ImmutableList.of(node.getArguments().get(0)), DereferenceExpression.class).stream()
@@ -2379,430 +2803,6 @@ public class ExpressionAnalyzer
             else if (typeOnlyCoercions.contains(ref)) {
                 typeOnlyCoercions.remove(ref);
             }
-        }
-    }
-
-    private static class Context
-    {
-        private final Scope scope;
-
-        // functionInputTypes and nameToLambdaDeclarationMap can be null or non-null independently. All 4 combinations are possible.
-
-        // The list of types when expecting a lambda (i.e. processing lambda parameters of a function); null otherwise.
-        // Empty list represents expecting a lambda with no arguments.
-        private final List<Type> functionInputTypes;
-        // The mapping from names to corresponding lambda argument declarations when inside a lambda; null otherwise.
-        // Empty map means that the all lambda expressions surrounding the current node has no arguments.
-        private final Map<FieldId, LambdaArgumentDeclaration> fieldToLambdaArgumentDeclaration;
-
-        // Primary row pattern variables and named unions (subsets) of variables
-        // necessary for the analysis of expressions in the context of row pattern recognition
-        private final Set<String> labels;
-
-        private final CorrelationSupport correlationSupport;
-
-        private Context(
-                Scope scope,
-                List<Type> functionInputTypes,
-                Map<FieldId, LambdaArgumentDeclaration> fieldToLambdaArgumentDeclaration,
-                Set<String> labels,
-                CorrelationSupport correlationSupport)
-        {
-            this.scope = requireNonNull(scope, "scope is null");
-            this.functionInputTypes = functionInputTypes;
-            this.fieldToLambdaArgumentDeclaration = fieldToLambdaArgumentDeclaration;
-            this.labels = labels;
-            this.correlationSupport = requireNonNull(correlationSupport, "correlationSupport is null");
-        }
-
-        public static Context notInLambda(Scope scope, CorrelationSupport correlationSupport)
-        {
-            return new Context(scope, null, null, null, correlationSupport);
-        }
-
-        public Context inLambda(Scope scope, Map<FieldId, LambdaArgumentDeclaration> fieldToLambdaArgumentDeclaration)
-        {
-            return new Context(scope, null, requireNonNull(fieldToLambdaArgumentDeclaration, "fieldToLambdaArgumentDeclaration is null"), labels, correlationSupport);
-        }
-
-        public Context expectingLambda(List<Type> functionInputTypes)
-        {
-            return new Context(scope, requireNonNull(functionInputTypes, "functionInputTypes is null"), this.fieldToLambdaArgumentDeclaration, labels, correlationSupport);
-        }
-
-        public Context notExpectingLambda()
-        {
-            return new Context(scope, null, this.fieldToLambdaArgumentDeclaration, labels, correlationSupport);
-        }
-
-        public static Context patternRecognition(Scope scope, Set<String> labels)
-        {
-            return new Context(scope, null, null, requireNonNull(labels, "labels is null"), CorrelationSupport.DISALLOWED);
-        }
-
-        public Context patternRecognition(Set<String> labels)
-        {
-            return new Context(scope, functionInputTypes, fieldToLambdaArgumentDeclaration, requireNonNull(labels, "labels is null"), CorrelationSupport.DISALLOWED);
-        }
-
-        public Context notExpectingLabels()
-        {
-            return new Context(scope, functionInputTypes, fieldToLambdaArgumentDeclaration, null, correlationSupport);
-        }
-
-        Scope getScope()
-        {
-            return scope;
-        }
-
-        public boolean isInLambda()
-        {
-            return fieldToLambdaArgumentDeclaration != null;
-        }
-
-        public boolean isExpectingLambda()
-        {
-            return functionInputTypes != null;
-        }
-
-        public boolean isPatternRecognition()
-        {
-            return labels != null;
-        }
-
-        public Map<FieldId, LambdaArgumentDeclaration> getFieldToLambdaArgumentDeclaration()
-        {
-            checkState(isInLambda());
-            return fieldToLambdaArgumentDeclaration;
-        }
-
-        public List<Type> getFunctionInputTypes()
-        {
-            checkState(isExpectingLambda());
-            return functionInputTypes;
-        }
-
-        public Set<String> getLabels()
-        {
-            checkState(isPatternRecognition());
-            return labels;
-        }
-
-        public CorrelationSupport getCorrelationSupport()
-        {
-            return correlationSupport;
-        }
-    }
-
-    public static boolean isPatternRecognitionFunction(FunctionCall node)
-    {
-        QualifiedName qualifiedName = node.getName();
-        if (qualifiedName.getParts().size() > 1) {
-            return false;
-        }
-        Identifier identifier = qualifiedName.getOriginalParts().get(0);
-        if (identifier.isDelimited()) {
-            return false;
-        }
-        String name = identifier.getValue().toUpperCase(ENGLISH);
-        return name.equals("FIRST") ||
-                name.equals("LAST") ||
-                name.equals("PREV") ||
-                name.equals("NEXT") ||
-                name.equals("CLASSIFIER") ||
-                name.equals("MATCH_NUMBER");
-    }
-
-    public static ExpressionAnalysis analyzePatternRecognitionExpression(
-            Session session,
-            Metadata metadata,
-            GroupProvider groupProvider,
-            AccessControl accessControl,
-            SqlParser sqlParser,
-            Scope scope,
-            Analysis analysis,
-            Expression expression,
-            WarningCollector warningCollector,
-            Set<String> labels)
-    {
-        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, TypeProvider.empty(), warningCollector);
-        analyzer.analyze(expression, scope, labels);
-
-        updateAnalysis(analysis, analyzer, session, accessControl);
-
-        return new ExpressionAnalysis(
-                analyzer.getExpressionTypes(),
-                analyzer.getExpressionCoercions(),
-                analyzer.getSubqueryInPredicates(),
-                analyzer.getSubqueries(),
-                analyzer.getExistsSubqueries(),
-                analyzer.getColumnReferences(),
-                analyzer.getTypeOnlyCoercions(),
-                analyzer.getQuantifiedComparisons(),
-                analyzer.getWindowFunctions());
-    }
-
-    public static ExpressionAnalysis analyzeExpressions(
-            Session session,
-            Metadata metadata,
-            GroupProvider groupProvider,
-            AccessControl accessControl,
-            SqlParser sqlParser,
-            TypeProvider types,
-            Iterable<Expression> expressions,
-            Map<NodeRef<Parameter>, Expression> parameters,
-            WarningCollector warningCollector,
-            boolean isDescribe)
-    {
-        Analysis analysis = new Analysis(null, parameters, isDescribe);
-        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, types, warningCollector);
-        for (Expression expression : expressions) {
-            analyzer.analyze(
-                    expression,
-                    Scope.builder()
-                            .withRelationType(RelationId.anonymous(), new RelationType())
-                            .build());
-        }
-
-        return new ExpressionAnalysis(
-                analyzer.getExpressionTypes(),
-                analyzer.getExpressionCoercions(),
-                analyzer.getSubqueryInPredicates(),
-                analyzer.getSubqueries(),
-                analyzer.getExistsSubqueries(),
-                analyzer.getColumnReferences(),
-                analyzer.getTypeOnlyCoercions(),
-                analyzer.getQuantifiedComparisons(),
-                analyzer.getWindowFunctions());
-    }
-
-    public static ExpressionAnalysis analyzeExpression(
-            Session session,
-            Metadata metadata,
-            GroupProvider groupProvider,
-            AccessControl accessControl,
-            SqlParser sqlParser,
-            Scope scope,
-            Analysis analysis,
-            Expression expression,
-            WarningCollector warningCollector,
-            CorrelationSupport correlationSupport)
-    {
-        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, TypeProvider.empty(), warningCollector);
-        analyzer.analyze(expression, scope, correlationSupport);
-
-        updateAnalysis(analysis, analyzer, session, accessControl);
-        analysis.addExpressionFields(expression, analyzer.getSourceFields());
-
-        return new ExpressionAnalysis(
-                analyzer.getExpressionTypes(),
-                analyzer.getExpressionCoercions(),
-                analyzer.getSubqueryInPredicates(),
-                analyzer.getSubqueries(),
-                analyzer.getExistsSubqueries(),
-                analyzer.getColumnReferences(),
-                analyzer.getTypeOnlyCoercions(),
-                analyzer.getQuantifiedComparisons(),
-                analyzer.getWindowFunctions());
-    }
-
-    public static ExpressionAnalysis analyzeWindow(
-            Session session,
-            Metadata metadata,
-            GroupProvider groupProvider,
-            AccessControl accessControl,
-            SqlParser sqlParser,
-            Scope scope,
-            Analysis analysis,
-            WarningCollector warningCollector,
-            CorrelationSupport correlationSupport,
-            ResolvedWindow window,
-            Node originalNode)
-    {
-        ExpressionAnalyzer analyzer = create(analysis, session, metadata, sqlParser, groupProvider, accessControl, TypeProvider.empty(), warningCollector);
-        analyzer.analyzeWindow(window, scope, originalNode, correlationSupport);
-
-        updateAnalysis(analysis, analyzer, session, accessControl);
-
-        return new ExpressionAnalysis(
-                analyzer.getExpressionTypes(),
-                analyzer.getExpressionCoercions(),
-                analyzer.getSubqueryInPredicates(),
-                analyzer.getSubqueries(),
-                analyzer.getExistsSubqueries(),
-                analyzer.getColumnReferences(),
-                analyzer.getTypeOnlyCoercions(),
-                analyzer.getQuantifiedComparisons(),
-                analyzer.getWindowFunctions());
-    }
-
-    private static void updateAnalysis(Analysis analysis, ExpressionAnalyzer analyzer, Session session, AccessControl accessControl)
-    {
-        analysis.addTypes(analyzer.getExpressionTypes());
-        analysis.addCoercions(
-                analyzer.getExpressionCoercions(),
-                analyzer.getTypeOnlyCoercions(),
-                analyzer.getSortKeyCoercionsForFrameBoundCalculation(),
-                analyzer.getSortKeyCoercionsForFrameBoundComparison());
-        analysis.addFrameBoundCalculations(analyzer.getFrameBoundCalculations());
-        analyzer.getResolvedFunctions().entrySet()
-                .forEach(entry -> analysis.addResolvedFunction(entry.getKey().getNode(), entry.getValue(), session.getUser()));
-        analysis.addColumnReferences(analyzer.getColumnReferences());
-        analysis.addLambdaArgumentReferences(analyzer.getLambdaArgumentReferences());
-        analysis.addTableColumnReferences(accessControl, session.getIdentity(), analyzer.getTableColumnReferences());
-        analysis.addLabelDereferences(analyzer.getLabelDereferences());
-        analysis.addPatternRecognitionFunctions(analyzer.getPatternRecognitionFunctions());
-        analysis.setRanges(analyzer.getRanges());
-        analysis.setUndefinedLabels(analyzer.getUndefinedLabels());
-        analysis.setMeasureDefinitions(analyzer.getMeasureDefinitions());
-        analysis.addPredicateCoercions(analyzer.getPredicateCoercions());
-    }
-
-    public static ExpressionAnalyzer create(
-            Analysis analysis,
-            Session session,
-            Metadata metadata,
-            SqlParser sqlParser,
-            GroupProvider groupProvider,
-            AccessControl accessControl,
-            TypeProvider types,
-            WarningCollector warningCollector)
-    {
-        return new ExpressionAnalyzer(
-                metadata,
-                accessControl,
-                (node, correlationSupport) -> new StatementAnalyzer(analysis, metadata, sqlParser, groupProvider, accessControl, session, warningCollector, correlationSupport),
-                session,
-                types,
-                analysis.getParameters(),
-                warningCollector,
-                analysis.isDescribe(),
-                analysis::getType,
-                analysis::getWindow);
-    }
-
-    public static ExpressionAnalyzer createConstantAnalyzer(
-            Metadata metadata,
-            AccessControl accessControl,
-            Session session,
-            Map<NodeRef<Parameter>, Expression> parameters,
-            WarningCollector warningCollector)
-    {
-        return createWithoutSubqueries(
-                metadata,
-                accessControl,
-                session,
-                parameters,
-                EXPRESSION_NOT_CONSTANT,
-                "Constant expression cannot contain a subquery",
-                warningCollector,
-                false);
-    }
-
-    public static ExpressionAnalyzer createConstantAnalyzer(
-            Metadata metadata,
-            AccessControl accessControl,
-            Session session,
-            Map<NodeRef<Parameter>, Expression> parameters,
-            WarningCollector warningCollector,
-            boolean isDescribe)
-    {
-        return createWithoutSubqueries(
-                metadata,
-                accessControl,
-                session,
-                parameters,
-                EXPRESSION_NOT_CONSTANT,
-                "Constant expression cannot contain a subquery",
-                warningCollector,
-                isDescribe);
-    }
-
-    public static ExpressionAnalyzer createWithoutSubqueries(
-            Metadata metadata,
-            AccessControl accessControl,
-            Session session,
-            Map<NodeRef<Parameter>, Expression> parameters,
-            ErrorCodeSupplier errorCode,
-            String message,
-            WarningCollector warningCollector,
-            boolean isDescribe)
-    {
-        return createWithoutSubqueries(
-                metadata,
-                accessControl,
-                session,
-                TypeProvider.empty(),
-                parameters,
-                node -> semanticException(errorCode, node, message),
-                warningCollector,
-                isDescribe);
-    }
-
-    public static ExpressionAnalyzer createWithoutSubqueries(
-            Metadata metadata,
-            AccessControl accessControl,
-            Session session,
-            TypeProvider symbolTypes,
-            Map<NodeRef<Parameter>, Expression> parameters,
-            Function<? super Node, ? extends RuntimeException> statementAnalyzerRejection,
-            WarningCollector warningCollector,
-            boolean isDescribe)
-    {
-        return new ExpressionAnalyzer(
-                metadata,
-                accessControl,
-                (node, correlationSupport) -> {
-                    throw statementAnalyzerRejection.apply(node);
-                },
-                session,
-                symbolTypes,
-                parameters,
-                warningCollector,
-                isDescribe,
-                expression -> { throw new IllegalStateException("Cannot access preanalyzed types"); },
-                functionCall -> { throw new IllegalStateException("Cannot access resolved windows"); });
-    }
-
-    public static boolean isNumericType(Type type)
-    {
-        return type.equals(BIGINT) ||
-                type.equals(INTEGER) ||
-                type.equals(SMALLINT) ||
-                type.equals(TINYINT) ||
-                type.equals(DOUBLE) ||
-                type.equals(REAL) ||
-                type instanceof DecimalType;
-    }
-
-    private static boolean isExactNumericWithScaleZero(Type type)
-    {
-        return type.equals(BIGINT) ||
-                type.equals(INTEGER) ||
-                type.equals(SMALLINT) ||
-                type.equals(TINYINT) ||
-                type instanceof DecimalType && ((DecimalType) type).getScale() == 0;
-    }
-
-    public static class LabelPrefixedReference
-    {
-        private final String label;
-        private final Identifier column;
-
-        public LabelPrefixedReference(String label, Identifier column)
-        {
-            this.label = requireNonNull(label, "label is null");
-            this.column = requireNonNull(column, "column is null");
-        }
-
-        public String getLabel()
-        {
-            return label;
-        }
-
-        public Identifier getColumn()
-        {
-            return column;
         }
     }
 }

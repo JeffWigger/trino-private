@@ -68,6 +68,40 @@ public final class TypeCoercion
         this.lookupType = requireNonNull(lookupType, "lookupType is null");
     }
 
+    private static Type getCommonSuperTypeForDecimal(DecimalType firstType, DecimalType secondType)
+    {
+        int targetScale = Math.max(firstType.getScale(), secondType.getScale());
+        int targetPrecision = Math.max(firstType.getPrecision() - firstType.getScale(), secondType.getPrecision() - secondType.getScale()) + targetScale;
+        //we allow potential loss of precision here. Overflow checking is done in operators.
+        targetPrecision = Math.min(38, targetPrecision);
+        return createDecimalType(targetPrecision, targetScale);
+    }
+
+    private static Type getCommonSuperTypeForVarchar(VarcharType firstType, VarcharType secondType)
+    {
+        if (firstType.isUnbounded() || secondType.isUnbounded()) {
+            return createUnboundedVarcharType();
+        }
+
+        return createVarcharType(Math.max(firstType.getBoundedLength(), secondType.getBoundedLength()));
+    }
+
+    private static Type getCommonSuperTypeForChar(CharType firstType, CharType secondType)
+    {
+        return createCharType(Math.max(firstType.getLength(), secondType.getLength()));
+    }
+
+    public static boolean isCovariantTypeBase(String typeBase)
+    {
+        return typeBase.equals(StandardTypes.ARRAY) || typeBase.equals(StandardTypes.MAP);
+    }
+
+    private static boolean isCovariantParametrizedType(Type type)
+    {
+        // if we ever introduce contravariant, this function should be changed to return an enumeration: INVARIANT, COVARIANT, CONTRAVARIANT
+        return type instanceof MapType || type instanceof ArrayType;
+    }
+
     public boolean isTypeOnlyCoercion(Type source, Type result)
     {
         if (source.equals(result)) {
@@ -243,29 +277,6 @@ public final class TypeCoercion
         }
 
         return TypeCompatibility.incompatible();
-    }
-
-    private static Type getCommonSuperTypeForDecimal(DecimalType firstType, DecimalType secondType)
-    {
-        int targetScale = Math.max(firstType.getScale(), secondType.getScale());
-        int targetPrecision = Math.max(firstType.getPrecision() - firstType.getScale(), secondType.getPrecision() - secondType.getScale()) + targetScale;
-        //we allow potential loss of precision here. Overflow checking is done in operators.
-        targetPrecision = Math.min(38, targetPrecision);
-        return createDecimalType(targetPrecision, targetScale);
-    }
-
-    private static Type getCommonSuperTypeForVarchar(VarcharType firstType, VarcharType secondType)
-    {
-        if (firstType.isUnbounded() || secondType.isUnbounded()) {
-            return createUnboundedVarcharType();
-        }
-
-        return createVarcharType(Math.max(firstType.getBoundedLength(), secondType.getBoundedLength()));
-    }
-
-    private static Type getCommonSuperTypeForChar(CharType firstType, CharType secondType)
-    {
-        return createCharType(Math.max(firstType.getLength(), secondType.getLength()));
     }
 
     private TypeCompatibility typeCompatibilityForRow(RowType firstType, RowType secondType)
@@ -525,17 +536,6 @@ public final class TypeCoercion
             default:
                 return Optional.empty();
         }
-    }
-
-    public static boolean isCovariantTypeBase(String typeBase)
-    {
-        return typeBase.equals(StandardTypes.ARRAY) || typeBase.equals(StandardTypes.MAP);
-    }
-
-    private static boolean isCovariantParametrizedType(Type type)
-    {
-        // if we ever introduce contravariant, this function should be changed to return an enumeration: INVARIANT, COVARIANT, CONTRAVARIANT
-        return type instanceof MapType || type instanceof ArrayType;
     }
 
     public static class TypeCompatibility

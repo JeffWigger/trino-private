@@ -114,9 +114,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 public class FileBasedSystemAccessControl
         implements SystemAccessControl
 {
-    private static final Logger log = Logger.get(FileBasedSystemAccessControl.class);
-
     public static final String NAME = "file";
+    private static final Logger log = Logger.get(FileBasedSystemAccessControl.class);
     private static final String INFORMATION_SCHEMA_NAME = "information_schema";
 
     private final List<CatalogAccessControlRule> catalogRules;
@@ -179,92 +178,9 @@ public class FileBasedSystemAccessControl
         this.anyCatalogSchemaPermissionsRules = anyCatalogSchemaPermissionsRules.build();
     }
 
-    public static class Factory
-            implements SystemAccessControlFactory
+    public static Builder builder()
     {
-        @Override
-        public String getName()
-        {
-            return NAME;
-        }
-
-        @Override
-        public SystemAccessControl create(Map<String, String> config)
-        {
-            requireNonNull(config, "config is null");
-
-            Bootstrap bootstrap = new Bootstrap(
-                    binder -> configBinder(binder).bindConfig(FileBasedAccessControlConfig.class));
-            Injector injector = bootstrap
-                    .doNotInitializeLogging()
-                    .setRequiredConfigurationProperties(config)
-                    .initialize();
-            FileBasedAccessControlConfig fileBasedAccessControlConfig = injector.getInstance(FileBasedAccessControlConfig.class);
-            String configFileName = fileBasedAccessControlConfig.getConfigFile();
-
-            if (config.containsKey(SECURITY_REFRESH_PERIOD)) {
-                Duration refreshPeriod;
-                try {
-                    refreshPeriod = fileBasedAccessControlConfig.getRefreshPeriod();
-                }
-                catch (IllegalArgumentException e) {
-                    throw invalidRefreshPeriodException(config, configFileName);
-                }
-                if (refreshPeriod.toMillis() == 0) {
-                    throw invalidRefreshPeriodException(config, configFileName);
-                }
-                return ForwardingSystemAccessControl.of(memoizeWithExpiration(
-                        () -> {
-                            log.info("Refreshing system access control from %s", configFileName);
-                            return create(configFileName);
-                        },
-                        refreshPeriod.toMillis(),
-                        MILLISECONDS));
-            }
-            return create(configFileName);
-        }
-
-        private static TrinoException invalidRefreshPeriodException(Map<String, String> config, String configFileName)
-        {
-            return new TrinoException(
-                    CONFIGURATION_INVALID,
-                    format("Invalid duration value '%s' for property '%s' in '%s'", config.get(SECURITY_REFRESH_PERIOD), SECURITY_REFRESH_PERIOD, configFileName));
-        }
-
-        private static SystemAccessControl create(String configFileName)
-        {
-            FileBasedSystemAccessControlRules rules = parseJson(Paths.get(configFileName), FileBasedSystemAccessControlRules.class);
-            List<CatalogAccessControlRule> catalogAccessControlRules;
-            if (rules.getCatalogRules().isPresent()) {
-                ImmutableList.Builder<CatalogAccessControlRule> catalogRulesBuilder = ImmutableList.builder();
-                catalogRulesBuilder.addAll(rules.getCatalogRules().get());
-
-                // Hack to allow Trino Admin to access the "system" catalog for retrieving server status.
-                // todo Change userRegex from ".*" to one particular user that Trino Admin will be restricted to run as
-                catalogRulesBuilder.add(new CatalogAccessControlRule(
-                        ALL,
-                        Optional.of(Pattern.compile(".*")),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(Pattern.compile("system"))));
-                catalogAccessControlRules = catalogRulesBuilder.build();
-            }
-            else {
-                // if no rules are defined then all access is allowed
-                catalogAccessControlRules = ImmutableList.of(CatalogAccessControlRule.ALLOW_ALL);
-            }
-            return FileBasedSystemAccessControl.builder()
-                    .setCatalogRules(catalogAccessControlRules)
-                    .setQueryAccessRules(rules.getQueryAccessRules())
-                    .setImpersonationRules(rules.getImpersonationRules())
-                    .setPrincipalUserMatchRules(rules.getPrincipalUserMatchRules())
-                    .setSystemInformationRules(rules.getSystemInformationRules())
-                    .setSchemaRules(rules.getSchemaRules().orElse(ImmutableList.of(CatalogSchemaAccessControlRule.ALLOW_ALL)))
-                    .setTableRules(rules.getTableRules().orElse(ImmutableList.of(CatalogTableAccessControlRule.ALLOW_ALL)))
-                    .setSessionPropertyRules(rules.getSessionPropertyRules().orElse(ImmutableList.of(SessionPropertyAccessControlRule.ALLOW_ALL)))
-                    .setCatalogSessionPropertyRules(rules.getCatalogSessionPropertyRules().orElse(ImmutableList.of(CatalogSessionPropertyAccessControlRule.ALLOW_ALL)))
-                    .build();
-        }
+        return new Builder();
     }
 
     @Override
@@ -994,9 +910,92 @@ public class FileBasedSystemAccessControl
         return false;
     }
 
-    public static Builder builder()
+    public static class Factory
+            implements SystemAccessControlFactory
     {
-        return new Builder();
+        private static TrinoException invalidRefreshPeriodException(Map<String, String> config, String configFileName)
+        {
+            return new TrinoException(
+                    CONFIGURATION_INVALID,
+                    format("Invalid duration value '%s' for property '%s' in '%s'", config.get(SECURITY_REFRESH_PERIOD), SECURITY_REFRESH_PERIOD, configFileName));
+        }
+
+        private static SystemAccessControl create(String configFileName)
+        {
+            FileBasedSystemAccessControlRules rules = parseJson(Paths.get(configFileName), FileBasedSystemAccessControlRules.class);
+            List<CatalogAccessControlRule> catalogAccessControlRules;
+            if (rules.getCatalogRules().isPresent()) {
+                ImmutableList.Builder<CatalogAccessControlRule> catalogRulesBuilder = ImmutableList.builder();
+                catalogRulesBuilder.addAll(rules.getCatalogRules().get());
+
+                // Hack to allow Trino Admin to access the "system" catalog for retrieving server status.
+                // todo Change userRegex from ".*" to one particular user that Trino Admin will be restricted to run as
+                catalogRulesBuilder.add(new CatalogAccessControlRule(
+                        ALL,
+                        Optional.of(Pattern.compile(".*")),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(Pattern.compile("system"))));
+                catalogAccessControlRules = catalogRulesBuilder.build();
+            }
+            else {
+                // if no rules are defined then all access is allowed
+                catalogAccessControlRules = ImmutableList.of(CatalogAccessControlRule.ALLOW_ALL);
+            }
+            return FileBasedSystemAccessControl.builder()
+                    .setCatalogRules(catalogAccessControlRules)
+                    .setQueryAccessRules(rules.getQueryAccessRules())
+                    .setImpersonationRules(rules.getImpersonationRules())
+                    .setPrincipalUserMatchRules(rules.getPrincipalUserMatchRules())
+                    .setSystemInformationRules(rules.getSystemInformationRules())
+                    .setSchemaRules(rules.getSchemaRules().orElse(ImmutableList.of(CatalogSchemaAccessControlRule.ALLOW_ALL)))
+                    .setTableRules(rules.getTableRules().orElse(ImmutableList.of(CatalogTableAccessControlRule.ALLOW_ALL)))
+                    .setSessionPropertyRules(rules.getSessionPropertyRules().orElse(ImmutableList.of(SessionPropertyAccessControlRule.ALLOW_ALL)))
+                    .setCatalogSessionPropertyRules(rules.getCatalogSessionPropertyRules().orElse(ImmutableList.of(CatalogSessionPropertyAccessControlRule.ALLOW_ALL)))
+                    .build();
+        }
+
+        @Override
+        public String getName()
+        {
+            return NAME;
+        }
+
+        @Override
+        public SystemAccessControl create(Map<String, String> config)
+        {
+            requireNonNull(config, "config is null");
+
+            Bootstrap bootstrap = new Bootstrap(
+                    binder -> configBinder(binder).bindConfig(FileBasedAccessControlConfig.class));
+            Injector injector = bootstrap
+                    .doNotInitializeLogging()
+                    .setRequiredConfigurationProperties(config)
+                    .initialize();
+            FileBasedAccessControlConfig fileBasedAccessControlConfig = injector.getInstance(FileBasedAccessControlConfig.class);
+            String configFileName = fileBasedAccessControlConfig.getConfigFile();
+
+            if (config.containsKey(SECURITY_REFRESH_PERIOD)) {
+                Duration refreshPeriod;
+                try {
+                    refreshPeriod = fileBasedAccessControlConfig.getRefreshPeriod();
+                }
+                catch (IllegalArgumentException e) {
+                    throw invalidRefreshPeriodException(config, configFileName);
+                }
+                if (refreshPeriod.toMillis() == 0) {
+                    throw invalidRefreshPeriodException(config, configFileName);
+                }
+                return ForwardingSystemAccessControl.of(memoizeWithExpiration(
+                        () -> {
+                            log.info("Refreshing system access control from %s", configFileName);
+                            return create(configFileName);
+                        },
+                        refreshPeriod.toMillis(),
+                        MILLISECONDS));
+            }
+            return create(configFileName);
+        }
     }
 
     public static final class Builder

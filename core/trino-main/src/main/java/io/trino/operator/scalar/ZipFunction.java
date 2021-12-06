@@ -49,14 +49,6 @@ public final class ZipFunction
     public static final ZipFunction[] ZIP_FUNCTIONS;
 
     private static final MethodHandle METHOD_HANDLE = methodHandle(ZipFunction.class, "zip", List.class, Block[].class);
-
-    static {
-        ZIP_FUNCTIONS = new ZipFunction[MAX_ARITY - MIN_ARITY + 1];
-        for (int arity = MIN_ARITY; arity <= MAX_ARITY; arity++) {
-            ZIP_FUNCTIONS[arity - MIN_ARITY] = new ZipFunction(arity);
-        }
-    }
-
     private final List<String> typeParameters;
 
     private ZipFunction(int arity)
@@ -88,19 +80,6 @@ public final class ZipFunction
         this.typeParameters = typeParameters;
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        List<Type> types = this.typeParameters.stream().map(functionBinding::getTypeVariable).collect(toImmutableList());
-        List<Class<?>> javaArgumentTypes = nCopies(types.size(), Block.class);
-        MethodHandle methodHandle = METHOD_HANDLE.bindTo(types).asVarargsCollector(Block[].class).asType(methodType(Block.class, javaArgumentTypes));
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                nCopies(types.size(), NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Block zip(List<Type> types, Block... arrays)
     {
@@ -123,5 +102,25 @@ public final class ZipFunction
             outputBuilder.closeEntry();
         }
         return outputBuilder.build();
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        List<Type> types = this.typeParameters.stream().map(functionBinding::getTypeVariable).collect(toImmutableList());
+        List<Class<?>> javaArgumentTypes = nCopies(types.size(), Block.class);
+        MethodHandle methodHandle = METHOD_HANDLE.bindTo(types).asVarargsCollector(Block[].class).asType(methodType(Block.class, javaArgumentTypes));
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                nCopies(types.size(), NEVER_NULL),
+                methodHandle);
+    }
+
+    static {
+        ZIP_FUNCTIONS = new ZipFunction[MAX_ARITY - MIN_ARITY + 1];
+        for (int arity = MIN_ARITY; arity <= MAX_ARITY; arity++) {
+            ZIP_FUNCTIONS[arity - MIN_ARITY] = new ZipFunction(arity);
+        }
     }
 }

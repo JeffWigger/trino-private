@@ -43,6 +43,12 @@ import static io.trino.spi.type.BigintType.BIGINT;
 @BenchmarkMode(Mode.AverageTime)
 public class BenchmarkSortedRangeSet
 {
+    public static void main(String[] args)
+            throws RunnerException
+    {
+        benchmark(BenchmarkSortedRangeSet.class).run();
+    }
+
     @Benchmark
     public SortedRangeSet benchmarkBuilder(Data data)
     {
@@ -198,6 +204,33 @@ public class BenchmarkSortedRangeSet
         return result;
     }
 
+    @Test
+    public void test()
+    {
+        Data data = new Data();
+        data.init();
+
+        benchmarkBuilder(data);
+
+        equalsSmall(data);
+        equalsLarge(data);
+
+        unionSmall(data);
+        unionLarge(data);
+
+        overlapsSmall(data);
+        overlapsLarge(data);
+
+        containsValueSmall(data);
+        containsValueLarge(data);
+
+        complementSmall(data);
+        complementLarge(data);
+
+        getOrderedRangesSmall(data);
+        getOrderedRangesLarge(data);
+    }
+
     @State(Scope.Thread)
     public static class Data
     {
@@ -240,38 +273,5 @@ public class BenchmarkSortedRangeSet
             }
             return SortedRangeSet.copyOf(BIGINT, selectedRanges);
         }
-    }
-
-    @Test
-    public void test()
-    {
-        Data data = new Data();
-        data.init();
-
-        benchmarkBuilder(data);
-
-        equalsSmall(data);
-        equalsLarge(data);
-
-        unionSmall(data);
-        unionLarge(data);
-
-        overlapsSmall(data);
-        overlapsLarge(data);
-
-        containsValueSmall(data);
-        containsValueLarge(data);
-
-        complementSmall(data);
-        complementLarge(data);
-
-        getOrderedRangesSmall(data);
-        getOrderedRangesLarge(data);
-    }
-
-    public static void main(String[] args)
-            throws RunnerException
-    {
-        benchmark(BenchmarkSortedRangeSet.class).run();
     }
 }

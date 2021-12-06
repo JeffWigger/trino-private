@@ -210,11 +210,11 @@ public class EffectivePredicateExtractor
                     .collect(toImmutableList());
 
             return pullExpressionThroughSymbols(combineConjuncts(
-                    metadata,
-                    ImmutableList.<Expression>builder()
-                            .addAll(projectionEqualities)
-                            .addAll(validUnderlyingEqualities)
-                            .build()),
+                            metadata,
+                            ImmutableList.<Expression>builder()
+                                    .addAll(projectionEqualities)
+                                    .addAll(validUnderlyingEqualities)
+                                    .build()),
                     node.getOutputSymbols());
         }
 
@@ -510,11 +510,11 @@ public class EffectivePredicateExtractor
                         .collect(toImmutableList());
 
                 sourceOutputConjuncts.add(ImmutableSet.copyOf(extractConjuncts(pullExpressionThroughSymbols(combineConjuncts(
-                        metadata,
-                        ImmutableList.<Expression>builder()
-                                .addAll(equalities)
-                                .add(underlyingPredicate)
-                                .build()),
+                                metadata,
+                                ImmutableList.<Expression>builder()
+                                        .addAll(equalities)
+                                        .add(underlyingPredicate)
+                                        .build()),
                         node.getOutputSymbols()))));
             }
 

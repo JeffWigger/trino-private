@@ -91,12 +91,6 @@ public final class OrcWriter
     private static final String TRINO_ORC_WRITER_VERSION_METADATA_KEY = "trino.writer.version";
     private static final String TRINO_ORC_WRITER_VERSION;
     private final OrcWriterStats stats;
-
-    static {
-        String version = OrcWriter.class.getPackage().getImplementationVersion();
-        TRINO_ORC_WRITER_VERSION = version == null ? "UNKNOWN" : version;
-    }
-
     private final OrcDataSink orcDataSink;
     private final List<Type> types;
     private final CompressionKind compression;
@@ -107,12 +101,12 @@ public final class OrcWriter
     private final int maxCompressionBufferSize;
     private final Map<String, String> userMetadata = new HashMap<>();
     private final CompressedMetadataWriter metadataWriter;
-
     private final List<ClosedStripe> closedStripes = new ArrayList<>();
     private final ColumnMetadata<OrcType> orcTypes;
-
     private final List<ColumnWriter> columnWriters;
     private final DictionaryCompressionOptimizer dictionaryCompressionOptimizer;
+    @Nullable
+    private final OrcWriteValidationBuilder validationBuilder;
     private int stripeRowCount;
     private int rowGroupRowCount;
     private int bufferedBytes;
@@ -124,9 +118,6 @@ public final class OrcWriter
     private long fileRowCount;
     private Optional<ColumnMetadata<ColumnStatistics>> fileStats;
     private long fileStatsRetainedBytes;
-
-    @Nullable
-    private final OrcWriteValidationBuilder validationBuilder;
 
     public OrcWriter(
             OrcDataSink orcDataSink,
@@ -211,6 +202,42 @@ public final class OrcWriter
 
         this.previouslyRecordedSizeInBytes = getRetainedBytes();
         stats.updateSizeInBytes(previouslyRecordedSizeInBytes);
+    }
+
+    private static Supplier<BloomFilterBuilder> getBloomFilterBuilder(OrcWriterOptions options, String columnName)
+    {
+        if (options.isBloomFilterColumn(columnName)) {
+            return () -> new Utf8BloomFilterBuilder(options.getRowGroupMaxRowCount(), options.getBloomFilterFpp());
+        }
+        return NoOpBloomFilterBuilder::new;
+    }
+
+    private static <T> ColumnMetadata<T> toColumnMetadata(Map<OrcColumnId, T> data, int expectedSize)
+    {
+        checkArgument(data.size() == expectedSize);
+        List<T> list = new ArrayList<>(expectedSize);
+        for (int i = 0; i < expectedSize; i++) {
+            list.add(data.get(new OrcColumnId(i)));
+        }
+        return new ColumnMetadata<>(ImmutableList.copyOf(list));
+    }
+
+    private static Optional<ColumnMetadata<ColumnStatistics>> toFileStats(List<ColumnMetadata<ColumnStatistics>> stripes)
+    {
+        if (stripes.isEmpty()) {
+            return Optional.empty();
+        }
+        int columnCount = stripes.get(0).size();
+        checkArgument(stripes.stream().allMatch(stripe -> columnCount == stripe.size()));
+
+        ImmutableList.Builder<ColumnStatistics> fileStats = ImmutableList.builder();
+        for (int i = 0; i < columnCount; i++) {
+            OrcColumnId columnId = new OrcColumnId(i);
+            fileStats.add(ColumnStatistics.mergeColumnStatistics(stripes.stream()
+                    .map(stripe -> stripe.get(columnId))
+                    .collect(toList())));
+        }
+        return Optional.of(new ColumnMetadata<>(fileStats.build()));
     }
 
     /**
@@ -469,25 +496,6 @@ public final class OrcWriter
         }
     }
 
-    public enum OrcOperation
-    {
-        NONE(-1),
-        INSERT(0),
-        DELETE(2);
-
-        private final int operationNumber;
-
-        OrcOperation(int operationNumber)
-        {
-            this.operationNumber = operationNumber;
-        }
-
-        public int getOperationNumber()
-        {
-            return operationNumber;
-        }
-    }
-
     public void updateUserMetadata(Map<String, String> updatedProperties)
     {
         userMetadata.putAll(updatedProperties);
@@ -571,40 +579,23 @@ public final class OrcWriter
         return fileStats;
     }
 
-    private static Supplier<BloomFilterBuilder> getBloomFilterBuilder(OrcWriterOptions options, String columnName)
+    public enum OrcOperation
     {
-        if (options.isBloomFilterColumn(columnName)) {
-            return () -> new Utf8BloomFilterBuilder(options.getRowGroupMaxRowCount(), options.getBloomFilterFpp());
-        }
-        return NoOpBloomFilterBuilder::new;
-    }
+        NONE(-1),
+        INSERT(0),
+        DELETE(2);
 
-    private static <T> ColumnMetadata<T> toColumnMetadata(Map<OrcColumnId, T> data, int expectedSize)
-    {
-        checkArgument(data.size() == expectedSize);
-        List<T> list = new ArrayList<>(expectedSize);
-        for (int i = 0; i < expectedSize; i++) {
-            list.add(data.get(new OrcColumnId(i)));
-        }
-        return new ColumnMetadata<>(ImmutableList.copyOf(list));
-    }
+        private final int operationNumber;
 
-    private static Optional<ColumnMetadata<ColumnStatistics>> toFileStats(List<ColumnMetadata<ColumnStatistics>> stripes)
-    {
-        if (stripes.isEmpty()) {
-            return Optional.empty();
+        OrcOperation(int operationNumber)
+        {
+            this.operationNumber = operationNumber;
         }
-        int columnCount = stripes.get(0).size();
-        checkArgument(stripes.stream().allMatch(stripe -> columnCount == stripe.size()));
 
-        ImmutableList.Builder<ColumnStatistics> fileStats = ImmutableList.builder();
-        for (int i = 0; i < columnCount; i++) {
-            OrcColumnId columnId = new OrcColumnId(i);
-            fileStats.add(ColumnStatistics.mergeColumnStatistics(stripes.stream()
-                    .map(stripe -> stripe.get(columnId))
-                    .collect(toList())));
+        public int getOperationNumber()
+        {
+            return operationNumber;
         }
-        return Optional.of(new ColumnMetadata<>(fileStats.build()));
     }
 
     private static class ClosedStripe
@@ -634,5 +625,10 @@ public final class OrcWriter
         {
             return INSTANCE_SIZE + statistics.getRetainedSizeInBytes();
         }
+    }
+
+    static {
+        String version = OrcWriter.class.getPackage().getImplementationVersion();
+        TRINO_ORC_WRITER_VERSION = version == null ? "UNKNOWN" : version;
     }
 }

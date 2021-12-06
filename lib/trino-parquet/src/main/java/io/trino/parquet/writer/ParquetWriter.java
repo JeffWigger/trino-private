@@ -55,25 +55,20 @@ import static org.apache.parquet.column.ParquetProperties.WriterVersion.PARQUET_
 public class ParquetWriter
         implements Closeable
 {
+    public static final Slice MAGIC = wrappedBuffer("PAR1".getBytes(US_ASCII));
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ParquetWriter.class).instanceSize();
-
     private static final int CHUNK_MAX_BYTES = toIntExact(DataSize.of(128, MEGABYTE).toBytes());
-
     private final List<ColumnWriter> columnWriters;
     private final OutputStreamSliceOutput outputStream;
     private final ParquetWriterOptions writerOption;
     private final MessageType messageType;
     private final String createdBy;
     private final int chunkMaxLogicalBytes;
-
     private final ImmutableList.Builder<RowGroup> rowGroupBuilder = ImmutableList.builder();
-
     private int rows;
     private long bufferedBytes;
     private boolean closed;
     private boolean writeHeader;
-
-    public static final Slice MAGIC = wrappedBuffer("PAR1".getBytes(US_ASCII));
 
     public ParquetWriter(
             OutputStream outputStream,
@@ -98,6 +93,21 @@ public class ParquetWriter
 
         this.chunkMaxLogicalBytes = max(1, CHUNK_MAX_BYTES / 2);
         this.createdBy = formatCreatedBy(requireNonNull(trinoVersion, "trinoVersion is null"));
+    }
+
+    private static org.apache.parquet.format.ColumnChunk toColumnChunk(ColumnMetaData metaData)
+    {
+        // TODO Not sure whether file_offset is used
+        org.apache.parquet.format.ColumnChunk columnChunk = new org.apache.parquet.format.ColumnChunk(0);
+        columnChunk.setMeta_data(metaData);
+        return columnChunk;
+    }
+
+    @VisibleForTesting
+    static String formatCreatedBy(String trinoVersion)
+    {
+        // Add "(build n/a)" suffix to satisfy Parquet's VersionParser expectations
+        return "Trino version " + trinoVersion + " (build n/a)";
     }
 
     public long getWrittenBytes()
@@ -261,14 +271,6 @@ public class ParquetWriter
         rowGroupBuilder.add(new RowGroup(columnChunks, totalBytes, rows));
     }
 
-    private static org.apache.parquet.format.ColumnChunk toColumnChunk(ColumnMetaData metaData)
-    {
-        // TODO Not sure whether file_offset is used
-        org.apache.parquet.format.ColumnChunk columnChunk = new org.apache.parquet.format.ColumnChunk(0);
-        columnChunk.setMeta_data(metaData);
-        return columnChunk;
-    }
-
     private List<ColumnMetaData> updateColumnMetadataOffset(List<ColumnMetaData> columns, long offset)
     {
         ImmutableList.Builder<ColumnMetaData> builder = ImmutableList.builder();
@@ -280,12 +282,5 @@ public class ParquetWriter
             currentOffset += column.getTotal_compressed_size();
         }
         return builder.build();
-    }
-
-    @VisibleForTesting
-    static String formatCreatedBy(String trinoVersion)
-    {
-        // Add "(build n/a)" suffix to satisfy Parquet's VersionParser expectations
-        return "Trino version " + trinoVersion + " (build n/a)";
     }
 }

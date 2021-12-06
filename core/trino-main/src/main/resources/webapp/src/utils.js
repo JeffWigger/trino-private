@@ -37,8 +37,7 @@ const STATE_COLOR_MAP = {
     UNKNOWN_ERROR: '#943524'
 };
 
-export function getQueryStateColor(query: any): string
-{
+export function getQueryStateColor(query: any): string {
     switch (query.state) {
         case "QUEUED":
             return STATE_COLOR_MAP.QUEUED;
@@ -72,8 +71,7 @@ export function getQueryStateColor(query: any): string
     }
 }
 
-export function getStageStateColor(stage: any): string
-{
+export function getStageStateColor(stage: any): string {
     switch (stage.state) {
         case "PLANNED":
             return STATE_COLOR_MAP.QUEUED;
@@ -100,8 +98,7 @@ export function getStageStateColor(stage: any): string
 
 // This relies on the fact that BasicQueryInfo and QueryInfo have all the fields
 // necessary to compute this string, and that these fields are consistently named.
-export function getHumanReadableState(query: any, forOverviewPage: boolean): string
-{
+export function getHumanReadableState(query: any, forOverviewPage: boolean): string {
     if (query.state === "RUNNING") {
         let title = "RUNNING";
 
@@ -146,8 +143,7 @@ export function getHumanReadableState(query: any, forOverviewPage: boolean): str
     return query.state;
 }
 
-export function getProgressBarPercentage(query: any): number
-{
+export function getProgressBarPercentage(query: any): number {
     const progress = query.queryStats.progressPercentage;
 
     // progress bars should appear 'full' when query progress is not meaningful
@@ -158,8 +154,7 @@ export function getProgressBarPercentage(query: any): number
     return Math.round(progress);
 }
 
-export function getProgressBarTitle(query: any, forOverviewPage: boolean): string
-{
+export function getProgressBarTitle(query: any, forOverviewPage: boolean): string {
     if (query.queryStats.progressPercentage && query.state === "RUNNING") {
         return getHumanReadableState(query, forOverviewPage) + " (" + getProgressBarPercentage(query) + "%)"
     }
@@ -167,8 +162,7 @@ export function getProgressBarTitle(query: any, forOverviewPage: boolean): strin
     return getHumanReadableState(query, forOverviewPage)
 }
 
-export function isQueryEnded(query: any): boolean
-{
+export function isQueryEnded(query: any): boolean {
     return ["FINISHED", "FAILED", "CANCELED"].indexOf(query.state) > -1;
 }
 
@@ -180,14 +174,14 @@ const MAX_HISTORY = 60 * 5;
 // alpha param of exponentially weighted moving average. picked arbitrarily - lower values means more smoothness
 const MOVING_AVERAGE_ALPHA = 0.2;
 
-export function addToHistory (value: number, valuesArray: number[]): number[] {
+export function addToHistory(value: number, valuesArray: number[]): number[] {
     if (valuesArray.length === 0) {
         return valuesArray.concat([value]);
     }
     return valuesArray.concat([value]).slice(Math.max(valuesArray.length - MAX_HISTORY, 0));
 }
 
-export function addExponentiallyWeightedToHistory (value: number, valuesArray: number[]): number[] {
+export function addExponentiallyWeightedToHistory(value: number, valuesArray: number[]): number[] {
     if (valuesArray.length === 0) {
         return valuesArray.concat([value]);
     }
@@ -203,23 +197,20 @@ export function addExponentiallyWeightedToHistory (value: number, valuesArray: n
 // DagreD3 Graph-related functions
 // ===============================
 
-export function initializeGraph()
-{
+export function initializeGraph() {
     return new dagreD3.graphlib.Graph({compound: true})
         .setGraph({rankdir: 'BT'})
         .setDefaultEdgeLabel(function () { return {}; });
 }
 
-export function initializeSvg(selector: any)
-{
+export function initializeSvg(selector: any) {
     const svg = d3.select(selector);
     svg.append("g");
 
     return svg;
 }
 
-export function getChildren(nodeInfo: any)
-{
+export function getChildren(nodeInfo: any) {
     // TODO: Remove this function by migrating StageDetail to use node JSON representation
     switch (nodeInfo['@type']) {
         case 'output':
@@ -501,5 +492,5 @@ export function formatShortDateTime(date: Date): string {
     const year = date.getFullYear();
     const month = "" + (date.getMonth() + 1);
     const dayOfMonth = "" + date.getDate();
-    return year + "-" + (month[1] ? month : "0" + month[0]) + "-" + (dayOfMonth[1] ? dayOfMonth: "0" + dayOfMonth[0]) + " " + formatShortTime(date);
+    return year + "-" + (month[1] ? month : "0" + month[0]) + "-" + (dayOfMonth[1] ? dayOfMonth : "0" + dayOfMonth[0]) + " " + formatShortTime(date);
 }

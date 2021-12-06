@@ -122,6 +122,11 @@ public class DefaultPageJoiner
         probeOnOuterSide = joinType == PROBE_OUTER || joinType == FULL_OUTER;
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
     @Override
     public Map<Integer, SavedRow> getSpilledRows()
     {
@@ -480,10 +485,5 @@ public class DefaultPageJoiner
         {
             return spillMask;
         }
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 }

@@ -26,6 +26,11 @@ import static org.assertj.core.api.Assertions.failBecauseExceptionWasNotThrown;
 public final class TrinoExceptionAssert
         extends AbstractThrowableAssert<TrinoExceptionAssert, TrinoException>
 {
+    private TrinoExceptionAssert(TrinoException actual)
+    {
+        super(actual, TrinoExceptionAssert.class);
+    }
+
     @CheckReturnValue
     public static TrinoExceptionAssert assertTrinoExceptionThrownBy(ThrowingCallable throwingCallable)
     {
@@ -35,11 +40,6 @@ public final class TrinoExceptionAssert
         }
         assertThat(throwable).isInstanceOf(TrinoException.class);
         return new TrinoExceptionAssert((TrinoException) throwable);
-    }
-
-    private TrinoExceptionAssert(TrinoException actual)
-    {
-        super(actual, TrinoExceptionAssert.class);
     }
 
     public TrinoExceptionAssert hasErrorCode(ErrorCodeSupplier errorCodeSupplier)

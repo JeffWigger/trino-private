@@ -67,6 +67,28 @@ public final class ConcatFunction
                 SCALAR));
     }
 
+    public static Slice concat(Slice[] values)
+    {
+        // Validate the concatenation length
+        int length = 0;
+        for (Slice value : values) {
+            length = addExact(length, value.length());
+            if (length > MAX_OUTPUT_LENGTH) {
+                throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "Concatenated string is too large");
+            }
+        }
+
+        // Construct the result
+        Slice result = Slices.allocate(length);
+        int position = 0;
+        for (Slice value : values) {
+            result.setBytes(position, value);
+            position += value.length();
+        }
+
+        return result;
+    }
+
     @Override
     protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -88,27 +110,5 @@ public final class ConcatFunction
                 FAIL_ON_NULL,
                 nCopies(arity, NEVER_NULL),
                 customMethodHandle);
-    }
-
-    public static Slice concat(Slice[] values)
-    {
-        // Validate the concatenation length
-        int length = 0;
-        for (Slice value : values) {
-            length = addExact(length, value.length());
-            if (length > MAX_OUTPUT_LENGTH) {
-                throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "Concatenated string is too large");
-            }
-        }
-
-        // Construct the result
-        Slice result = Slices.allocate(length);
-        int position = 0;
-        for (Slice value : values) {
-            result.setBytes(position, value);
-            position += value.length();
-        }
-
-        return result;
     }
 }

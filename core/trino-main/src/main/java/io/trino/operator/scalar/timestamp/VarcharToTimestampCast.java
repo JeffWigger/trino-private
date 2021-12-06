@@ -86,14 +86,14 @@ public final class VarcharToTimestampCast
         String fraction = matcher.group("fraction");
 
         long epochSecond = ZonedDateTime.of(
-                Integer.parseInt(year),
-                Integer.parseInt(month),
-                Integer.parseInt(day),
-                hour == null ? 0 : Integer.parseInt(hour),
-                minute == null ? 0 : Integer.parseInt(minute),
-                second == null ? 0 : Integer.parseInt(second),
-                0,
-                UTC)
+                        Integer.parseInt(year),
+                        Integer.parseInt(month),
+                        Integer.parseInt(day),
+                        hour == null ? 0 : Integer.parseInt(hour),
+                        minute == null ? 0 : Integer.parseInt(minute),
+                        second == null ? 0 : Integer.parseInt(second),
+                        0,
+                        UTC)
                 .toEpochSecond();
 
         int actualPrecision = 0;
@@ -130,14 +130,14 @@ public final class VarcharToTimestampCast
         String fraction = matcher.group("fraction");
 
         long epochSecond = ZonedDateTime.of(
-                Integer.parseInt(year),
-                Integer.parseInt(month),
-                Integer.parseInt(day),
-                hour == null ? 0 : Integer.parseInt(hour),
-                minute == null ? 0 : Integer.parseInt(minute),
-                second == null ? 0 : Integer.parseInt(second),
-                0,
-                UTC)
+                        Integer.parseInt(year),
+                        Integer.parseInt(month),
+                        Integer.parseInt(day),
+                        hour == null ? 0 : Integer.parseInt(hour),
+                        minute == null ? 0 : Integer.parseInt(minute),
+                        second == null ? 0 : Integer.parseInt(second),
+                        0,
+                        UTC)
                 .toEpochSecond();
 
         int actualPrecision = 0;

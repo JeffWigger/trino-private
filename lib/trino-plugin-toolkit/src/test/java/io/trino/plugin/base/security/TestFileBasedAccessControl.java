@@ -47,6 +47,22 @@ public class TestFileBasedAccessControl
     private static final ConnectorSecurityContext JOE = user("joe", ImmutableSet.of());
     private static final ConnectorSecurityContext UNKNOWN = user("unknown", ImmutableSet.of());
 
+    private static ConnectorSecurityContext user(String name, Set<String> groups)
+    {
+        return new ConnectorSecurityContext(
+                new ConnectorTransactionHandle() {},
+                ConnectorIdentity.forUser(name).withGroups(groups).build(),
+                new QueryId("query_id"));
+    }
+
+    private static void assertDenied(ThrowingRunnable runnable)
+    {
+        assertThatThrownBy(runnable::run)
+                .isInstanceOf(AccessDeniedException.class)
+                // TODO test expected message precisely, as in TestFileBasedSystemAccessControl
+                .hasMessageStartingWith("Access Denied");
+    }
+
     @Test
     public void testEmptyFile()
     {
@@ -423,27 +439,11 @@ public class TestFileBasedAccessControl
         assertAllMethodsOverridden(ConnectorAccessControl.class, FileBasedAccessControl.class);
     }
 
-    private static ConnectorSecurityContext user(String name, Set<String> groups)
-    {
-        return new ConnectorSecurityContext(
-                new ConnectorTransactionHandle() {},
-                ConnectorIdentity.forUser(name).withGroups(groups).build(),
-                new QueryId("query_id"));
-    }
-
     private ConnectorAccessControl createAccessControl(String fileName)
     {
         String path = this.getClass().getClassLoader().getResource(fileName).getPath();
         FileBasedAccessControlConfig config = new FileBasedAccessControlConfig();
         config.setConfigFile(path);
         return new FileBasedAccessControl("test_catalog", config);
-    }
-
-    private static void assertDenied(ThrowingRunnable runnable)
-    {
-        assertThatThrownBy(runnable::run)
-                .isInstanceOf(AccessDeniedException.class)
-                // TODO test expected message precisely, as in TestFileBasedSystemAccessControl
-                .hasMessageStartingWith("Access Denied");
     }
 }

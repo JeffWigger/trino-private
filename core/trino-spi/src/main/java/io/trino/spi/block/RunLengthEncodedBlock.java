@@ -32,19 +32,8 @@ public class RunLengthEncodedBlock
         implements Block
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(RunLengthEncodedBlock.class).instanceSize();
-
-    public static Block create(Type type, Object value, int positionCount)
-    {
-        Block block = Utils.nativeValueToBlock(type, value);
-        if (block instanceof RunLengthEncodedBlock) {
-            block = ((RunLengthEncodedBlock) block).getValue();
-        }
-        return new RunLengthEncodedBlock(block, positionCount);
-    }
-
     private final Block value;
     private final int positionCount;
-
     public RunLengthEncodedBlock(Block value, int positionCount)
     {
         requireNonNull(value, "value is null");
@@ -64,6 +53,15 @@ public class RunLengthEncodedBlock
         }
 
         this.positionCount = positionCount;
+    }
+
+    public static Block create(Type type, Object value, int positionCount)
+    {
+        Block block = Utils.nativeValueToBlock(type, value);
+        if (block instanceof RunLengthEncodedBlock) {
+            block = ((RunLengthEncodedBlock) block).getValue();
+        }
+        return new RunLengthEncodedBlock(block, positionCount);
     }
 
     @Override

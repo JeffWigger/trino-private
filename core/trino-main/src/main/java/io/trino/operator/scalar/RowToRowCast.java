@@ -90,39 +90,6 @@ public class RowToRowCast
                 false);
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies(FunctionBinding functionBinding)
-    {
-        List<Type> toTypes = functionBinding.getTypeVariable("T").getTypeParameters();
-        List<Type> fromTypes = functionBinding.getTypeVariable("F").getTypeParameters();
-
-        FunctionDependencyDeclarationBuilder builder = FunctionDependencyDeclaration.builder();
-        for (int i = 0; i < toTypes.size(); i++) {
-            Type fromElementType = fromTypes.get(i);
-            Type toElementType = toTypes.get(i);
-            builder.addCast(fromElementType, toElementType);
-        }
-        return builder.build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        Type fromType = functionBinding.getTypeVariable("F");
-        Type toType = functionBinding.getTypeVariable("T");
-        if (fromType.getTypeParameters().size() != toType.getTypeParameters().size()) {
-            throw new TrinoException(StandardErrorCode.INVALID_FUNCTION_ARGUMENT, "the size of fromType and toType must match");
-        }
-        Class<?> castOperatorClass = generateRowCast(fromType, toType, functionDependencies);
-        MethodHandle methodHandle = methodHandle(castOperatorClass, "castRow", ConnectorSession.class, Block.class);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     private static Class<?> generateRowCast(Type fromType, Type toType, FunctionDependencies functionDependencies)
     {
         List<Type> toTypes = toType.getTypeParameters();
@@ -211,5 +178,38 @@ public class RowToRowCast
         constructorBody.ret();
 
         return defineClass(definition, Object.class, binder.getBindings(), RowToRowCast.class.getClassLoader());
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies(FunctionBinding functionBinding)
+    {
+        List<Type> toTypes = functionBinding.getTypeVariable("T").getTypeParameters();
+        List<Type> fromTypes = functionBinding.getTypeVariable("F").getTypeParameters();
+
+        FunctionDependencyDeclarationBuilder builder = FunctionDependencyDeclaration.builder();
+        for (int i = 0; i < toTypes.size(); i++) {
+            Type fromElementType = fromTypes.get(i);
+            Type toElementType = toTypes.get(i);
+            builder.addCast(fromElementType, toElementType);
+        }
+        return builder.build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        Type fromType = functionBinding.getTypeVariable("F");
+        Type toType = functionBinding.getTypeVariable("T");
+        if (fromType.getTypeParameters().size() != toType.getTypeParameters().size()) {
+            throw new TrinoException(StandardErrorCode.INVALID_FUNCTION_ARGUMENT, "the size of fromType and toType must match");
+        }
+        Class<?> castOperatorClass = generateRowCast(fromType, toType, functionDependencies);
+        MethodHandle methodHandle = methodHandle(castOperatorClass, "castRow", ConnectorSession.class, Block.class);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

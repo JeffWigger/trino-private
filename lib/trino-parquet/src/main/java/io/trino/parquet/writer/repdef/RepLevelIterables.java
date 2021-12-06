@@ -51,6 +51,16 @@ public class RepLevelIterables
         return new NestedRepLevelIterator(iterables);
     }
 
+    private static RepetitionLevel nullValue(int value)
+    {
+        return new RepetitionLevel(value, true);
+    }
+
+    private static RepetitionLevel nonNullValue(int value)
+    {
+        return new RepetitionLevel(value, false);
+    }
+
     static class BlockRepLevel
             implements RepLevelIterable
     {
@@ -251,15 +261,5 @@ public class RepLevelIterables
             }
             return endOfData();
         }
-    }
-
-    private static RepetitionLevel nullValue(int value)
-    {
-        return new RepetitionLevel(value, true);
-    }
-
-    private static RepetitionLevel nonNullValue(int value)
-    {
-        return new RepetitionLevel(value, false);
     }
 }

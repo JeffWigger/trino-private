@@ -35,6 +35,17 @@ public class FloatEncoding
         this.nullSequence = nullSequence;
     }
 
+    private static float parseFloat(Slice slice, int start, int length)
+            throws RcFileCorruptionException
+    {
+        try {
+            return Float.parseFloat(slice.toStringAscii(start, length));
+        }
+        catch (NumberFormatException e) {
+            throw new RcFileCorruptionException(e, "Invalid float value");
+        }
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -91,16 +102,5 @@ public class FloatEncoding
             throws RcFileCorruptionException
     {
         type.writeLong(builder, Float.floatToIntBits(parseFloat(slice, offset, length)));
-    }
-
-    private static float parseFloat(Slice slice, int start, int length)
-            throws RcFileCorruptionException
-    {
-        try {
-            return Float.parseFloat(slice.toStringAscii(start, length));
-        }
-        catch (NumberFormatException e) {
-            throw new RcFileCorruptionException(e, "Invalid float value");
-        }
     }
 }

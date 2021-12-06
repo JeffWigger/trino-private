@@ -24,7 +24,8 @@ public interface SourceScheduler
 {
     ScheduleResult schedule();
 
-    default ScheduleResult scheduleDelta(){
+    default ScheduleResult scheduleDelta()
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 
@@ -38,8 +39,8 @@ public interface SourceScheduler
 
     List<Lifespan> drainCompletedLifespans();
 
-
-    default List<Lifespan> drainCompletedDeltaLifespans(){
+    default List<Lifespan> drainCompletedDeltaLifespans()
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 }

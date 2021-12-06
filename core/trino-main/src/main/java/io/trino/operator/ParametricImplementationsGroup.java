@@ -75,6 +75,20 @@ public class ParametricImplementationsGroup<T extends ParametricImplementation>
                 "all implementations must have the argument definitions: %s", signature);
     }
 
+    public static <T extends ParametricImplementation> ParametricImplementationsGroup<T> of(T... implementations)
+    {
+        ParametricImplementationsGroup.Builder<T> builder = builder();
+        for (T implementation : implementations) {
+            builder.addImplementation(implementation);
+        }
+        return builder.build();
+    }
+
+    public static <T extends ParametricImplementation> Builder<T> builder()
+    {
+        return new Builder<>();
+    }
+
     public boolean isNullable()
     {
         return nullable;
@@ -83,15 +97,6 @@ public class ParametricImplementationsGroup<T extends ParametricImplementation>
     public List<FunctionArgumentDefinition> getArgumentDefinitions()
     {
         return argumentDefinitions;
-    }
-
-    public static <T extends ParametricImplementation> ParametricImplementationsGroup<T> of(T... implementations)
-    {
-        ParametricImplementationsGroup.Builder<T> builder = builder();
-        for (T implementation : implementations) {
-            builder.addImplementation(implementation);
-        }
-        return builder.build();
     }
 
     public List<T> getGenericImplementations()
@@ -114,11 +119,6 @@ public class ParametricImplementationsGroup<T extends ParametricImplementation>
         return signature;
     }
 
-    public static <T extends ParametricImplementation> Builder<T> builder()
-    {
-        return new Builder<>();
-    }
-
     public static final class Builder<T extends ParametricImplementation>
     {
         private final ImmutableMap.Builder<Signature, T> exactImplementations = ImmutableMap.builder();
@@ -126,6 +126,29 @@ public class ParametricImplementationsGroup<T extends ParametricImplementation>
         private final ImmutableList.Builder<T> genericImplementations = ImmutableList.builder();
 
         private Builder() {}
+
+        private static <T extends ParametricImplementation> Signature determineGenericSignature(
+                Map<Signature, T> exactImplementations,
+                List<T> specializedImplementations,
+                List<T> genericImplementations)
+        {
+            if (specializedImplementations.size() + genericImplementations.size() == 0) {
+                return getOnlyElement(exactImplementations.keySet());
+            }
+
+            Optional<Signature> signature = Optional.empty();
+            for (T implementation : specializedImplementations) {
+                validateSignaturesCompatibility(signature, implementation.getSignature());
+                signature = Optional.of(implementation.getSignature());
+            }
+
+            for (T implementation : genericImplementations) {
+                validateSignaturesCompatibility(signature, implementation.getSignature());
+                signature = Optional.of(implementation.getSignature());
+            }
+
+            return signature.get();
+        }
 
         public ParametricImplementationsGroup<T> build()
         {
@@ -152,29 +175,6 @@ public class ParametricImplementationsGroup<T extends ParametricImplementation>
             else {
                 genericImplementations.add(implementation);
             }
-        }
-
-        private static <T extends ParametricImplementation> Signature determineGenericSignature(
-                Map<Signature, T> exactImplementations,
-                List<T> specializedImplementations,
-                List<T> genericImplementations)
-        {
-            if (specializedImplementations.size() + genericImplementations.size() == 0) {
-                return getOnlyElement(exactImplementations.keySet());
-            }
-
-            Optional<Signature> signature = Optional.empty();
-            for (T implementation : specializedImplementations) {
-                validateSignaturesCompatibility(signature, implementation.getSignature());
-                signature = Optional.of(implementation.getSignature());
-            }
-
-            for (T implementation : genericImplementations) {
-                validateSignaturesCompatibility(signature, implementation.getSignature());
-                signature = Optional.of(implementation.getSignature());
-            }
-
-            return signature.get();
         }
     }
 }

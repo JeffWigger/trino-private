@@ -43,6 +43,27 @@ import static java.lang.Math.toIntExact;
 public class PartitionedLookupSource
         implements LookupSource
 {
+    private final LookupSource[] lookupSources;
+    private final LocalPartitionGenerator partitionGenerator;
+    private final int partitionMask;
+    private final int shiftSize;
+    @Nullable
+    private final OuterPositionTracker outerPositionTracker;
+    private boolean closed;
+
+    private PartitionedLookupSource(List<? extends LookupSource> lookupSources, List<Type> hashChannelTypes, Optional<OuterPositionTracker> outerPositionTracker, BlockTypeOperators blockTypeOperators)
+    {
+        this.lookupSources = lookupSources.toArray(new LookupSource[lookupSources.size()]);
+
+        // this generator is only used for getJoinPosition without a rawHash and in this case
+        // the hash channels are always packed in a page without extra columns
+        this.partitionGenerator = new LocalPartitionGenerator(InterpretedHashGenerator.createPositionalWithTypes(hashChannelTypes, blockTypeOperators), lookupSources.size());
+
+        this.partitionMask = lookupSources.size() - 1;
+        this.shiftSize = numberOfTrailingZeros(lookupSources.size()) + 1;
+        this.outerPositionTracker = outerPositionTracker.orElse(null);
+    }
+
     public static TrackingLookupSourceSupplier createPartitionedLookupSourceSupplier(List<Supplier<LookupSource>> partitions, List<Type> hashChannelTypes, boolean outer, BlockTypeOperators blockTypeOperators)
     {
         if (outer) {
@@ -79,28 +100,6 @@ public class PartitionedLookupSource
                             Optional.empty(),
                             blockTypeOperators));
         }
-    }
-
-    private final LookupSource[] lookupSources;
-    private final LocalPartitionGenerator partitionGenerator;
-    private final int partitionMask;
-    private final int shiftSize;
-    @Nullable
-    private final OuterPositionTracker outerPositionTracker;
-
-    private boolean closed;
-
-    private PartitionedLookupSource(List<? extends LookupSource> lookupSources, List<Type> hashChannelTypes, Optional<OuterPositionTracker> outerPositionTracker, BlockTypeOperators blockTypeOperators)
-    {
-        this.lookupSources = lookupSources.toArray(new LookupSource[lookupSources.size()]);
-
-        // this generator is only used for getJoinPosition without a rawHash and in this case
-        // the hash channels are always packed in a page without extra columns
-        this.partitionGenerator = new LocalPartitionGenerator(InterpretedHashGenerator.createPositionalWithTypes(hashChannelTypes, blockTypeOperators), lookupSources.size());
-
-        this.partitionMask = lookupSources.size() - 1;
-        this.shiftSize = numberOfTrailingZeros(lookupSources.size()) + 1;
-        this.outerPositionTracker = outerPositionTracker.orElse(null);
     }
 
     @Override
@@ -269,6 +268,38 @@ public class PartitionedLookupSource
      */
     private static class OuterPositionTracker
     {
+        private final boolean[][] visitedPositions; // shared across multiple operators/drivers
+        private final AtomicBoolean finished; // shared across multiple operators/drivers
+        private final AtomicLong referenceCount; // shared across multiple operators/drivers
+        private boolean written; // unique per each operator/driver
+        private OuterPositionTracker(boolean[][] visitedPositions, AtomicBoolean finished, AtomicLong referenceCount)
+        {
+            this.visitedPositions = visitedPositions;
+            this.finished = finished;
+            this.referenceCount = referenceCount;
+        }
+
+        /**
+         * No synchronization here, because it would be very expensive. Check comment above.
+         */
+        public void positionVisited(int partition, int position)
+        {
+            if (!written) {
+                written = true;
+                verify(!finished.get());
+                referenceCount.incrementAndGet();
+            }
+            visitedPositions[partition][position] = true;
+        }
+
+        public void commit()
+        {
+            if (written) {
+                // touching atomic values ensures memory visibility between commit and getVisitedPositions
+                referenceCount.decrementAndGet();
+            }
+        }
+
         public static class Factory
         {
             private final LookupSource[] lookupSources;
@@ -300,39 +331,6 @@ public class PartitionedLookupSource
                 verify(referenceCount.get() == 0);
                 finished.set(true);
                 return new PartitionedLookupOuterPositionIterator(lookupSources, visitedPositions);
-            }
-        }
-
-        private final boolean[][] visitedPositions; // shared across multiple operators/drivers
-        private final AtomicBoolean finished; // shared across multiple operators/drivers
-        private final AtomicLong referenceCount; // shared across multiple operators/drivers
-        private boolean written; // unique per each operator/driver
-
-        private OuterPositionTracker(boolean[][] visitedPositions, AtomicBoolean finished, AtomicLong referenceCount)
-        {
-            this.visitedPositions = visitedPositions;
-            this.finished = finished;
-            this.referenceCount = referenceCount;
-        }
-
-        /**
-         * No synchronization here, because it would be very expensive. Check comment above.
-         */
-        public void positionVisited(int partition, int position)
-        {
-            if (!written) {
-                written = true;
-                verify(!finished.get());
-                referenceCount.incrementAndGet();
-            }
-            visitedPositions[partition][position] = true;
-        }
-
-        public void commit()
-        {
-            if (written) {
-                // touching atomic values ensures memory visibility between commit and getVisitedPositions
-                referenceCount.decrementAndGet();
             }
         }
     }

@@ -25,6 +25,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestJsonUtils
 {
+    @Test
+    public void testLowercaseEnum()
+            throws IOException
+    {
+        TestObject parsed = parseJson("{\"testEnum\": \"option_a\"}".getBytes(US_ASCII), TestObject.class);
+        assertThat(parsed.testEnum).isEqualTo(OPTION_A);
+    }
+
     enum TestEnum
     {
         OPTION_A,
@@ -35,13 +43,5 @@ public class TestJsonUtils
     {
         @JsonProperty
         public TestEnum testEnum;
-    }
-
-    @Test
-    public void testLowercaseEnum()
-            throws IOException
-    {
-        TestObject parsed = parseJson("{\"testEnum\": \"option_a\"}".getBytes(US_ASCII), TestObject.class);
-        assertThat(parsed.testEnum).isEqualTo(OPTION_A);
     }
 }

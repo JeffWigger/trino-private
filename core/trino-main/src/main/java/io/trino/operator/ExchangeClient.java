@@ -68,21 +68,19 @@ public class ExchangeClient
     private final boolean acknowledgePages;
     private final HttpClient httpClient;
     private final ScheduledExecutorService scheduler;
-
-    @GuardedBy("this")
-    private boolean noMoreLocations;
-
     private final ConcurrentMap<URI, HttpPageBufferClient> allClients = new ConcurrentHashMap<>();
-
     @GuardedBy("this")
     private final Deque<HttpPageBufferClient> queuedClients = new LinkedList<>();
-
     private final Set<HttpPageBufferClient> completedClients = newConcurrentHashSet();
     private final LinkedBlockingDeque<SerializedPage> pageBuffer = new LinkedBlockingDeque<>();
-
     @GuardedBy("this")
     private final List<SettableFuture<Void>> blockedCallers = new ArrayList<>();
-
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicReference<Throwable> failure = new AtomicReference<>();
+    private final LocalMemoryContext systemMemoryContext;
+    private final Executor pageBufferClientCallbackExecutor;
+    @GuardedBy("this")
+    private boolean noMoreLocations;
     @GuardedBy("this")
     private long bufferRetainedSizeInBytes;
     @GuardedBy("this")
@@ -91,12 +89,6 @@ public class ExchangeClient
     private long successfulRequests;
     @GuardedBy("this")
     private long averageBytesPerRequest;
-
-    private final AtomicBoolean closed = new AtomicBoolean();
-    private final AtomicReference<Throwable> failure = new AtomicReference<>();
-
-    private final LocalMemoryContext systemMemoryContext;
-    private final Executor pageBufferClientCallbackExecutor;
 
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -125,6 +117,16 @@ public class ExchangeClient
         this.systemMemoryContext = systemMemoryContext;
         this.maxBufferRetainedSizeInBytes = Long.MIN_VALUE;
         this.pageBufferClientCallbackExecutor = requireNonNull(pageBufferClientCallbackExecutor, "pageBufferClientCallbackExecutor is null");
+    }
+
+    private static void closeQuietly(HttpPageBufferClient client)
+    {
+        try {
+            client.close();
+        }
+        catch (RuntimeException e) {
+            // ignored
+        }
     }
 
     public ExchangeClientStatus getStatus()
@@ -464,16 +466,6 @@ public class ExchangeClient
             requireNonNull(client, "client is null");
             requireNonNull(cause, "cause is null");
             ExchangeClient.this.clientFailed(cause);
-        }
-    }
-
-    private static void closeQuietly(HttpPageBufferClient client)
-    {
-        try {
-            client.close();
-        }
-        catch (RuntimeException e) {
-            // ignored
         }
     }
 }

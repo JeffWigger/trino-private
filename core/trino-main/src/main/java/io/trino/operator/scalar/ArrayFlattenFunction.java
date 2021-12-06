@@ -59,19 +59,6 @@ public class ArrayFlattenFunction
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        MethodHandle methodHandle = METHOD_HANDLE
-                .bindTo(functionBinding.getTypeVariable("E"))
-                .bindTo(functionBinding.getBoundSignature().getReturnType());
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     public static Block flatten(Type type, Type arrayType, Block array)
     {
         if (array.getPositionCount() == 0) {
@@ -88,5 +75,18 @@ public class ArrayFlattenFunction
             }
         }
         return builder.build();
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        MethodHandle methodHandle = METHOD_HANDLE
+                .bindTo(functionBinding.getTypeVariable("E"))
+                .bindTo(functionBinding.getBoundSignature().getReturnType());
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

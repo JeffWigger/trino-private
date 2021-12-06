@@ -54,17 +54,14 @@ public class LazyOutputBuffer
     private final Supplier<LocalMemoryContext> systemMemoryContextSupplier;
     private final Executor executor;
     private final Runnable notifyStatusChanged;
-
+    @GuardedBy("this")
+    private final Set<OutputBufferId> abortedBuffers = new HashSet<>();
+    @GuardedBy("this")
+    private final List<PendingRead> pendingReads = new ArrayList<>();
     // Note: this is a write once field, so an unsynchronized volatile read that returns a non-null value is safe, but if a null value is observed instead
     // a subsequent synchronized read is required to ensure the writing thread can complete any in-flight initialization
     @GuardedBy("this")
     private volatile OutputBuffer delegate;
-
-    @GuardedBy("this")
-    private final Set<OutputBufferId> abortedBuffers = new HashSet<>();
-
-    @GuardedBy("this")
-    private final List<PendingRead> pendingReads = new ArrayList<>();
 
     public LazyOutputBuffer(
             TaskId taskId,

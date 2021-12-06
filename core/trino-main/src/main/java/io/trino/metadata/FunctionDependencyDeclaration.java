@@ -39,11 +39,6 @@ public class FunctionDependencyDeclaration
     private final Set<OperatorDependency> operatorDependencies;
     private final Set<CastDependency> castDependencies;
 
-    public static FunctionDependencyDeclarationBuilder builder()
-    {
-        return new FunctionDependencyDeclarationBuilder();
-    }
-
     private FunctionDependencyDeclaration(
             Set<TypeSignature> typeDependencies,
             Set<FunctionDependency> functionDependencies,
@@ -54,6 +49,11 @@ public class FunctionDependencyDeclaration
         this.functionDependencies = ImmutableSet.copyOf(requireNonNull(functionDependencies, "functionDependencies is null"));
         this.operatorDependencies = ImmutableSet.copyOf(requireNonNull(operatorDependencies, "operatorDependencies is null"));
         this.castDependencies = ImmutableSet.copyOf(requireNonNull(castDependencies, "castDependencies is null"));
+    }
+
+    public static FunctionDependencyDeclarationBuilder builder()
+    {
+        return new FunctionDependencyDeclarationBuilder();
     }
 
     public Set<TypeSignature> getTypeDependencies()

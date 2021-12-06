@@ -28,6 +28,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestMetrics
 {
+    private static Metrics merge(Metrics... metrics)
+    {
+        return Arrays.stream(metrics).reduce(Metrics.EMPTY, Metrics::mergeWith);
+    }
+
     @Test
     public void testMergeCount()
     {
@@ -82,10 +87,5 @@ public class TestMetrics
         Metrics m1 = new Metrics(ImmutableMap.of("a", new TDigestHistogram(new TDigest())));
         Metrics m2 = new Metrics(ImmutableMap.of("a", new LongCount(0)));
         merge(m1, m2);
-    }
-
-    private static Metrics merge(Metrics... metrics)
-    {
-        return Arrays.stream(metrics).reduce(Metrics.EMPTY, Metrics::mergeWith);
     }
 }

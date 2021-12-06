@@ -45,34 +45,23 @@ import static java.util.Objects.requireNonNull;
 public class LongOutputStreamV2
         implements LongOutputStream
 {
-    private enum EncodingType
-    {
-        SHORT_REPEAT, DIRECT, PATCHED_BASE, DELTA;
-
-        private int getOpCode()
-        {
-            return ordinal() << 6;
-        }
-    }
-
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(LongOutputStreamV2.class).instanceSize();
     private static final int MAX_SCOPE = 512;
     private static final int MIN_REPEAT = 3;
     private static final int MAX_SHORT_REPEAT_LENGTH = 10;
-
     private final StreamKind streamKind;
     private final OrcOutputBuffer buffer;
     private final List<LongStreamCheckpoint> checkpoints = new ArrayList<>();
-
-    private long prevDelta;
-    private int fixedRunLength;
-    private int variableRunLength;
     private final long[] literals = new long[MAX_SCOPE];
     private final boolean signed;
-    private int numLiterals;
     private final long[] zigzagLiterals = new long[MAX_SCOPE];
     private final long[] baseReducedLiterals = new long[MAX_SCOPE];
     private final long[] adjDeltas = new long[MAX_SCOPE];
+    private final SerializationUtils utils = new SerializationUtils();
+    private long prevDelta;
+    private int fixedRunLength;
+    private int variableRunLength;
+    private int numLiterals;
     private long fixedDelta;
     private int zzBits90p;
     private int zzBits100p;
@@ -85,8 +74,6 @@ public class LongOutputStreamV2
     private long[] gapVsPatchList;
     private long min;
     private boolean isFixedDelta = true;
-    private final SerializationUtils utils = new SerializationUtils();
-
     private boolean closed;
 
     public LongOutputStreamV2(CompressionKind compression, int bufferSize, boolean signed, StreamKind streamKind)
@@ -782,6 +769,16 @@ public class LongOutputStreamV2
         checkpoints.clear();
     }
 
+    private enum EncodingType
+    {
+        SHORT_REPEAT, DIRECT, PATCHED_BASE, DELTA;
+
+        private int getOpCode()
+        {
+            return ordinal() << 6;
+        }
+    }
+
     // this entire class should be rewritten
     static final class SerializationUtils
     {
@@ -933,14 +930,6 @@ public class LongOutputStreamV2
             }
         }
 
-        enum FixedBitSizes
-        {
-            ONE, TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, ELEVEN, TWELVE,
-            THIRTEEN, FOURTEEN, FIFTEEN, SIXTEEN, SEVENTEEN, EIGHTEEN, NINETEEN,
-            TWENTY, TWENTY_ONE, TWENTY_TWO, TWENTY_THREE, TWENTY_FOUR, TWENTY_SIX,
-            TWENTY_EIGHT, THIRTY, THIRTY_TWO, FORTY, FORTY_EIGHT, FIFTY_SIX, SIXTY_FOUR
-        }
-
         /**
          * Finds the closest available fixed bit width match and returns its encoded
          * value (ordinal)
@@ -1012,82 +1001,6 @@ public class LongOutputStreamV2
             }
             else {
                 return 64;
-            }
-        }
-
-        void writeInts(long[] input, int offset, int length, int bitSize, SliceOutput output)
-        {
-            requireNonNull(input, "input is null");
-            checkArgument(input.length != 0);
-            checkArgument(offset >= 0);
-            checkArgument(length >= 1);
-            checkArgument(bitSize >= 1);
-
-            switch (bitSize) {
-                case 1:
-                    unrolledBitPack1(input, offset, length, output);
-                    return;
-                case 2:
-                    unrolledBitPack2(input, offset, length, output);
-                    return;
-                case 4:
-                    unrolledBitPack4(input, offset, length, output);
-                    return;
-                case 8:
-                    unrolledBitPack8(input, offset, length, output);
-                    return;
-                case 16:
-                    unrolledBitPack16(input, offset, length, output);
-                    return;
-                case 24:
-                    unrolledBitPack24(input, offset, length, output);
-                    return;
-                case 32:
-                    unrolledBitPack32(input, offset, length, output);
-                    return;
-                case 40:
-                    unrolledBitPack40(input, offset, length, output);
-                    return;
-                case 48:
-                    unrolledBitPack48(input, offset, length, output);
-                    return;
-                case 56:
-                    unrolledBitPack56(input, offset, length, output);
-                    return;
-                case 64:
-                    unrolledBitPack64(input, offset, length, output);
-                    return;
-            }
-
-            // this is used by the patch base code
-            int bitsLeft = 8;
-            byte current = 0;
-            for (int i = offset; i < (offset + length); i++) {
-                long value = input[i];
-                int bitsToWrite = bitSize;
-                while (bitsToWrite > bitsLeft) {
-                    // add the bits to the bottom of the current word
-                    current |= value >>> (bitsToWrite - bitsLeft);
-                    // subtract out the bits we just added
-                    bitsToWrite -= bitsLeft;
-                    // zero out the bits above bitsToWrite
-                    value &= (1L << bitsToWrite) - 1;
-                    output.write(current);
-                    current = 0;
-                    bitsLeft = 8;
-                }
-                bitsLeft -= bitsToWrite;
-                current |= value << bitsLeft;
-                if (bitsLeft == 0) {
-                    output.write(current);
-                    current = 0;
-                    bitsLeft = 8;
-                }
-            }
-
-            // flush
-            if (bitsLeft != 8) {
-                output.write(current);
             }
         }
 
@@ -1167,6 +1080,89 @@ public class LongOutputStreamV2
                     startShift -= 4;
                 }
                 output.write(val);
+            }
+        }
+
+        // Do not want to use Guava LongMath.checkedSubtract() here as it will throw
+        // ArithmeticException in case of overflow
+        public static boolean isSafeSubtract(long left, long right)
+        {
+            return (left ^ right) >= 0 | (left ^ (left - right)) >= 0;
+        }
+
+        void writeInts(long[] input, int offset, int length, int bitSize, SliceOutput output)
+        {
+            requireNonNull(input, "input is null");
+            checkArgument(input.length != 0);
+            checkArgument(offset >= 0);
+            checkArgument(length >= 1);
+            checkArgument(bitSize >= 1);
+
+            switch (bitSize) {
+                case 1:
+                    unrolledBitPack1(input, offset, length, output);
+                    return;
+                case 2:
+                    unrolledBitPack2(input, offset, length, output);
+                    return;
+                case 4:
+                    unrolledBitPack4(input, offset, length, output);
+                    return;
+                case 8:
+                    unrolledBitPack8(input, offset, length, output);
+                    return;
+                case 16:
+                    unrolledBitPack16(input, offset, length, output);
+                    return;
+                case 24:
+                    unrolledBitPack24(input, offset, length, output);
+                    return;
+                case 32:
+                    unrolledBitPack32(input, offset, length, output);
+                    return;
+                case 40:
+                    unrolledBitPack40(input, offset, length, output);
+                    return;
+                case 48:
+                    unrolledBitPack48(input, offset, length, output);
+                    return;
+                case 56:
+                    unrolledBitPack56(input, offset, length, output);
+                    return;
+                case 64:
+                    unrolledBitPack64(input, offset, length, output);
+                    return;
+            }
+
+            // this is used by the patch base code
+            int bitsLeft = 8;
+            byte current = 0;
+            for (int i = offset; i < (offset + length); i++) {
+                long value = input[i];
+                int bitsToWrite = bitSize;
+                while (bitsToWrite > bitsLeft) {
+                    // add the bits to the bottom of the current word
+                    current |= value >>> (bitsToWrite - bitsLeft);
+                    // subtract out the bits we just added
+                    bitsToWrite -= bitsLeft;
+                    // zero out the bits above bitsToWrite
+                    value &= (1L << bitsToWrite) - 1;
+                    output.write(current);
+                    current = 0;
+                    bitsLeft = 8;
+                }
+                bitsLeft -= bitsToWrite;
+                current |= value << bitsLeft;
+                if (bitsLeft == 0) {
+                    output.write(current);
+                    current = 0;
+                    bitsLeft = 8;
+                }
+            }
+
+            // flush
+            if (bitsLeft != 8) {
+                output.write(current);
             }
         }
 
@@ -1457,11 +1453,12 @@ public class LongOutputStreamV2
             writeBuffer[wbOffset + 7] = (byte) (val >>> 0);
         }
 
-        // Do not want to use Guava LongMath.checkedSubtract() here as it will throw
-        // ArithmeticException in case of overflow
-        public static boolean isSafeSubtract(long left, long right)
+        enum FixedBitSizes
         {
-            return (left ^ right) >= 0 | (left ^ (left - right)) >= 0;
+            ONE, TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, ELEVEN, TWELVE,
+            THIRTEEN, FOURTEEN, FIFTEEN, SIXTEEN, SEVENTEEN, EIGHTEEN, NINETEEN,
+            TWENTY, TWENTY_ONE, TWENTY_TWO, TWENTY_THREE, TWENTY_FOUR, TWENTY_SIX,
+            TWENTY_EIGHT, THIRTY, THIRTY_TWO, FORTY, FORTY_EIGHT, FIFTY_SIX, SIXTY_FOUR
         }
     }
 }

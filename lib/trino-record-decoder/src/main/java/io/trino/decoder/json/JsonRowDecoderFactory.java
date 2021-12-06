@@ -43,6 +43,14 @@ public class JsonRowDecoderFactory
         this.objectMapper = requireNonNull(objectMapper, "objectMapper is null");
     }
 
+    public static JsonFieldDecoder throwUnsupportedColumnType(DecoderColumnHandle column)
+    {
+        if (column.getDataFormat() == null) {
+            throw new IllegalArgumentException(format("unsupported column type '%s' for column '%s'", column.getType().getDisplayName(), column.getName()));
+        }
+        throw new IllegalArgumentException(format("unsupported column type '%s' for column '%s' with data format '%s'", column.getType(), column.getName(), column.getDataFormat()));
+    }
+
     @Override
     public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
     {
@@ -83,13 +91,5 @@ public class JsonRowDecoderFactory
         catch (IllegalArgumentException e) {
             throw new TrinoException(GENERIC_USER_ERROR, e);
         }
-    }
-
-    public static JsonFieldDecoder throwUnsupportedColumnType(DecoderColumnHandle column)
-    {
-        if (column.getDataFormat() == null) {
-            throw new IllegalArgumentException(format("unsupported column type '%s' for column '%s'", column.getType().getDisplayName(), column.getName()));
-        }
-        throw new IllegalArgumentException(format("unsupported column type '%s' for column '%s' with data format '%s'", column.getType(), column.getName(), column.getDataFormat()));
     }
 }

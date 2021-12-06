@@ -18,12 +18,6 @@ import io.trino.spi.connector.ConnectorSession;
 
 public interface PageFilter
 {
-    boolean isDeterministic();
-
-    InputChannels getInputChannels();
-
-    SelectedPositions filter(ConnectorSession session, Page page);
-
     static SelectedPositions positionsArrayToSelectedPositions(boolean[] selectedPositions, int size)
     {
         int selectedCount = 0;
@@ -48,4 +42,10 @@ public interface PageFilter
         }
         return SelectedPositions.positionsList(positions, 0, selectedCount);
     }
+
+    boolean isDeterministic();
+
+    InputChannels getInputChannels();
+
+    SelectedPositions filter(ConnectorSession session, Page page);
 }

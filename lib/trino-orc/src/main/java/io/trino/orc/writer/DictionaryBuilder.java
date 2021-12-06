@@ -71,6 +71,15 @@ public class DictionaryBuilder
         this.containsNullElement = false;
     }
 
+    private static int calculateMaxFill(int hashSize)
+    {
+        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
+        if (maxFill == hashSize) {
+            maxFill--;
+        }
+        return maxFill;
+    }
+
     public long getSizeInBytes()
     {
         return elementBlock.getSizeInBytes();
@@ -186,15 +195,6 @@ public class DictionaryBuilder
         for (int blockPosition = 1; blockPosition < elementBlock.getPositionCount(); blockPosition++) {
             blockPositionByHash.set(getHashPositionOfElement(elementBlock, blockPosition), blockPosition);
         }
-    }
-
-    private static int calculateMaxFill(int hashSize)
-    {
-        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
-        if (maxFill == hashSize) {
-            maxFill--;
-        }
-        return maxFill;
     }
 
     private long getMaskedHash(long rawHash)

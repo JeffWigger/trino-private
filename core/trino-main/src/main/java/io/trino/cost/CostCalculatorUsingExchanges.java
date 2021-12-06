@@ -73,6 +73,15 @@ public class CostCalculatorUsingExchanges
         this.taskCountEstimator = requireNonNull(taskCountEstimator, "taskCountEstimator is null");
     }
 
+    private static PlanCostEstimate addParallelSiblingsCost(PlanCostEstimate a, PlanCostEstimate b)
+    {
+        return new PlanCostEstimate(
+                a.getCpuCost() + b.getCpuCost(),
+                a.getMaxMemory() + b.getMaxMemory(),
+                a.getMaxMemoryWhenOutputting() + b.getMaxMemoryWhenOutputting(),
+                a.getNetworkCost() + b.getNetworkCost());
+    }
+
     @Override
     public PlanCostEstimate calculateCost(PlanNode node, StatsProvider stats, CostProvider sourcesCosts, Session session, TypeProvider types)
     {
@@ -363,14 +372,5 @@ public class CostCalculatorUsingExchanges
             return node.getSources().stream()
                     .map(sourcesCosts::getCost);
         }
-    }
-
-    private static PlanCostEstimate addParallelSiblingsCost(PlanCostEstimate a, PlanCostEstimate b)
-    {
-        return new PlanCostEstimate(
-                a.getCpuCost() + b.getCpuCost(),
-                a.getMaxMemory() + b.getMaxMemory(),
-                a.getMaxMemoryWhenOutputting() + b.getMaxMemoryWhenOutputting(),
-                a.getNetworkCost() + b.getNetworkCost());
     }
 }

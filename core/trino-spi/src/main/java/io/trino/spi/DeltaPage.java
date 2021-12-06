@@ -19,25 +19,43 @@ import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.DictionaryId;
 import org.openjdk.jol.info.ClassLayout;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static io.airlift.slice.SizeOf.sizeOf;
-import static io.trino.spi.block.DictionaryId.randomDictionaryId;
-import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public final class DeltaPage
-    extends Page
+        extends Page
 {
     public static final int INSTANCE_SIZE = ClassLayout.parseClass(DeltaPage.class).instanceSize();
-    private static final int DIFFERENCE_SIZE = INSTANCE_SIZE -  Page.INSTANCE_SIZE;
+    private static final int DIFFERENCE_SIZE = INSTANCE_SIZE - Page.INSTANCE_SIZE;
     private static final Block[] EMPTY_BLOCKS = new Block[0];
+    private final Block updateType;
+
+    public DeltaPage(int positionCount)
+    {
+        super(positionCount);
+        // TODO figure out what to best set here
+        this.updateType = new ByteArrayBlock(positionCount, Optional.empty(), new byte[positionCount]);
+    }
+
+    public DeltaPage(int positionCount, Block[] blocks, Block updateType)
+    {
+        this(true, positionCount, blocks, updateType);
+    }
+
+    public DeltaPage(Block[] blocks, Block updateType)
+    {
+        this(true, determinePositionCount(blocks), blocks, updateType);
+    }
+
+    private DeltaPage(boolean blocksCopyRequired, int positionCount, Block[] blocks, Block updateType)
+    {
+        super(blocksCopyRequired, positionCount, blocks);
+        this.updateType = updateType;
+    }
 
     /**
      * Visible to give trusted classes like {@link PageBuilder} access to a constructor that doesn't
@@ -46,30 +64,6 @@ public final class DeltaPage
     public static DeltaPage wrapBlocksWithoutCopy(int positionCount, Block[] blocks, Block updateType)
     {
         return new DeltaPage(false, positionCount, blocks, updateType);
-    }
-
-
-    private final Block updateType;
-
-
-
-    public DeltaPage(int positionCount)
-    {
-        super(positionCount);
-        // TODO figure out what to best set here
-        this.updateType = new ByteArrayBlock(positionCount, Optional.empty(),new byte[positionCount]);
-    }
-    public DeltaPage(int positionCount, Block[] blocks, Block updateType) {
-        this(true, positionCount, blocks, updateType);
-    }
-    public DeltaPage(Block[] blocks, Block updateType) {
-        this(true, determinePositionCount(blocks), blocks, updateType);
-    }
-    private DeltaPage(boolean blocksCopyRequired, int positionCount, Block[] blocks, Block updateType)
-    {
-        super(blocksCopyRequired, positionCount, blocks);
-        this.updateType = updateType;
-
     }
 
     public Block getUpdateType()
@@ -136,7 +130,7 @@ public final class DeltaPage
             throw new IllegalArgumentException("Block does not have same position count");
         }
         int channelCount = getChannelCount();
-        Block[] newBlocks = new Block[channelCount+1];
+        Block[] newBlocks = new Block[channelCount + 1];
         for (int i = 0; i < channelCount; i++) {
             newBlocks[i] = super.getBlock(i);
         }
@@ -157,7 +151,7 @@ public final class DeltaPage
 
         int channelCount = getChannelCount();
         for (int i = 0; i < channelCount; i++) {
-            Block block =super.getBlock(i);
+            Block block = super.getBlock(i);
             if (block instanceof DictionaryBlock) {
                 DictionaryBlock dictionaryBlock = (DictionaryBlock) block;
                 relatedDictionaryBlocks.computeIfAbsent(dictionaryBlock.getDictionarySourceId(), id -> new DictionaryBlockIndexes())
@@ -166,7 +160,6 @@ public final class DeltaPage
         }
         return relatedDictionaryBlocks;
     }
-
 
     /**
      * Returns a page that assures all data is in memory.
@@ -183,7 +176,7 @@ public final class DeltaPage
             Block loaded = super.getBlock(i).getLoadedBlock();
             if (loaded != super.getBlock(i)) {
                 // Transition to new block creation mode after the first newly loaded block is encountered
-                Block[] loadedBlocks = new Block[channelCount+1];
+                Block[] loadedBlocks = new Block[channelCount + 1];
                 for (int j = 0; j < channelCount; j++) {
                     loadedBlocks[j] = super.getBlock(j);
                 }
@@ -201,7 +194,7 @@ public final class DeltaPage
     @Override
     public DeltaPage getLoadedPage(int column)
     {
-        return wrapBlocksWithoutCopy(positionCount, new Block[]{super.getBlock(column).getLoadedBlock()}, updateType);
+        return wrapBlocksWithoutCopy(positionCount, new Block[] {super.getBlock(column).getLoadedBlock()}, updateType);
     }
 
     @Override
@@ -261,7 +254,7 @@ public final class DeltaPage
         int channelCount = getChannelCount();
         Block[] result = new Block[channelCount + 1];
         result[0] = column;
-        for (int i = 1; i < channelCount+1; i++) {
+        for (int i = 1; i < channelCount + 1; i++) {
             result[i] = super.getBlock(i);
         }
 

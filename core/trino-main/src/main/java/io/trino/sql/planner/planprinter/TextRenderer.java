@@ -52,6 +52,91 @@ public class TextRenderer
         this.level = level;
     }
 
+    private static Map<String, String> translateOperatorTypes(Set<String> operators)
+    {
+        if (operators.size() == 1) {
+            // don't display operator (plan node) name again
+            return ImmutableMap.of(getOnlyElement(operators), "");
+        }
+
+        if (operators.contains("LookupJoinOperator") && operators.contains("HashBuilderOperator")) {
+            // join plan node
+            return ImmutableMap.of(
+                    "LookupJoinOperator", "Left (probe) ",
+                    "HashBuilderOperator", "Right (build) ");
+        }
+
+        if (operators.contains("LookupJoinOperator") && operators.contains("DynamicFilterSourceOperator")) {
+            // join plan node
+            return ImmutableMap.of(
+                    "LookupJoinOperator", "Left (probe) ",
+                    "DynamicFilterSourceOperator", "Right (build) ");
+        }
+
+        return ImmutableMap.of();
+    }
+
+    private static boolean hasChildren(NodeRepresentation node, PlanRepresentation plan)
+    {
+        return node.getChildren().stream()
+                .map(plan::getNode)
+                .anyMatch(Optional::isPresent);
+    }
+
+    private static String formatAsLong(double value)
+    {
+        if (isFinite(value)) {
+            return format(Locale.US, "%d", Math.round(value));
+        }
+
+        return "?";
+    }
+
+    private static String formatAsCpuCost(double value)
+    {
+        return formatAsDataSize(value).replaceAll("B$", "");
+    }
+
+    private static String formatAsDataSize(double value)
+    {
+        if (isNaN(value)) {
+            return "?";
+        }
+        if (value == POSITIVE_INFINITY) {
+            return "+\u221E";
+        }
+        if (value == NEGATIVE_INFINITY) {
+            return "-\u221E";
+        }
+
+        return DataSize.succinctBytes(Math.round(value)).toString();
+    }
+
+    static String formatDouble(double value)
+    {
+        if (isFinite(value)) {
+            return format(Locale.US, "%.2f", value);
+        }
+
+        return "?";
+    }
+
+    static String formatPositions(long positions)
+    {
+        String noun = (positions == 1) ? "row" : "rows";
+        return positions + " " + noun;
+    }
+
+    static String indentString(int indent)
+    {
+        return "    ".repeat(indent);
+    }
+
+    private static String indentMultilineString(String string, String indent)
+    {
+        return string.replaceAll("(?m)^", indent);
+    }
+
     @Override
     public String render(PlanRepresentation plan)
     {
@@ -201,30 +286,6 @@ public class TextRenderer
         output.append(format("Size of partition: std.dev.: %s\n", formatDouble(stats.getPartitionRowsStdDev())));
     }
 
-    private static Map<String, String> translateOperatorTypes(Set<String> operators)
-    {
-        if (operators.size() == 1) {
-            // don't display operator (plan node) name again
-            return ImmutableMap.of(getOnlyElement(operators), "");
-        }
-
-        if (operators.contains("LookupJoinOperator") && operators.contains("HashBuilderOperator")) {
-            // join plan node
-            return ImmutableMap.of(
-                    "LookupJoinOperator", "Left (probe) ",
-                    "HashBuilderOperator", "Right (build) ");
-        }
-
-        if (operators.contains("LookupJoinOperator") && operators.contains("DynamicFilterSourceOperator")) {
-            // join plan node
-            return ImmutableMap.of(
-                    "LookupJoinOperator", "Left (probe) ",
-                    "DynamicFilterSourceOperator", "Right (build) ");
-        }
-
-        return ImmutableMap.of();
-    }
-
     private String printReorderJoinStatsAndCost(NodeRepresentation node)
     {
         if (verbose && node.getReorderJoinStatsAndCost().isPresent()) {
@@ -279,67 +340,6 @@ public class TextRenderer
         return output.toString();
     }
 
-    private static boolean hasChildren(NodeRepresentation node, PlanRepresentation plan)
-    {
-        return node.getChildren().stream()
-                .map(plan::getNode)
-                .anyMatch(Optional::isPresent);
-    }
-
-    private static String formatAsLong(double value)
-    {
-        if (isFinite(value)) {
-            return format(Locale.US, "%d", Math.round(value));
-        }
-
-        return "?";
-    }
-
-    private static String formatAsCpuCost(double value)
-    {
-        return formatAsDataSize(value).replaceAll("B$", "");
-    }
-
-    private static String formatAsDataSize(double value)
-    {
-        if (isNaN(value)) {
-            return "?";
-        }
-        if (value == POSITIVE_INFINITY) {
-            return "+\u221E";
-        }
-        if (value == NEGATIVE_INFINITY) {
-            return "-\u221E";
-        }
-
-        return DataSize.succinctBytes(Math.round(value)).toString();
-    }
-
-    static String formatDouble(double value)
-    {
-        if (isFinite(value)) {
-            return format(Locale.US, "%.2f", value);
-        }
-
-        return "?";
-    }
-
-    static String formatPositions(long positions)
-    {
-        String noun = (positions == 1) ? "row" : "rows";
-        return positions + " " + noun;
-    }
-
-    static String indentString(int indent)
-    {
-        return "    ".repeat(indent);
-    }
-
-    private static String indentMultilineString(String string, String indent)
-    {
-        return string.replaceAll("(?m)^", indent);
-    }
-
     private static class Indent
     {
         private static final String VERTICAL_LINE = "\u2502";
@@ -350,17 +350,24 @@ public class TextRenderer
         private final String nextLinesPrefix;
         private final boolean hasChildren;
 
+        private Indent(String firstLinePrefix, String nextLinesPrefix, boolean hasChildren)
+        {
+            this.firstLinePrefix = firstLinePrefix;
+            this.nextLinesPrefix = nextLinesPrefix;
+            this.hasChildren = hasChildren;
+        }
+
         public static Indent newInstance(int level, boolean hasChildren)
         {
             String indent = indentString(level);
             return new Indent(indent, indent, hasChildren);
         }
 
-        private Indent(String firstLinePrefix, String nextLinesPrefix, boolean hasChildren)
+        private static String pad(String text, int length)
         {
-            this.firstLinePrefix = firstLinePrefix;
-            this.nextLinesPrefix = nextLinesPrefix;
-            this.hasChildren = hasChildren;
+            checkArgument(text.length() <= length, "text is longer that length");
+
+            return text + " ".repeat(length - text.length());
         }
 
         public Indent forChild(boolean last, boolean hasChildren)
@@ -394,13 +401,6 @@ public class TextRenderer
             }
 
             return nextLinesPrefix + pad(indent, 4);
-        }
-
-        private static String pad(String text, int length)
-        {
-            checkArgument(text.length() <= length, "text is longer that length");
-
-            return text + " ".repeat(length - text.length());
         }
     }
 }

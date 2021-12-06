@@ -38,9 +38,8 @@ public class TypedKeyValueHeap
     private final Type keyType;
     private final Type valueType;
     private final int capacity;
-
-    private int positionCount;
     private final int[] heapIndex;
+    private int positionCount;
     private BlockBuilder keyBlockBuilder;
     private BlockBuilder valueBlockBuilder;
 
@@ -58,6 +57,16 @@ public class TypedKeyValueHeap
     public static Type getSerializedType(Type keyType, Type valueType)
     {
         return RowType.anonymous(ImmutableList.of(BIGINT, new ArrayType(keyType), new ArrayType(valueType)));
+    }
+
+    public static TypedKeyValueHeap deserialize(Block block, Type keyType, Type valueType, BlockPositionComparison comparison)
+    {
+        int capacity = toIntExact(BIGINT.getLong(block, 0));
+        Block keysBlock = new ArrayType(keyType).getObject(block, 1);
+        Block valuesBlock = new ArrayType(valueType).getObject(block, 2);
+        TypedKeyValueHeap heap = new TypedKeyValueHeap(comparison, keyType, valueType, capacity);
+        heap.addAll(keysBlock, valuesBlock);
+        return heap;
     }
 
     public int getCapacity()
@@ -93,16 +102,6 @@ public class TypedKeyValueHeap
         blockBuilder.closeEntry();
 
         out.closeEntry();
-    }
-
-    public static TypedKeyValueHeap deserialize(Block block, Type keyType, Type valueType, BlockPositionComparison comparison)
-    {
-        int capacity = toIntExact(BIGINT.getLong(block, 0));
-        Block keysBlock = new ArrayType(keyType).getObject(block, 1);
-        Block valuesBlock = new ArrayType(valueType).getObject(block, 2);
-        TypedKeyValueHeap heap = new TypedKeyValueHeap(comparison, keyType, valueType, capacity);
-        heap.addAll(keysBlock, valuesBlock);
-        return heap;
     }
 
     public void popAll(BlockBuilder resultBlockBuilder)

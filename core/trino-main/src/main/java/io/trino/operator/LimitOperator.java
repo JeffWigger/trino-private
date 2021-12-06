@@ -23,46 +23,9 @@ import static java.util.Objects.requireNonNull;
 public class LimitOperator
         implements Operator
 {
-    public static class LimitOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final long limit;
-        private boolean closed;
-
-        public LimitOperatorFactory(int operatorId, PlanNodeId planNodeId, long limit)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.limit = limit;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LimitOperator.class.getSimpleName());
-            return new LimitOperator(operatorContext, limit);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new LimitOperatorFactory(operatorId, planNodeId, limit);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private Page nextPage;
     private long remainingLimit;
-
     public LimitOperator(OperatorContext operatorContext, long limit)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -116,5 +79,41 @@ public class LimitOperator
         Page page = nextPage;
         nextPage = null;
         return page;
+    }
+
+    public static class LimitOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final long limit;
+        private boolean closed;
+
+        public LimitOperatorFactory(int operatorId, PlanNodeId planNodeId, long limit)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.limit = limit;
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LimitOperator.class.getSimpleName());
+            return new LimitOperator(operatorContext, limit);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new LimitOperatorFactory(operatorId, planNodeId, limit);
+        }
     }
 }

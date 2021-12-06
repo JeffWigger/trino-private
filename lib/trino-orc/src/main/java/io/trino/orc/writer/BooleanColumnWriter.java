@@ -72,6 +72,17 @@ public class BooleanColumnWriter
         this.presentStream = new PresentOutputStream(compression, bufferSize);
     }
 
+    private static List<Integer> createBooleanColumnPositionList(
+            boolean compressed,
+            BooleanStreamCheckpoint dataCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(dataCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public Map<OrcColumnId, ColumnEncoding> getColumnEncodings()
     {
@@ -159,17 +170,6 @@ public class BooleanColumnWriter
     public List<StreamDataOutput> getBloomFilters(CompressedMetadataWriter metadataWriter)
     {
         return ImmutableList.of();
-    }
-
-    private static List<Integer> createBooleanColumnPositionList(
-            boolean compressed,
-            BooleanStreamCheckpoint dataCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(dataCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

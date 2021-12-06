@@ -21,24 +21,22 @@ import static java.util.Objects.requireNonNull;
 
 public class ParquetWriterOptions
 {
+    public static final int DEFAULT_BATCH_SIZE = 10_000;
     private static final DataSize DEFAULT_MAX_ROW_GROUP_SIZE = DataSize.ofBytes(ParquetWriter.DEFAULT_BLOCK_SIZE);
     private static final DataSize DEFAULT_MAX_PAGE_SIZE = DataSize.ofBytes(ParquetWriter.DEFAULT_PAGE_SIZE);
-    public static final int DEFAULT_BATCH_SIZE = 10_000;
-
-    public static ParquetWriterOptions.Builder builder()
-    {
-        return new ParquetWriterOptions.Builder();
-    }
-
     private final int maxRowGroupSize;
     private final int maxPageSize;
     private final int batchSize;
-
     private ParquetWriterOptions(DataSize maxBlockSize, DataSize maxPageSize, int batchSize)
     {
         this.maxRowGroupSize = toIntExact(requireNonNull(maxBlockSize, "maxBlockSize is null").toBytes());
         this.maxPageSize = toIntExact(requireNonNull(maxPageSize, "maxPageSize is null").toBytes());
         this.batchSize = batchSize;
+    }
+
+    public static ParquetWriterOptions.Builder builder()
+    {
+        return new ParquetWriterOptions.Builder();
     }
 
     public long getMaxRowGroupSize()

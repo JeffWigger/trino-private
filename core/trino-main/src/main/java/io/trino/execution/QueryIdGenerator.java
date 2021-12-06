@@ -40,16 +40,9 @@ public class QueryIdGenerator
             'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r',
             's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
             '2', '3', '4', '5', '6', '7', '8', '9'};
-
-    static {
-        checkState(BASE_32.length == 32);
-        checkState(ImmutableSet.copyOf(Chars.asList(BASE_32)).size() == 32);
-    }
-
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(UTC);
     private static final long BASE_SYSTEM_TIME_MILLIS = System.currentTimeMillis();
     private static final long BASE_NANO_TIME = System.nanoTime();
-
     private final String coordinatorId;
     @GuardedBy("this")
     private long lastTimeInDays;
@@ -59,7 +52,6 @@ public class QueryIdGenerator
     private String lastTimestamp;
     @GuardedBy("this")
     private int counter;
-
     public QueryIdGenerator()
     {
         StringBuilder coordinatorId = new StringBuilder(5);
@@ -67,6 +59,11 @@ public class QueryIdGenerator
             coordinatorId.append(BASE_32[ThreadLocalRandom.current().nextInt(32)]);
         }
         this.coordinatorId = coordinatorId.toString();
+    }
+
+    private static String formatEpochMilli(long milli)
+    {
+        return TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(milli));
     }
 
     public String getCoordinatorId()
@@ -121,15 +118,15 @@ public class QueryIdGenerator
         return new QueryId(format("%s_%05d_%s", lastTimestamp, index, coordinatorId));
     }
 
-    private static String formatEpochMilli(long milli)
-    {
-        return TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(milli));
-    }
-
     @VisibleForTesting
     protected long nowInMillis()
     {
         // avoid problems with the clock moving backwards
         return BASE_SYSTEM_TIME_MILLIS + NANOSECONDS.toMillis(System.nanoTime() - BASE_NANO_TIME);
+    }
+
+    static {
+        checkState(BASE_32.length == 32);
+        checkState(ImmutableSet.copyOf(Chars.asList(BASE_32)).size() == 32);
     }
 }

@@ -55,6 +55,26 @@ public class Identity
         this.onDestroy = requireNonNull(onDestroy, "onDestroy is null");
     }
 
+    public static Identity ofUser(String user)
+    {
+        return new Builder(user).build();
+    }
+
+    public static Builder forUser(String user)
+    {
+        return new Builder(user);
+    }
+
+    public static Builder from(Identity identity)
+    {
+        return new Builder(identity.getUser())
+                .withGroups(identity.getGroups())
+                .withPrincipal(identity.getPrincipal())
+                .withEnabledRoles(identity.enabledRoles)
+                .withConnectorRoles(identity.getCatalogRoles())
+                .withExtraCredentials(identity.getExtraCredentials());
+    }
+
     public String getUser()
     {
         return user;
@@ -166,26 +186,6 @@ public class Identity
         }
         sb.append('}');
         return sb.toString();
-    }
-
-    public static Identity ofUser(String user)
-    {
-        return new Builder(user).build();
-    }
-
-    public static Builder forUser(String user)
-    {
-        return new Builder(user);
-    }
-
-    public static Builder from(Identity identity)
-    {
-        return new Builder(identity.getUser())
-                .withGroups(identity.getGroups())
-                .withPrincipal(identity.getPrincipal())
-                .withEnabledRoles(identity.enabledRoles)
-                .withConnectorRoles(identity.getCatalogRoles())
-                .withExtraCredentials(identity.getExtraCredentials());
     }
 
     public static class Builder

@@ -162,6 +162,17 @@ public final class JsonExtract
         return jsonExtractor;
     }
 
+    private static int tryParseInt(String fieldName, int defaultValue)
+    {
+        int index = defaultValue;
+        try {
+            index = Integer.parseInt(fieldName);
+        }
+        catch (NumberFormatException ignored) {
+        }
+        return index;
+    }
+
     public interface JsonExtractor<T>
     {
         /**
@@ -347,16 +358,5 @@ public final class JsonExtract
 
             return 0L;
         }
-    }
-
-    private static int tryParseInt(String fieldName, int defaultValue)
-    {
-        int index = defaultValue;
-        try {
-            index = Integer.parseInt(fieldName);
-        }
-        catch (NumberFormatException ignored) {
-        }
-        return index;
     }
 }

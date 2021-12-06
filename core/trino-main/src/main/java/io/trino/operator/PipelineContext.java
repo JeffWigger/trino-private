@@ -118,6 +118,46 @@ public class PipelineContext
         pipelineMemoryContext.initializeLocalMemoryContexts(ExchangeOperator.class.getSimpleName());
     }
 
+    private static PipelineStatus getPipelineStatus(Iterator<DriverContext> driverContextsIterator, int totalSplits, int completedDrivers, boolean partitioned)
+    {
+        int runningDrivers = 0;
+        int blockedDrivers = 0;
+        // When a split for a partitioned pipeline is delivered to a worker,
+        // conceptually, the worker would have an additional driver.
+        // The queuedDrivers field in PipelineStatus is supposed to represent this.
+        // However, due to implementation details of SqlTaskExecution, it may defer instantiation of drivers.
+        //
+        // physically queued drivers: actual number of instantiated drivers whose execution hasn't started
+        // conceptually queued drivers: includes assigned splits that haven't been turned into a driver
+        int physicallyQueuedDrivers = 0;
+        while (driverContextsIterator.hasNext()) {
+            DriverContext driverContext = driverContextsIterator.next();
+            if (!driverContext.isExecutionStarted()) {
+                physicallyQueuedDrivers++;
+            }
+            else if (driverContext.isFullyBlocked()) {
+                blockedDrivers++;
+            }
+            else {
+                runningDrivers++;
+            }
+        }
+
+        int queuedDrivers;
+        if (partitioned) {
+            queuedDrivers = totalSplits - runningDrivers - blockedDrivers - completedDrivers;
+            if (queuedDrivers < 0) {
+                // It is possible to observe negative here because inputs to the above expression was not taken in a snapshot.
+                queuedDrivers = 0;
+            }
+        }
+        else {
+            queuedDrivers = physicallyQueuedDrivers;
+        }
+
+        return new PipelineStatus(queuedDrivers, runningDrivers, blockedDrivers, partitioned ? queuedDrivers : 0, partitioned ? runningDrivers : 0);
+    }
+
     public TaskContext getTaskContext()
     {
         return taskContext;
@@ -493,45 +533,5 @@ public class PipelineContext
     public MemoryTrackingContext getPipelineMemoryContext()
     {
         return pipelineMemoryContext;
-    }
-
-    private static PipelineStatus getPipelineStatus(Iterator<DriverContext> driverContextsIterator, int totalSplits, int completedDrivers, boolean partitioned)
-    {
-        int runningDrivers = 0;
-        int blockedDrivers = 0;
-        // When a split for a partitioned pipeline is delivered to a worker,
-        // conceptually, the worker would have an additional driver.
-        // The queuedDrivers field in PipelineStatus is supposed to represent this.
-        // However, due to implementation details of SqlTaskExecution, it may defer instantiation of drivers.
-        //
-        // physically queued drivers: actual number of instantiated drivers whose execution hasn't started
-        // conceptually queued drivers: includes assigned splits that haven't been turned into a driver
-        int physicallyQueuedDrivers = 0;
-        while (driverContextsIterator.hasNext()) {
-            DriverContext driverContext = driverContextsIterator.next();
-            if (!driverContext.isExecutionStarted()) {
-                physicallyQueuedDrivers++;
-            }
-            else if (driverContext.isFullyBlocked()) {
-                blockedDrivers++;
-            }
-            else {
-                runningDrivers++;
-            }
-        }
-
-        int queuedDrivers;
-        if (partitioned) {
-            queuedDrivers = totalSplits - runningDrivers - blockedDrivers - completedDrivers;
-            if (queuedDrivers < 0) {
-                // It is possible to observe negative here because inputs to the above expression was not taken in a snapshot.
-                queuedDrivers = 0;
-            }
-        }
-        else {
-            queuedDrivers = physicallyQueuedDrivers;
-        }
-
-        return new PipelineStatus(queuedDrivers, runningDrivers, blockedDrivers, partitioned ? queuedDrivers : 0, partitioned ? runningDrivers : 0);
     }
 }

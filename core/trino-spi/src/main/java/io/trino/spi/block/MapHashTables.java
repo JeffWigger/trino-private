@@ -49,6 +49,13 @@ public final class MapHashTables
         this.hashTables = hashTables.orElse(null);
     }
 
+    // This function reduces the 64 bit hashcode to [0, hashTableSize) uniformly. It first reduces the hashcode to 32 bit
+    // integer x then normalize it to x / 2^32 * hashSize to reduce the range of x from [0, 2^32) to [0, hashTableSize)
+    static int computePosition(long hashcode, int hashTableSize)
+    {
+        return (int) ((Integer.toUnsignedLong(Long.hashCode(hashcode)) * hashTableSize) >> 32);
+    }
+
     public long getRetainedSizeInBytes()
     {
         return INSTANCE_SIZE + sizeOf(hashTables);
@@ -220,12 +227,5 @@ public final class MapHashTables
         }
 
         return computePosition(hashCode, hashTableSize);
-    }
-
-    // This function reduces the 64 bit hashcode to [0, hashTableSize) uniformly. It first reduces the hashcode to 32 bit
-    // integer x then normalize it to x / 2^32 * hashSize to reduce the range of x from [0, 2^32) to [0, hashTableSize)
-    static int computePosition(long hashcode, int hashTableSize)
-    {
-        return (int) ((Integer.toUnsignedLong(Long.hashCode(hashcode)) * hashTableSize) >> 32);
     }
 }

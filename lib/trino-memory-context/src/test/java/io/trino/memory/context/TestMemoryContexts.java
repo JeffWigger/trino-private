@@ -167,8 +167,8 @@ public class TestMemoryContexts
     private static class TestMemoryReservationHandler
             implements MemoryReservationHandler
     {
-        private long reservation;
         private final long maxMemory;
+        private long reservation;
         private SettableFuture<Void> future;
 
         public TestMemoryReservationHandler(long maxMemory)

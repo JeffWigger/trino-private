@@ -38,9 +38,8 @@ public class LongArrayBlockBuilder
 
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
-    private boolean initialized;
     private final int initialEntryCount;
-
+    private boolean initialized;
     private int positionCount;
     private boolean hasNullValue;
     private boolean hasNonNullValue;
@@ -349,7 +348,8 @@ public class LongArrayBlockBuilder
     }
 
     @Override
-    public UpdatableBlock makeUpdatable(){
+    public UpdatableBlock makeUpdatable()
+    {
         // (@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, long[] values)
         return new UpdatableLongArrayBlock(blockBuilderStatus, positionCount, valueIsNull, values);
     }

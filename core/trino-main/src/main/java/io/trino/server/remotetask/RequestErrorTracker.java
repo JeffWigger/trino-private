@@ -69,6 +69,33 @@ class RequestErrorTracker
         this.jobDescription = requireNonNull(jobDescription, "jobDescription is null");
     }
 
+    @FormatMethod
+    @SuppressWarnings("FormatStringAnnotation") // we manipulate the format string and there's no way to make Error Prone accept the result
+    static void logError(Throwable t, String format, Object... args)
+    {
+        if (isExpectedError(t)) {
+            log.error(format + ": %s", ObjectArrays.concat(args, t));
+        }
+        else {
+            log.error(t, format, args);
+        }
+    }
+
+    private static boolean isExpectedError(Throwable t)
+    {
+        while (t != null) {
+            if ((t instanceof SocketException) ||
+                    (t instanceof SocketTimeoutException) ||
+                    (t instanceof EOFException) ||
+                    (t instanceof TimeoutException) ||
+                    (t instanceof ServiceUnavailableException)) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
+    }
+
     public ListenableFuture<Void> acquireRequestPermit()
     {
         long delayNanos = backoff.getBackoffDelayNanos();
@@ -137,32 +164,5 @@ class RequestErrorTracker
             errorsSinceLastSuccess.forEach(exception::addSuppressed);
             throw exception;
         }
-    }
-
-    @FormatMethod
-    @SuppressWarnings("FormatStringAnnotation") // we manipulate the format string and there's no way to make Error Prone accept the result
-    static void logError(Throwable t, String format, Object... args)
-    {
-        if (isExpectedError(t)) {
-            log.error(format + ": %s", ObjectArrays.concat(args, t));
-        }
-        else {
-            log.error(t, format, args);
-        }
-    }
-
-    private static boolean isExpectedError(Throwable t)
-    {
-        while (t != null) {
-            if ((t instanceof SocketException) ||
-                    (t instanceof SocketTimeoutException) ||
-                    (t instanceof EOFException) ||
-                    (t instanceof TimeoutException) ||
-                    (t instanceof ServiceUnavailableException)) {
-                return true;
-            }
-            t = t.getCause();
-        }
-        return false;
     }
 }

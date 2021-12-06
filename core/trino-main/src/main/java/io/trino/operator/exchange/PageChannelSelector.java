@@ -35,15 +35,15 @@ public class PageChannelSelector
         checkArgument(IntStream.of(channels).allMatch(channel -> channel >= 0), "channels must be positive");
     }
 
+    public static Function<Page, Page> identitySelection()
+    {
+        return GET_LOADED_PAGE;
+    }
+
     @Override
     public Page apply(Page page)
     {
         // Ensure the channels that are emitted are fully loaded and in the correct order
         return requireNonNull(page, "page is null").getLoadedPage(channels);
-    }
-
-    public static Function<Page, Page> identitySelection()
-    {
-        return GET_LOADED_PAGE;
     }
 }

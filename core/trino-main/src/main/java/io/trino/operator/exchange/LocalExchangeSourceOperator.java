@@ -28,54 +28,9 @@ import static java.util.Objects.requireNonNull;
 public class LocalExchangeSourceOperator
         implements Operator
 {
-    public static class LocalExchangeSourceOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final LocalExchangeFactory localExchangeFactory;
-        private boolean closed;
-
-        public LocalExchangeSourceOperatorFactory(int operatorId, PlanNodeId planNodeId, LocalExchangeFactory localExchangeFactory)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.localExchangeFactory = requireNonNull(localExchangeFactory, "localExchangeFactory is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-
-            LocalExchange inMemoryExchange = localExchangeFactory.getLocalExchange(driverContext.getLifespan());
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LocalExchangeSourceOperator.class.getSimpleName());
-            return new LocalExchangeSourceOperator(operatorContext, inMemoryExchange.getNextSource());
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            throw new UnsupportedOperationException("Source operator factories cannot be duplicated");
-        }
-
-        public LocalExchangeFactory getLocalExchangeFactory()
-        {
-            return localExchangeFactory;
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalExchangeSource source;
     private ListenableFuture<Void> isBlocked = NOT_BLOCKED;
-
     public LocalExchangeSourceOperator(OperatorContext operatorContext, LocalExchangeSource source)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -139,5 +94,49 @@ public class LocalExchangeSourceOperator
     public void close()
     {
         source.close();
+    }
+
+    public static class LocalExchangeSourceOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final LocalExchangeFactory localExchangeFactory;
+        private boolean closed;
+
+        public LocalExchangeSourceOperatorFactory(int operatorId, PlanNodeId planNodeId, LocalExchangeFactory localExchangeFactory)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.localExchangeFactory = requireNonNull(localExchangeFactory, "localExchangeFactory is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+
+            LocalExchange inMemoryExchange = localExchangeFactory.getLocalExchange(driverContext.getLifespan());
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LocalExchangeSourceOperator.class.getSimpleName());
+            return new LocalExchangeSourceOperator(operatorContext, inMemoryExchange.getNextSource());
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            throw new UnsupportedOperationException("Source operator factories cannot be duplicated");
+        }
+
+        public LocalExchangeFactory getLocalExchangeFactory()
+        {
+            return localExchangeFactory;
+        }
     }
 }

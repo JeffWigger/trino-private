@@ -133,9 +133,8 @@ public class LongDecimalWithOverflowStateFactory
     public static class SingleLongDecimalWithOverflowState
             implements LongDecimalWithOverflowState
     {
-        private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleLongDecimalWithOverflowState.class).instanceSize();
         public static final int SIZE = ClassLayout.parseClass(Slice.class).instanceSize() + UNSCALED_DECIMAL_128_SLICE_LENGTH;
-
+        private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleLongDecimalWithOverflowState.class).instanceSize();
         protected Slice unscaledDecimal;
         protected long overflow;
 

@@ -57,6 +57,11 @@ class PluginClassLoader
         this.spiResources = ImmutableList.copyOf(spiResources);
     }
 
+    private static String classNameToResource(String className)
+    {
+        return className.replace('.', '/');
+    }
+
     public PluginClassLoader duplicate()
     {
         return new PluginClassLoader(ImmutableList.copyOf(getURLs()), spiClassLoader, spiPackages, spiResources);
@@ -133,10 +138,5 @@ class PluginClassLoader
     {
         // todo maybe make this more precise and only match base package
         return spiResources.stream().anyMatch(name::startsWith);
-    }
-
-    private static String classNameToResource(String className)
-    {
-        return className.replace('.', '/');
     }
 }

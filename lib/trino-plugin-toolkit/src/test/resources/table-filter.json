@@ -1,18 +1,18 @@
 {
   "schemas": [
-      {
-          "schema": "restricted",
-          "owner": false
-      },
-      {
-          "user": "admin",
-          "owner": true
-      },
-      {
-        "user": "alice",
-        "schema": "aliceschema",
-        "owner": true
-      }
+    {
+      "schema": "restricted",
+      "owner": false
+    },
+    {
+      "user": "admin",
+      "owner": true
+    },
+    {
+      "user": "alice",
+      "schema": "aliceschema",
+      "owner": true
+    }
   ],
   "tables": [
     {
@@ -22,24 +22,42 @@
     {
       "user": "admin",
       "schema": ".*",
-      "privileges": ["SELECT", "INSERT", "DELETE", "OWNERSHIP"]
+      "privileges": [
+        "SELECT",
+        "INSERT",
+        "DELETE",
+        "OWNERSHIP"
+      ]
     },
     {
       "user": "alice",
       "schema": "aliceschema",
-      "privileges": ["SELECT", "INSERT", "DELETE", "OWNERSHIP"]
+      "privileges": [
+        "SELECT",
+        "INSERT",
+        "DELETE",
+        "OWNERSHIP"
+      ]
     },
     {
       "user": "bob",
       "schema": "bobschema",
       "table": "bob.*",
-      "privileges": ["SELECT", "INSERT", "DELETE", "GRANT_SELECT"]
+      "privileges": [
+        "SELECT",
+        "INSERT",
+        "DELETE",
+        "GRANT_SELECT"
+      ]
     },
     {
       "user": "bob",
       "schema": "aliceschema",
       "table": "bobtable",
-      "privileges": ["SELECT", "INSERT"]
+      "privileges": [
+        "SELECT",
+        "INSERT"
+      ]
     }
   ]
 }

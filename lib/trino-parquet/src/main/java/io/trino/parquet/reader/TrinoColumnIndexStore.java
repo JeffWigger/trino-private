@@ -98,6 +98,29 @@ public class TrinoColumnIndexStore
         this.offsetIndexReferences = offsetIndexBuilder.build();
     }
 
+    private static <T> Map<ColumnPath, T> loadIndexes(
+            ParquetDataSource dataSource,
+            List<ColumnIndexMetadata> indexMetadata,
+            BiFunction<Slice, ColumnIndexMetadata, T> deserializer)
+    {
+        // Merge multiple small reads of the file for indexes stored close to each other
+        ListMultimap<ColumnPath, DiskRange> ranges = ArrayListMultimap.create(indexMetadata.size(), 1);
+        for (ColumnIndexMetadata column : indexMetadata) {
+            ranges.put(column.getPath(), column.getDiskRange());
+        }
+
+        Multimap<ColumnPath, ChunkReader> chunkReaders = dataSource.planRead(ranges);
+        try {
+            return indexMetadata.stream()
+                    .collect(toImmutableMap(
+                            ColumnIndexMetadata::getPath,
+                            column -> deserializer.apply(getOnlyElement(chunkReaders.get(column.getPath())).read(), column)));
+        }
+        finally {
+            chunkReaders.values().forEach(ChunkReader::free);
+        }
+    }
+
     @Override
     public ColumnIndex getColumnIndex(ColumnPath column)
     {
@@ -130,29 +153,6 @@ public class TrinoColumnIndexStore
         }
 
         return offsetIndexStore.get(column);
-    }
-
-    private static <T> Map<ColumnPath, T> loadIndexes(
-            ParquetDataSource dataSource,
-            List<ColumnIndexMetadata> indexMetadata,
-            BiFunction<Slice, ColumnIndexMetadata, T> deserializer)
-    {
-        // Merge multiple small reads of the file for indexes stored close to each other
-        ListMultimap<ColumnPath, DiskRange> ranges = ArrayListMultimap.create(indexMetadata.size(), 1);
-        for (ColumnIndexMetadata column : indexMetadata) {
-            ranges.put(column.getPath(), column.getDiskRange());
-        }
-
-        Multimap<ColumnPath, ChunkReader> chunkReaders = dataSource.planRead(ranges);
-        try {
-            return indexMetadata.stream()
-                    .collect(toImmutableMap(
-                            ColumnIndexMetadata::getPath,
-                            column -> deserializer.apply(getOnlyElement(chunkReaders.get(column.getPath())).read(), column)));
-        }
-        finally {
-            chunkReaders.values().forEach(ChunkReader::free);
-        }
     }
 
     private static class ColumnIndexMetadata

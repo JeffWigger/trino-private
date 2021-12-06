@@ -36,12 +36,11 @@ public class LongArrayBlock
 
     private final int arrayOffset;
     private final int positionCount;
+    private final long sizeInBytes;
+    private final long retainedSizeInBytes;
     @Nullable
     public boolean[] valueIsNull;
     public long[] values;
-
-    private final long sizeInBytes;
-    private final long retainedSizeInBytes;
 
     public LongArrayBlock(int positionCount, Optional<boolean[]> valueIsNull, long[] values)
     {
@@ -191,9 +190,10 @@ public class LongArrayBlock
     @Override
     public UpdatableBlock makeUpdatable()
     {
-        if (valueIsNull == null){
+        if (valueIsNull == null) {
             return new UpdatableLongArrayBlock(null, positionCount, new boolean[positionCount], compactArray(values, arrayOffset, positionCount));
-        }else {
+        }
+        else {
             return new UpdatableLongArrayBlock(null, positionCount, compactArray(valueIsNull, arrayOffset, positionCount), compactArray(values, arrayOffset, positionCount));
         }
     }

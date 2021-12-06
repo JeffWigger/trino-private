@@ -61,6 +61,19 @@ public class AggregateWindowFunction
         this.accumulatorHasRemoveInput = accumulatorFactory.hasRemoveInput();
     }
 
+    public static WindowFunctionSupplier supplier(Signature signature, InternalAggregationFunction function)
+    {
+        requireNonNull(function, "function is null");
+        return new AbstractWindowFunctionSupplier(signature, null, function.getLambdaInterfaces())
+        {
+            @Override
+            protected WindowFunction newWindowFunction(List<Integer> inputs, boolean ignoreNulls, List<LambdaProvider> lambdaProviders)
+            {
+                return new AggregateWindowFunction(function, inputs, lambdaProviders);
+            }
+        };
+    }
+
     @Override
     public void reset(WindowIndex windowIndex)
     {
@@ -144,18 +157,5 @@ public class AggregateWindowFunction
             currentStart = -1;
             currentEnd = -1;
         }
-    }
-
-    public static WindowFunctionSupplier supplier(Signature signature, InternalAggregationFunction function)
-    {
-        requireNonNull(function, "function is null");
-        return new AbstractWindowFunctionSupplier(signature, null, function.getLambdaInterfaces())
-        {
-            @Override
-            protected WindowFunction newWindowFunction(List<Integer> inputs, boolean ignoreNulls, List<LambdaProvider> lambdaProviders)
-            {
-                return new AggregateWindowFunction(function, inputs, lambdaProviders);
-            }
-        };
     }
 }

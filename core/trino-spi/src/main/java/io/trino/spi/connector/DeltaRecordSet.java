@@ -18,7 +18,7 @@ import io.trino.spi.type.Type;
 import java.util.List;
 
 public interface DeltaRecordSet
-    extends RecordSet
+        extends RecordSet
 {
     @Override
     List<Type> getColumnTypes();

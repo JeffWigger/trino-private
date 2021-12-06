@@ -33,6 +33,45 @@ import static org.testng.Assert.assertTrue;
 
 public class TestPage
 {
+    private static Slice[] createExpectedValues(int positionCount)
+    {
+        Slice[] expectedValues = new Slice[positionCount];
+        for (int position = 0; position < positionCount; position++) {
+            expectedValues[position] = createExpectedValue(position);
+        }
+        return expectedValues;
+    }
+
+    private static Slice createExpectedValue(int length)
+    {
+        DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(16);
+        for (int index = 0; index < length; index++) {
+            dynamicSliceOutput.writeByte(length * (index + 1));
+        }
+        return dynamicSliceOutput.slice();
+    }
+
+    private static int[] getDictionaryIds(int positionCount, int dictionarySize)
+    {
+        checkArgument(positionCount > dictionarySize);
+        int[] ids = new int[positionCount];
+        for (int i = 0; i < positionCount; i++) {
+            ids[i] = i % dictionarySize;
+        }
+        return ids;
+    }
+
+    private static Block createSlicesBlock(Slice[] values)
+    {
+        BlockBuilder builder = VARBINARY.createBlockBuilder(null, 100);
+
+        for (Slice value : values) {
+            verifyNotNull(value);
+            VARBINARY.writeSlice(builder, value);
+        }
+        return builder.build();
+    }
+
     @Test
     public void testGetRegion()
     {
@@ -132,44 +171,5 @@ public class TestPage
             assertEquals(page.getBlock(i).getLong(3, 0), 2);
             assertEquals(page.getBlock(i).getLong(4, 0), 5);
         }
-    }
-
-    private static Slice[] createExpectedValues(int positionCount)
-    {
-        Slice[] expectedValues = new Slice[positionCount];
-        for (int position = 0; position < positionCount; position++) {
-            expectedValues[position] = createExpectedValue(position);
-        }
-        return expectedValues;
-    }
-
-    private static Slice createExpectedValue(int length)
-    {
-        DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(16);
-        for (int index = 0; index < length; index++) {
-            dynamicSliceOutput.writeByte(length * (index + 1));
-        }
-        return dynamicSliceOutput.slice();
-    }
-
-    private static int[] getDictionaryIds(int positionCount, int dictionarySize)
-    {
-        checkArgument(positionCount > dictionarySize);
-        int[] ids = new int[positionCount];
-        for (int i = 0; i < positionCount; i++) {
-            ids[i] = i % dictionarySize;
-        }
-        return ids;
-    }
-
-    private static Block createSlicesBlock(Slice[] values)
-    {
-        BlockBuilder builder = VARBINARY.createBlockBuilder(null, 100);
-
-        for (Slice value : values) {
-            verifyNotNull(value);
-            VARBINARY.writeSlice(builder, value);
-        }
-        return builder.build();
     }
 }

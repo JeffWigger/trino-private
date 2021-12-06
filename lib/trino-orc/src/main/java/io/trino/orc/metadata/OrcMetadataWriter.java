@@ -51,11 +51,10 @@ public class OrcMetadataWriter
 {
     // see https://github.com/trinodb/orc-protobuf/blob/master/src/main/protobuf/orc_proto.proto
     public static final int TRINO_WRITER_ID = 4;
-    // in order to change this value, the master Apache ORC proto file must be updated
-    private static final int TRINO_WRITER_VERSION = 6;
-
     // see https://github.com/trinodb/orc-protobuf/blob/master/src/main/protobuf/orc_proto.proto
     public static final int PRESTO_WRITER_ID = 2;
+    // in order to change this value, the master Apache ORC proto file must be updated
+    private static final int TRINO_WRITER_VERSION = 6;
     // in order to change this value, the master Apache ORC proto file must be updated
     private static final int PRESTO_WRITER_VERSION = 6;
 
@@ -71,56 +70,6 @@ public class OrcMetadataWriter
         this.writerIdentification = requireNonNull(writerIdentification, "writerIdentification is null");
     }
 
-    @Override
-    public List<Integer> getOrcMetadataVersion()
-    {
-        return ORC_METADATA_VERSION;
-    }
-
-    @Override
-    public int writePostscript(SliceOutput output, int footerLength, int metadataLength, CompressionKind compression, int compressionBlockSize)
-            throws IOException
-    {
-        OrcProto.PostScript postScriptProtobuf = OrcProto.PostScript.newBuilder()
-                .addAllVersion(ORC_METADATA_VERSION)
-                .setFooterLength(footerLength)
-                .setMetadataLength(metadataLength)
-                .setCompression(toCompression(compression))
-                .setCompressionBlockSize(compressionBlockSize)
-                .setWriterVersion(getOrcWriterVersion())
-                .setMagic(MAGIC.toStringUtf8())
-                .build();
-
-        return writeProtobufObject(output, postScriptProtobuf);
-    }
-
-    private int getOrcWriterVersion()
-    {
-        switch (writerIdentification) {
-            case LEGACY_HIVE_COMPATIBLE:
-                return HIVE_LEGACY_WRITER_VERSION;
-            case PRESTO:
-                return PRESTO_WRITER_VERSION;
-            case TRINO:
-                return TRINO_WRITER_VERSION;
-        }
-        throw new IllegalStateException("Unexpected value: " + writerIdentification);
-    }
-
-    @Override
-    public int writeMetadata(SliceOutput output, Metadata metadata)
-            throws IOException
-    {
-        OrcProto.Metadata metadataProtobuf = OrcProto.Metadata.newBuilder()
-                .addAllStripeStats(metadata.getStripeStatsList().stream()
-                        .map(Optional::get)
-                        .map(OrcMetadataWriter::toStripeStatistics)
-                        .collect(toList()))
-                .build();
-
-        return writeProtobufObject(output, metadataProtobuf);
-    }
-
     private static OrcProto.StripeStatistics toStripeStatistics(StripeStatistics stripeStatistics)
     {
         return OrcProto.StripeStatistics.newBuilder()
@@ -128,48 +77,6 @@ public class OrcMetadataWriter
                         .map(OrcMetadataWriter::toColumnStatistics)
                         .collect(toList()))
                 .build();
-    }
-
-    @Override
-    public int writeFooter(SliceOutput output, Footer footer)
-            throws IOException
-    {
-        OrcProto.Footer.Builder builder = OrcProto.Footer.newBuilder()
-                .setNumberOfRows(footer.getNumberOfRows())
-                .setRowIndexStride(footer.getRowsInRowGroup().orElse(0))
-                .addAllStripes(footer.getStripes().stream()
-                        .map(OrcMetadataWriter::toStripeInformation)
-                        .collect(toList()))
-                .addAllTypes(footer.getTypes().stream()
-                        .map(OrcMetadataWriter::toType)
-                        .collect(toList()))
-                .addAllStatistics(footer.getFileStats().map(ColumnMetadata::stream).orElseGet(java.util.stream.Stream::empty)
-                        .map(OrcMetadataWriter::toColumnStatistics)
-                        .collect(toList()))
-                .addAllMetadata(footer.getUserMetadata().entrySet().stream()
-                        .map(OrcMetadataWriter::toUserMetadata)
-                        .collect(toList()));
-
-        setWriter(builder);
-
-        return writeProtobufObject(output, builder.build());
-    }
-
-    private void setWriter(OrcProto.Footer.Builder builder)
-    {
-        switch (writerIdentification) {
-            case LEGACY_HIVE_COMPATIBLE:
-                return;
-
-            case PRESTO:
-                builder.setWriter(PRESTO_WRITER_ID);
-                return;
-
-            case TRINO:
-                builder.setWriter(TRINO_WRITER_ID);
-                return;
-        }
-        throw new IllegalStateException("Unexpected value: " + writerIdentification);
     }
 
     private static OrcProto.StripeInformation toStripeInformation(StripeInformation stripe)
@@ -341,23 +248,6 @@ public class OrcMetadataWriter
                 .build();
     }
 
-    @Override
-    public int writeStripeFooter(SliceOutput output, StripeFooter footer)
-            throws IOException
-    {
-        OrcProto.StripeFooter footerProtobuf = OrcProto.StripeFooter.newBuilder()
-                .addAllStreams(footer.getStreams().stream()
-                        .map(OrcMetadataWriter::toStream)
-                        .collect(toList()))
-                .addAllColumns(footer.getColumnEncodings().stream()
-                        .map(OrcMetadataWriter::toColumnEncoding)
-                        .collect(toList()))
-                .setWriterTimezone(footer.getTimeZone().getId())
-                .build();
-
-        return writeProtobufObject(output, footerProtobuf);
-    }
-
     private static OrcProto.Stream toStream(Stream stream)
     {
         return OrcProto.Stream.newBuilder()
@@ -416,18 +306,6 @@ public class OrcMetadataWriter
         throw new IllegalArgumentException("Unsupported column encoding kind: " + columnEncodingKind);
     }
 
-    @Override
-    public int writeRowIndexes(SliceOutput output, List<RowGroupIndex> rowGroupIndexes)
-            throws IOException
-    {
-        OrcProto.RowIndex rowIndexProtobuf = OrcProto.RowIndex.newBuilder()
-                .addAllEntry(rowGroupIndexes.stream()
-                        .map(OrcMetadataWriter::toRowGroupIndex)
-                        .collect(toList()))
-                .build();
-        return writeProtobufObject(output, rowIndexProtobuf);
-    }
-
     private static RowIndexEntry toRowGroupIndex(RowGroupIndex rowGroupIndex)
     {
         return OrcProto.RowIndexEntry.newBuilder()
@@ -436,18 +314,6 @@ public class OrcMetadataWriter
                         .collect(toList()))
                 .setStatistics(toColumnStatistics(rowGroupIndex.getColumnStatistics()))
                 .build();
-    }
-
-    @Override
-    public int writeBloomFilters(SliceOutput output, List<BloomFilter> bloomFilters)
-            throws IOException
-    {
-        OrcProto.BloomFilterIndex bloomFilterIndex = OrcProto.BloomFilterIndex.newBuilder()
-                .addAllBloomFilter(bloomFilters.stream()
-                        .map(OrcMetadataWriter::toBloomFilter)
-                        .collect(toList()))
-                .build();
-        return writeProtobufObject(output, bloomFilterIndex);
     }
 
     private static OrcProto.BloomFilter toBloomFilter(BloomFilter bloomFilter)
@@ -481,5 +347,138 @@ public class OrcMetadataWriter
         CountingOutputStream countingOutput = new CountingOutputStream(output);
         object.writeTo(countingOutput);
         return toIntExact(countingOutput.getCount());
+    }
+
+    @Override
+    public List<Integer> getOrcMetadataVersion()
+    {
+        return ORC_METADATA_VERSION;
+    }
+
+    @Override
+    public int writePostscript(SliceOutput output, int footerLength, int metadataLength, CompressionKind compression, int compressionBlockSize)
+            throws IOException
+    {
+        OrcProto.PostScript postScriptProtobuf = OrcProto.PostScript.newBuilder()
+                .addAllVersion(ORC_METADATA_VERSION)
+                .setFooterLength(footerLength)
+                .setMetadataLength(metadataLength)
+                .setCompression(toCompression(compression))
+                .setCompressionBlockSize(compressionBlockSize)
+                .setWriterVersion(getOrcWriterVersion())
+                .setMagic(MAGIC.toStringUtf8())
+                .build();
+
+        return writeProtobufObject(output, postScriptProtobuf);
+    }
+
+    private int getOrcWriterVersion()
+    {
+        switch (writerIdentification) {
+            case LEGACY_HIVE_COMPATIBLE:
+                return HIVE_LEGACY_WRITER_VERSION;
+            case PRESTO:
+                return PRESTO_WRITER_VERSION;
+            case TRINO:
+                return TRINO_WRITER_VERSION;
+        }
+        throw new IllegalStateException("Unexpected value: " + writerIdentification);
+    }
+
+    @Override
+    public int writeMetadata(SliceOutput output, Metadata metadata)
+            throws IOException
+    {
+        OrcProto.Metadata metadataProtobuf = OrcProto.Metadata.newBuilder()
+                .addAllStripeStats(metadata.getStripeStatsList().stream()
+                        .map(Optional::get)
+                        .map(OrcMetadataWriter::toStripeStatistics)
+                        .collect(toList()))
+                .build();
+
+        return writeProtobufObject(output, metadataProtobuf);
+    }
+
+    @Override
+    public int writeFooter(SliceOutput output, Footer footer)
+            throws IOException
+    {
+        OrcProto.Footer.Builder builder = OrcProto.Footer.newBuilder()
+                .setNumberOfRows(footer.getNumberOfRows())
+                .setRowIndexStride(footer.getRowsInRowGroup().orElse(0))
+                .addAllStripes(footer.getStripes().stream()
+                        .map(OrcMetadataWriter::toStripeInformation)
+                        .collect(toList()))
+                .addAllTypes(footer.getTypes().stream()
+                        .map(OrcMetadataWriter::toType)
+                        .collect(toList()))
+                .addAllStatistics(footer.getFileStats().map(ColumnMetadata::stream).orElseGet(java.util.stream.Stream::empty)
+                        .map(OrcMetadataWriter::toColumnStatistics)
+                        .collect(toList()))
+                .addAllMetadata(footer.getUserMetadata().entrySet().stream()
+                        .map(OrcMetadataWriter::toUserMetadata)
+                        .collect(toList()));
+
+        setWriter(builder);
+
+        return writeProtobufObject(output, builder.build());
+    }
+
+    private void setWriter(OrcProto.Footer.Builder builder)
+    {
+        switch (writerIdentification) {
+            case LEGACY_HIVE_COMPATIBLE:
+                return;
+
+            case PRESTO:
+                builder.setWriter(PRESTO_WRITER_ID);
+                return;
+
+            case TRINO:
+                builder.setWriter(TRINO_WRITER_ID);
+                return;
+        }
+        throw new IllegalStateException("Unexpected value: " + writerIdentification);
+    }
+
+    @Override
+    public int writeStripeFooter(SliceOutput output, StripeFooter footer)
+            throws IOException
+    {
+        OrcProto.StripeFooter footerProtobuf = OrcProto.StripeFooter.newBuilder()
+                .addAllStreams(footer.getStreams().stream()
+                        .map(OrcMetadataWriter::toStream)
+                        .collect(toList()))
+                .addAllColumns(footer.getColumnEncodings().stream()
+                        .map(OrcMetadataWriter::toColumnEncoding)
+                        .collect(toList()))
+                .setWriterTimezone(footer.getTimeZone().getId())
+                .build();
+
+        return writeProtobufObject(output, footerProtobuf);
+    }
+
+    @Override
+    public int writeRowIndexes(SliceOutput output, List<RowGroupIndex> rowGroupIndexes)
+            throws IOException
+    {
+        OrcProto.RowIndex rowIndexProtobuf = OrcProto.RowIndex.newBuilder()
+                .addAllEntry(rowGroupIndexes.stream()
+                        .map(OrcMetadataWriter::toRowGroupIndex)
+                        .collect(toList()))
+                .build();
+        return writeProtobufObject(output, rowIndexProtobuf);
+    }
+
+    @Override
+    public int writeBloomFilters(SliceOutput output, List<BloomFilter> bloomFilters)
+            throws IOException
+    {
+        OrcProto.BloomFilterIndex bloomFilterIndex = OrcProto.BloomFilterIndex.newBuilder()
+                .addAllBloomFilter(bloomFilters.stream()
+                        .map(OrcMetadataWriter::toBloomFilter)
+                        .collect(toList()))
+                .build();
+        return writeProtobufObject(output, bloomFilterIndex);
     }
 }

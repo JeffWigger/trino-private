@@ -36,6 +36,33 @@ public class LongEncoding
         this.nullSequence = nullSequence;
     }
 
+    private static long parseLong(Slice slice, int start, int length)
+    {
+        if (slice.equals(start, length, MIN_LONG, 0, MIN_LONG.length())) {
+            return Long.MIN_VALUE;
+        }
+
+        int limit = start + length;
+
+        int sign;
+        if (slice.getByte(start) == '-') {
+            sign = -1;
+            start++;
+        }
+        else {
+            sign = 1;
+        }
+
+        long value = slice.getByte(start) - ((int) '0');
+        start++;
+        while (start < limit) {
+            value = value * 10 + (slice.getByte(start) - ((int) '0'));
+            start++;
+        }
+
+        return value * sign;
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -90,32 +117,5 @@ public class LongEncoding
     public void decodeValueInto(int depth, BlockBuilder builder, Slice slice, int offset, int length)
     {
         type.writeLong(builder, parseLong(slice, offset, length));
-    }
-
-    private static long parseLong(Slice slice, int start, int length)
-    {
-        if (slice.equals(start, length, MIN_LONG, 0, MIN_LONG.length())) {
-            return Long.MIN_VALUE;
-        }
-
-        int limit = start + length;
-
-        int sign;
-        if (slice.getByte(start) == '-') {
-            sign = -1;
-            start++;
-        }
-        else {
-            sign = 1;
-        }
-
-        long value = slice.getByte(start) - ((int) '0');
-        start++;
-        while (start < limit) {
-            value = value * 10 + (slice.getByte(start) - ((int) '0'));
-            start++;
-        }
-
-        return value * sign;
     }
 }

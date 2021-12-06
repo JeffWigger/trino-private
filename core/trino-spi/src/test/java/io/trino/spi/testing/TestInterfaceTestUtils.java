@@ -30,32 +30,10 @@ public class TestInterfaceTestUtils
                         "[public default void io.trino.spi.testing.TestInterfaceTestUtils$Interface.foo(java.lang.String)]");
     }
 
-    private interface Interface
-    {
-        default void foo(String s) {}
-    }
-
-    private static class Implementation
-            implements Interface {}
-
     @Test
     public void testAcceptStaticMethod()
     {
         InterfaceTestUtils.assertAllMethodsOverridden(InterfaceWithStaticMethod.class, ImplementationOfInterfaceWithStaticMethod.class);
-    }
-
-    private interface InterfaceWithStaticMethod
-    {
-        default void foo(String s) {}
-
-        static void staticMethod(String s) {}
-    }
-
-    private static class ImplementationOfInterfaceWithStaticMethod
-            implements InterfaceWithStaticMethod
-    {
-        @Override
-        public void foo(String s) {}
     }
 
     @Test
@@ -64,17 +42,45 @@ public class TestInterfaceTestUtils
         InterfaceTestUtils.assertAllMethodsOverridden(Interface.class, ImplementationWithMultipleInterfaces.class);
     }
 
-    private static class ImplementationWithMultipleInterfaces
-            implements Cloneable, Interface, Serializable
+    @Test
+    public void testAcceptAbstractClass()
+    {
+        InterfaceTestUtils.assertAllMethodsOverridden(AbstractClass.class, ImplementationOfAbstractClass.class);
+    }
+
+    @Test
+    public void testAssertProperForwardingMethodsAreCalledWithPrivateMethods()
+    {
+        InterfaceTestUtils.assertProperForwardingMethodsAreCalled(InterfaceWithPrivateMethod.class, ForwardingInterfaceWithPrivateMethod::new);
+    }
+
+    private interface Interface
+    {
+        default void foo(String s) {}
+    }
+
+    private interface InterfaceWithStaticMethod
+    {
+        static void staticMethod(String s) {}
+
+        default void foo(String s) {}
+    }
+
+    private static class Implementation
+            implements Interface {}
+
+    private static class ImplementationOfInterfaceWithStaticMethod
+            implements InterfaceWithStaticMethod
     {
         @Override
         public void foo(String s) {}
     }
 
-    @Test
-    public void testAcceptAbstractClass()
+    private static class ImplementationWithMultipleInterfaces
+            implements Cloneable, Interface, Serializable
     {
-        InterfaceTestUtils.assertAllMethodsOverridden(AbstractClass.class, ImplementationOfAbstractClass.class);
+        @Override
+        public void foo(String s) {}
     }
 
     private abstract static class AbstractClass
@@ -87,11 +93,5 @@ public class TestInterfaceTestUtils
     {
         @Override
         public void foo(String s) {}
-    }
-
-    @Test
-    public void testAssertProperForwardingMethodsAreCalledWithPrivateMethods()
-    {
-        InterfaceTestUtils.assertProperForwardingMethodsAreCalled(InterfaceWithPrivateMethod.class, ForwardingInterfaceWithPrivateMethod::new);
     }
 }

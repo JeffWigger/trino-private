@@ -28,7 +28,8 @@ public interface LocationFactory
 
     URI createMemoryInfoLocation(InternalNode node);
 
-    default URI createDeltaFlagLocation(InternalNode node){
+    default URI createDeltaFlagLocation(InternalNode node)
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 }

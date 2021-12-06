@@ -105,6 +105,51 @@ public class HashGenerationOptimizer
         this.metadata = requireNonNull(metadata, "metadata is null");
     }
 
+    private static Optional<HashComputation> computeHash(Iterable<Symbol> fields)
+    {
+        requireNonNull(fields, "fields is null");
+        List<Symbol> symbols = ImmutableList.copyOf(fields);
+        if (symbols.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new HashComputation(fields));
+    }
+
+    public static Optional<Expression> getHashExpression(Metadata metadata, SymbolAllocator symbolAllocator, List<Symbol> symbols)
+    {
+        if (symbols.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Expression result = new GenericLiteral(StandardTypes.BIGINT, String.valueOf(INITIAL_HASH_VALUE));
+        for (Symbol symbol : symbols) {
+            Expression hashField = new FunctionCallBuilder(metadata)
+                    .setName(QualifiedName.of(HASH_CODE))
+                    .addArgument(symbolAllocator.getTypes().get(symbol), new SymbolReference(symbol.getName()))
+                    .build();
+
+            hashField = new CoalesceExpression(hashField, new LongLiteral(String.valueOf(NULL_HASH_CODE)));
+
+            result = new FunctionCallBuilder(metadata)
+                    .setName(QualifiedName.of("combine_hash"))
+                    .addArgument(BIGINT, result)
+                    .addArgument(BIGINT, hashField)
+                    .build();
+        }
+        return Optional.of(result);
+    }
+
+    private static Map<Symbol, Symbol> computeIdentityTranslations(Map<Symbol, Expression> assignments)
+    {
+        Map<Symbol, Symbol> outputToInput = new HashMap<>();
+        for (Map.Entry<Symbol, Expression> assignment : assignments.entrySet()) {
+            if (assignment.getValue() instanceof SymbolReference) {
+                outputToInput.put(assignment.getKey(), Symbol.from(assignment.getValue()));
+            }
+        }
+        return outputToInput;
+    }
+
     @Override
     public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
@@ -854,40 +899,6 @@ public class HashGenerationOptimizer
         }
     }
 
-    private static Optional<HashComputation> computeHash(Iterable<Symbol> fields)
-    {
-        requireNonNull(fields, "fields is null");
-        List<Symbol> symbols = ImmutableList.copyOf(fields);
-        if (symbols.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(new HashComputation(fields));
-    }
-
-    public static Optional<Expression> getHashExpression(Metadata metadata, SymbolAllocator symbolAllocator, List<Symbol> symbols)
-    {
-        if (symbols.isEmpty()) {
-            return Optional.empty();
-        }
-
-        Expression result = new GenericLiteral(StandardTypes.BIGINT, String.valueOf(INITIAL_HASH_VALUE));
-        for (Symbol symbol : symbols) {
-            Expression hashField = new FunctionCallBuilder(metadata)
-                    .setName(QualifiedName.of(HASH_CODE))
-                    .addArgument(symbolAllocator.getTypes().get(symbol), new SymbolReference(symbol.getName()))
-                    .build();
-
-            hashField = new CoalesceExpression(hashField, new LongLiteral(String.valueOf(NULL_HASH_CODE)));
-
-            result = new FunctionCallBuilder(metadata)
-                    .setName(QualifiedName.of("combine_hash"))
-                    .addArgument(BIGINT, result)
-                    .addArgument(BIGINT, hashField)
-                    .build();
-        }
-        return Optional.of(result);
-    }
-
     private static class HashComputation
     {
         private final List<Symbol> fields;
@@ -897,6 +908,11 @@ public class HashGenerationOptimizer
             requireNonNull(fields, "fields is null");
             this.fields = ImmutableList.copyOf(fields);
             checkArgument(!this.fields.isEmpty(), "fields cannot be empty");
+        }
+
+        private static Expression orNullHashCode(Expression expression)
+        {
+            return new CoalesceExpression(expression, new LongLiteral(String.valueOf(NULL_HASH_CODE)));
         }
 
         public List<Symbol> getFields()
@@ -943,11 +959,6 @@ public class HashGenerationOptimizer
                     .addArgument(BIGINT, previousHashValue)
                     .addArgument(BIGINT, orNullHashCode(functionCall))
                     .build();
-        }
-
-        private static Expression orNullHashCode(Expression expression)
-        {
-            return new CoalesceExpression(expression, new LongLiteral(String.valueOf(NULL_HASH_CODE)));
         }
 
         @Override
@@ -1005,16 +1016,5 @@ public class HashGenerationOptimizer
             requireNonNull(hashSymbol, () -> "No hash symbol generated for " + hash);
             return hashSymbol;
         }
-    }
-
-    private static Map<Symbol, Symbol> computeIdentityTranslations(Map<Symbol, Expression> assignments)
-    {
-        Map<Symbol, Symbol> outputToInput = new HashMap<>();
-        for (Map.Entry<Symbol, Expression> assignment : assignments.entrySet()) {
-            if (assignment.getValue() instanceof SymbolReference) {
-                outputToInput.put(assignment.getKey(), Symbol.from(assignment.getValue()));
-            }
-        }
-        return outputToInput;
     }
 }

@@ -43,6 +43,16 @@ public class ReplaceRedundantJoinWithProject
 {
     private static final Pattern<JoinNode> PATTERN = join();
 
+    private static ProjectNode appendNulls(PlanNode source, List<Symbol> sourceOutputs, List<Symbol> nullSymbols, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator)
+    {
+        Assignments.Builder assignments = Assignments.builder()
+                .putIdentities(sourceOutputs);
+        nullSymbols.stream()
+                .forEach(symbol -> assignments.put(symbol, new Cast(new NullLiteral(), toSqlType(symbolAllocator.getTypes().get(symbol)))));
+
+        return new ProjectNode(idAllocator.getNextId(), source, assignments.build());
+    }
+
     @Override
     public Pattern<JoinNode> getPattern()
     {
@@ -98,15 +108,5 @@ public class ReplaceRedundantJoinWithProject
         }
 
         return Result.empty();
-    }
-
-    private static ProjectNode appendNulls(PlanNode source, List<Symbol> sourceOutputs, List<Symbol> nullSymbols, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator)
-    {
-        Assignments.Builder assignments = Assignments.builder()
-                .putIdentities(sourceOutputs);
-        nullSymbols.stream()
-                .forEach(symbol -> assignments.put(symbol, new Cast(new NullLiteral(), toSqlType(symbolAllocator.getTypes().get(symbol)))));
-
-        return new ProjectNode(idAllocator.getNextId(), source, assignments.build());
     }
 }

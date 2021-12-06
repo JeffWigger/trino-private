@@ -23,6 +23,8 @@ import static java.util.Objects.requireNonNull;
 
 public final class Plans
 {
+    private Plans() {}
+
     public static PlanNode resolveGroupReferences(PlanNode node, Lookup lookup)
     {
         requireNonNull(node, "node is null");
@@ -55,6 +57,4 @@ public final class Plans
             return lookup.resolve(node).accept(this, context);
         }
     }
-
-    private Plans() {}
 }

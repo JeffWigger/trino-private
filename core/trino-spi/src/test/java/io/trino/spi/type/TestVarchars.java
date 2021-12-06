@@ -27,6 +27,32 @@ import static org.testng.Assert.assertEquals;
 
 public class TestVarchars
 {
+    private static void assertByteCountFailure(String string, int offset, int length, int codePointCount)
+    {
+        assertThatThrownBy(() -> byteCount(utf8Slice(string), offset, length, codePointCount))
+                .isInstanceOf(IllegalArgumentException.class)
+                // TODO split into individual assertions or provide expected message as a parameter
+                .hasMessageMatching("invalid offset/length|length must be greater than or equal to zero|codePointsCount must be greater than or equal to zero");
+    }
+
+    private static void assertByteCount(String actual, int offset, int length, int codePointCount, String expected)
+    {
+        assertByteCount(utf8Slice(actual).getBytes(), offset, length, codePointCount, utf8Slice(expected).getBytes());
+    }
+
+    private static void assertByteCount(String actual, int offset, int length, int codePointCount, byte[] expected)
+    {
+        assertByteCount(utf8Slice(actual).getBytes(), offset, length, codePointCount, expected);
+    }
+
+    private static void assertByteCount(byte[] actual, int offset, int length, int codePointCount, byte[] expected)
+    {
+        Slice slice = wrappedBuffer(actual);
+        int truncatedLength = byteCount(slice, offset, length, codePointCount);
+        byte[] bytes = slice.getBytes(offset, truncatedLength);
+        assertEquals(bytes, expected);
+    }
+
     @Test
     public void testTruncateToLength()
     {
@@ -105,31 +131,5 @@ public class TestVarchars
         assertByteCount(new byte[] {(byte) 0x81, (byte) 0x81, (byte) 0x81}, 0, 2, 0, new byte[] {});
         assertByteCount(new byte[] {(byte) 0x81, (byte) 0x81, (byte) 0x81}, 0, 2, 1, new byte[] {(byte) 0x81, (byte) 0x81});
         assertByteCount(new byte[] {(byte) 0x81, (byte) 0x81, (byte) 0x81}, 0, 2, 3, new byte[] {(byte) 0x81, (byte) 0x81});
-    }
-
-    private static void assertByteCountFailure(String string, int offset, int length, int codePointCount)
-    {
-        assertThatThrownBy(() -> byteCount(utf8Slice(string), offset, length, codePointCount))
-                .isInstanceOf(IllegalArgumentException.class)
-                // TODO split into individual assertions or provide expected message as a parameter
-                .hasMessageMatching("invalid offset/length|length must be greater than or equal to zero|codePointsCount must be greater than or equal to zero");
-    }
-
-    private static void assertByteCount(String actual, int offset, int length, int codePointCount, String expected)
-    {
-        assertByteCount(utf8Slice(actual).getBytes(), offset, length, codePointCount, utf8Slice(expected).getBytes());
-    }
-
-    private static void assertByteCount(String actual, int offset, int length, int codePointCount, byte[] expected)
-    {
-        assertByteCount(utf8Slice(actual).getBytes(), offset, length, codePointCount, expected);
-    }
-
-    private static void assertByteCount(byte[] actual, int offset, int length, int codePointCount, byte[] expected)
-    {
-        Slice slice = wrappedBuffer(actual);
-        int truncatedLength = byteCount(slice, offset, length, codePointCount);
-        byte[] bytes = slice.getBytes(offset, truncatedLength);
-        assertEquals(bytes, expected);
     }
 }

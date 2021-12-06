@@ -81,6 +81,17 @@ import static java.lang.String.format;
 public class CreateTableTask
         implements DataDefinitionTask<CreateTable>
 {
+    private static Map<String, Object> combineProperties(Set<String> specifiedPropertyKeys, Map<String, Object> defaultProperties, Map<String, Object> inheritedProperties)
+    {
+        Map<String, Object> finalProperties = new HashMap<>(inheritedProperties);
+        for (Map.Entry<String, Object> entry : defaultProperties.entrySet()) {
+            if (specifiedPropertyKeys.contains(entry.getKey()) || !finalProperties.containsKey(entry.getKey())) {
+                finalProperties.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return finalProperties;
+    }
+
     @Override
     public String getName()
     {
@@ -262,16 +273,5 @@ public class CreateTableTask
                         .map(column -> new OutputColumn(new Column(column.getName(), column.getType().toString()), ImmutableSet.of()))
                         .collect(toImmutableList()))));
         return immediateVoidFuture();
-    }
-
-    private static Map<String, Object> combineProperties(Set<String> specifiedPropertyKeys, Map<String, Object> defaultProperties, Map<String, Object> inheritedProperties)
-    {
-        Map<String, Object> finalProperties = new HashMap<>(inheritedProperties);
-        for (Map.Entry<String, Object> entry : defaultProperties.entrySet()) {
-            if (specifiedPropertyKeys.contains(entry.getKey()) || !finalProperties.containsKey(entry.getKey())) {
-                finalProperties.put(entry.getKey(), entry.getValue());
-            }
-        }
-        return finalProperties;
     }
 }

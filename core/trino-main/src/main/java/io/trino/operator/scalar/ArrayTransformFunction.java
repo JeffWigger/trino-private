@@ -95,21 +95,6 @@ public final class ArrayTransformFunction
                 SCALAR));
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        Type inputType = functionBinding.getTypeVariable("T");
-        Type outputType = functionBinding.getTypeVariable("U");
-        Class<?> generatedClass = generateTransform(inputType, outputType);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, FUNCTION),
-                ImmutableList.of(UnaryFunctionInterface.class),
-                methodHandle(generatedClass, "transform", PageBuilder.class, Block.class, UnaryFunctionInterface.class),
-                Optional.of(methodHandle(generatedClass, "createPageBuilder")));
-    }
-
     private static Class<?> generateTransform(Type inputType, Type outputType)
     {
         CallSiteBinder binder = new CallSiteBinder();
@@ -193,5 +178,20 @@ public final class ArrayTransformFunction
         body.append(blockBuilder.invoke("getRegion", Block.class, subtract(blockBuilder.invoke("getPositionCount", int.class), positionCount), positionCount).ret());
 
         return defineClass(definition, Object.class, binder.getBindings(), ArrayTransformFunction.class.getClassLoader());
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        Type inputType = functionBinding.getTypeVariable("T");
+        Type outputType = functionBinding.getTypeVariable("U");
+        Class<?> generatedClass = generateTransform(inputType, outputType);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, FUNCTION),
+                ImmutableList.of(UnaryFunctionInterface.class),
+                methodHandle(generatedClass, "transform", PageBuilder.class, Block.class, UnaryFunctionInterface.class),
+                Optional.of(methodHandle(generatedClass, "createPageBuilder")));
     }
 }

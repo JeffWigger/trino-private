@@ -66,22 +66,6 @@ public class JsonToRowCast
                 true);
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        RowType rowType = (RowType) functionBinding.getTypeVariable("T");
-        checkCondition(canCastFromJson(rowType), INVALID_CAST_ARGUMENT, "Cannot cast JSON to %s", rowType);
-
-        BlockBuilderAppender fieldAppender = createBlockBuilderAppender(rowType);
-        MethodHandle methodHandle = METHOD_HANDLE.bindTo(rowType).bindTo(fieldAppender);
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                NULLABLE_RETURN,
-                ImmutableList.of(NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Block toRow(
             RowType rowType,
@@ -108,5 +92,21 @@ public class JsonToRowCast
         catch (Exception e) {
             throw new TrinoException(INVALID_CAST_ARGUMENT, format("Cannot cast to %s.\n%s", rowType, truncateIfNecessaryForErrorMessage(json)), e);
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        RowType rowType = (RowType) functionBinding.getTypeVariable("T");
+        checkCondition(canCastFromJson(rowType), INVALID_CAST_ARGUMENT, "Cannot cast JSON to %s", rowType);
+
+        BlockBuilderAppender fieldAppender = createBlockBuilderAppender(rowType);
+        MethodHandle methodHandle = METHOD_HANDLE.bindTo(rowType).bindTo(fieldAppender);
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                NULLABLE_RETURN,
+                ImmutableList.of(NEVER_NULL),
+                methodHandle);
     }
 }

@@ -39,60 +39,6 @@ import static java.util.Objects.requireNonNull;
 public class TaskOutputOperator
         implements Operator
 {
-    public static class TaskOutputFactory
-            implements OutputFactory
-    {
-        private final OutputBuffer outputBuffer;
-
-        public TaskOutputFactory(OutputBuffer outputBuffer)
-        {
-            this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-        }
-
-        @Override
-        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
-        {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
-        }
-    }
-
-    public static class TaskOutputOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final OutputBuffer outputBuffer;
-        private final Function<Page, Page> pagePreprocessor;
-        private final PagesSerdeFactory serdeFactory;
-
-        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
-            this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
-            this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TaskOutputOperator.class.getSimpleName());
-            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, serdeFactory);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final OutputBuffer outputBuffer;
     private final Function<Page, Page> pagePreprocessor;
@@ -100,7 +46,6 @@ public class TaskOutputOperator
     private ListenableFuture<Void> isBlocked = NOT_BLOCKED;
     private boolean finished;
     private AtomicInteger counter = new AtomicInteger(0);
-
     public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -156,8 +101,7 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        System.out.println("TaskOutputOperator: "+counter.incrementAndGet());
-
+        System.out.println("TaskOutputOperator: " + counter.incrementAndGet());
 
         outputBuffer.enqueue(splitAndSerializePage(page));
         operatorContext.recordOutput(page.getSizeInBytes(), page.getPositionCount());
@@ -179,5 +123,59 @@ public class TaskOutputOperator
     public Page getOutput()
     {
         return null;
+    }
+
+    public static class TaskOutputFactory
+            implements OutputFactory
+    {
+        private final OutputBuffer outputBuffer;
+
+        public TaskOutputFactory(OutputBuffer outputBuffer)
+        {
+            this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+        }
+
+        @Override
+        public OperatorFactory createOutputOperator(int operatorId, PlanNodeId planNodeId, List<Type> types, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        {
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
+        }
+    }
+
+    public static class TaskOutputOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final OutputBuffer outputBuffer;
+        private final Function<Page, Page> pagePreprocessor;
+        private final PagesSerdeFactory serdeFactory;
+
+        public TaskOutputOperatorFactory(int operatorId, PlanNodeId planNodeId, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+            this.pagePreprocessor = requireNonNull(pagePreprocessor, "pagePreprocessor is null");
+            this.serdeFactory = requireNonNull(serdeFactory, "serdeFactory is null");
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, TaskOutputOperator.class.getSimpleName());
+            return new TaskOutputOperator(operatorContext, outputBuffer, pagePreprocessor, serdeFactory);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new TaskOutputOperatorFactory(operatorId, planNodeId, outputBuffer, pagePreprocessor, serdeFactory);
+        }
     }
 }

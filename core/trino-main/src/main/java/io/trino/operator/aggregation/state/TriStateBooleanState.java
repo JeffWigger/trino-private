@@ -26,10 +26,6 @@ public interface TriStateBooleanState
     byte TRUE_VALUE = 1;
     byte FALSE_VALUE = -1;
 
-    byte getByte();
-
-    void setByte(byte value);
-
     static void write(Type type, TriStateBooleanState state, BlockBuilder out)
     {
         if (state.getByte() == NULL_VALUE) {
@@ -39,4 +35,8 @@ public interface TriStateBooleanState
             type.writeBoolean(out, state.getByte() == TRUE_VALUE);
         }
     }
+
+    byte getByte();
+
+    void setByte(byte value);
 }

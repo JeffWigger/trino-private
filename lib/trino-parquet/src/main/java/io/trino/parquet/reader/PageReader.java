@@ -40,10 +40,10 @@ class PageReader
      * should not retain a reference to this list after passing it in as a constructor argument.
      */
     public PageReader(CompressionCodecName codec,
-                      LinkedList<DataPage> compressedPages,
-                      DictionaryPage compressedDictionaryPage,
-                      OffsetIndex offsetIndex,
-                      long valueCount)
+            LinkedList<DataPage> compressedPages,
+            DictionaryPage compressedDictionaryPage,
+            OffsetIndex offsetIndex,
+            long valueCount)
     {
         this.codec = codec;
         this.compressedPages = compressedPages;
@@ -51,6 +51,11 @@ class PageReader
         this.valueCount = valueCount;
         this.offsetIndex = offsetIndex;
         this.pageIndex = 0;
+    }
+
+    public static OptionalLong getFirstRowIndex(int pageIndex, OffsetIndex offsetIndex)
+    {
+        return offsetIndex == null ? OptionalLong.empty() : OptionalLong.of(offsetIndex.getFirstRowIndex(pageIndex));
     }
 
     public long getTotalValueCount()
@@ -119,10 +124,5 @@ class PageReader
         catch (IOException e) {
             throw new RuntimeException("Error reading dictionary page", e);
         }
-    }
-
-    public static OptionalLong getFirstRowIndex(int pageIndex, OffsetIndex offsetIndex)
-    {
-        return offsetIndex == null ? OptionalLong.empty() : OptionalLong.of(offsetIndex.getFirstRowIndex(pageIndex));
     }
 }

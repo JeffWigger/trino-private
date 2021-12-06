@@ -38,12 +38,23 @@ import static java.util.stream.Collectors.toSet;
 
 public final class ExtractCommonPredicatesExpressionRewriter
 {
+    private ExtractCommonPredicatesExpressionRewriter() {}
+
     public static Expression extractCommonPredicates(Metadata metadata, Expression expression)
     {
         return ExpressionTreeRewriter.rewriteWith(new Visitor(metadata), expression, NodeContext.ROOT_NODE);
     }
 
-    private ExtractCommonPredicatesExpressionRewriter() {}
+    private enum NodeContext
+    {
+        ROOT_NODE,
+        NOT_ROOT_NODE;
+
+        boolean isRootNode()
+        {
+            return this == ROOT_NODE;
+        }
+    }
 
     private static class Visitor
             extends ExpressionRewriter<NodeContext>
@@ -53,6 +64,21 @@ public final class ExtractCommonPredicatesExpressionRewriter
         public Visitor(Metadata metadata)
         {
             this.metadata = requireNonNull(metadata, "metadata is null");
+        }
+
+        private static List<List<Expression>> getSubPredicates(LogicalExpression expression)
+        {
+            return extractPredicates(expression.getOperator(), expression).stream()
+                    .map(predicate -> predicate instanceof LogicalExpression ?
+                            extractPredicates((LogicalExpression) predicate) : ImmutableList.of(predicate))
+                    .collect(toImmutableList());
+        }
+
+        private static <T> List<T> removeAll(Collection<T> collection, Collection<T> elementsToRemove)
+        {
+            return collection.stream()
+                    .filter(element -> !elementsToRemove.contains(element))
+                    .collect(toImmutableList());
         }
 
         @Override
@@ -115,14 +141,6 @@ public final class ExtractCommonPredicatesExpressionRewriter
                     .build());
         }
 
-        private static List<List<Expression>> getSubPredicates(LogicalExpression expression)
-        {
-            return extractPredicates(expression.getOperator(), expression).stream()
-                    .map(predicate -> predicate instanceof LogicalExpression ?
-                            extractPredicates((LogicalExpression) predicate) : ImmutableList.of(predicate))
-                    .collect(toImmutableList());
-        }
-
         /**
          * Applies the boolean distributive property.
          * <p>
@@ -181,24 +199,6 @@ public final class ExtractCommonPredicatesExpressionRewriter
             return predicates.stream()
                     .filter(expression -> isDeterministic(expression, metadata))
                     .collect(toSet());
-        }
-
-        private static <T> List<T> removeAll(Collection<T> collection, Collection<T> elementsToRemove)
-        {
-            return collection.stream()
-                    .filter(element -> !elementsToRemove.contains(element))
-                    .collect(toImmutableList());
-        }
-    }
-
-    private enum NodeContext
-    {
-        ROOT_NODE,
-        NOT_ROOT_NODE;
-
-        boolean isRootNode()
-        {
-            return this == ROOT_NODE;
         }
     }
 }

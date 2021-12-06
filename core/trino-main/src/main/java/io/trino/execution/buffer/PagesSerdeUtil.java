@@ -34,25 +34,24 @@ import static java.util.Objects.requireNonNull;
 
 public final class PagesSerdeUtil
 {
-    private PagesSerdeUtil() {}
-
     /**
      * Special checksum value used to verify configuration consistency across nodes (all nodes need to have data integrity configured the same way).
      *
      * @implNote It's not just 0, so that hypothetical zero-ed out data is not treated as valid payload with no checksum.
      */
     public static final long NO_CHECKSUM = 0x0123456789abcdefL;
-
     public static final byte deltaPageNr = 1;
     public static final byte BasePageNr = 2;
+    private PagesSerdeUtil() {}
 
     static void writeRawPage(Page page, SliceOutput output, BlockEncodingSerde serde)
     {
         output.writeInt(page.getChannelCount());
-        if (page instanceof DeltaPage){
+        if (page instanceof DeltaPage) {
             output.writeByte(deltaPageNr);
-            writeBlock(serde, output, ((DeltaPage)page).getUpdateType());
-        }else {
+            writeBlock(serde, output, ((DeltaPage) page).getUpdateType());
+        }
+        else {
             output.writeByte(BasePageNr);
         }
         for (int channel = 0; channel < page.getChannelCount(); channel++) {
@@ -65,14 +64,14 @@ public final class PagesSerdeUtil
         int numberOfBlocks = input.readInt();
         int deltaType = input.readByte();
         Block updateType = null;
-        if (deltaType == deltaPageNr){
+        if (deltaType == deltaPageNr) {
             updateType = readBlock(blockEncodingSerde, input);
         }
         Block[] blocks = new Block[numberOfBlocks];
         for (int i = 0; i < blocks.length; i++) {
             blocks[i] = readBlock(blockEncodingSerde, input);
         }
-        if (deltaType == deltaPageNr){
+        if (deltaType == deltaPageNr) {
             return new DeltaPage(positionCount, blocks, updateType);
         }
         return new Page(positionCount, blocks);
@@ -157,6 +156,11 @@ public final class PagesSerdeUtil
         return new PageReader(serde, sliceInput);
     }
 
+    public static Iterator<SerializedPage> readSerializedPages(SliceInput sliceInput)
+    {
+        return new SerializedPageReader(sliceInput);
+    }
+
     private static class PageReader
             extends AbstractIterator<Page>
     {
@@ -181,11 +185,6 @@ public final class PagesSerdeUtil
 
             return serde.deserialize(context, readSerializedPage(input));
         }
-    }
-
-    public static Iterator<SerializedPage> readSerializedPages(SliceInput sliceInput)
-    {
-        return new SerializedPageReader(sliceInput);
     }
 
     private static class SerializedPageReader

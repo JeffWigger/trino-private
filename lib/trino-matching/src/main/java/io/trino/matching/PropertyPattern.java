@@ -20,15 +20,22 @@ public class PropertyPattern<F, C, R>
     private final Property<F, C, ?> property;
     private final Pattern<R> pattern;
 
+    private PropertyPattern(Property<F, C, ?> property, Pattern<R> pattern)
+    {
+        this.property = requireNonNull(property, "property is null");
+        this.pattern = requireNonNull(pattern, "pattern is null");
+    }
+
     public static <F, C, T, R> PropertyPattern<F, C, R> of(Property<F, C, T> property, Pattern<R> pattern)
     {
         return new PropertyPattern<>(property, pattern);
     }
 
-    private PropertyPattern(Property<F, C, ?> property, Pattern<R> pattern)
+    //This expresses the fact that PropertyPattern<F, C, T> is covariant on T.
+    @SuppressWarnings("unchecked cast")
+    public static <F, C, T> PropertyPattern<F, C, T> upcast(PropertyPattern<F, C, ? extends T> propertyPattern)
     {
-        this.property = requireNonNull(property, "property is null");
-        this.pattern = requireNonNull(pattern, "pattern is null");
+        return (PropertyPattern<F, C, T>) propertyPattern;
     }
 
     public Property<F, C, ?> getProperty()
@@ -39,12 +46,5 @@ public class PropertyPattern<F, C, R>
     public Pattern<R> getPattern()
     {
         return pattern;
-    }
-
-    //This expresses the fact that PropertyPattern<F, C, T> is covariant on T.
-    @SuppressWarnings("unchecked cast")
-    public static <F, C, T> PropertyPattern<F, C, T> upcast(PropertyPattern<F, C, ? extends T> propertyPattern)
-    {
-        return (PropertyPattern<F, C, T>) propertyPattern;
     }
 }

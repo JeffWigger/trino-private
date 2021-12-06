@@ -48,48 +48,6 @@ public final class VarArgsToArrayAdapterGenerator
 {
     private VarArgsToArrayAdapterGenerator() {}
 
-    public static class MethodHandleAndConstructor
-    {
-        private final MethodHandle methodHandle;
-        private final MethodHandle constructor;
-
-        private MethodHandleAndConstructor(MethodHandle methodHandle, MethodHandle constructor)
-        {
-            this.methodHandle = requireNonNull(methodHandle, "methodHandle is null");
-            this.constructor = requireNonNull(constructor, "constructor is null");
-        }
-
-        public MethodHandle getMethodHandle()
-        {
-            return methodHandle;
-        }
-
-        public MethodHandle getConstructor()
-        {
-            return constructor;
-        }
-    }
-
-    @UsedByGeneratedCode
-    public static final class VarArgsToArrayAdapterState
-    {
-        /**
-         * User state created by provided user state factory
-         */
-        public final Object userState;
-
-        /**
-         * Array of argument, such as long[], Block[]
-         */
-        public final Object args;
-
-        public VarArgsToArrayAdapterState(Object userState, Object args)
-        {
-            this.userState = userState;
-            this.args = requireNonNull(args, "args is null");
-        }
-    }
-
     public static MethodHandleAndConstructor generateVarArgsToArrayAdapter(
             Class<?> returnType,
             Class<?> javaType,
@@ -163,5 +121,47 @@ public final class VarArgsToArrayAdapterGenerator
     private static Class<?> toArrayClass(Class<?> elementType)
     {
         return Array.newInstance(elementType, 0).getClass();
+    }
+
+    public static class MethodHandleAndConstructor
+    {
+        private final MethodHandle methodHandle;
+        private final MethodHandle constructor;
+
+        private MethodHandleAndConstructor(MethodHandle methodHandle, MethodHandle constructor)
+        {
+            this.methodHandle = requireNonNull(methodHandle, "methodHandle is null");
+            this.constructor = requireNonNull(constructor, "constructor is null");
+        }
+
+        public MethodHandle getMethodHandle()
+        {
+            return methodHandle;
+        }
+
+        public MethodHandle getConstructor()
+        {
+            return constructor;
+        }
+    }
+
+    @UsedByGeneratedCode
+    public static final class VarArgsToArrayAdapterState
+    {
+        /**
+         * User state created by provided user state factory
+         */
+        public final Object userState;
+
+        /**
+         * Array of argument, such as long[], Block[]
+         */
+        public final Object args;
+
+        public VarArgsToArrayAdapterState(Object userState, Object args)
+        {
+            this.userState = userState;
+            this.args = requireNonNull(args, "args is null");
+        }
     }
 }

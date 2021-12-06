@@ -58,37 +58,6 @@ public class ArraySubscriptOperator
                 true);
     }
 
-    @Override
-    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
-    {
-        Type elementType = functionBinding.getTypeVariable("E");
-
-        MethodHandle methodHandle;
-        if (elementType.getJavaType() == boolean.class) {
-            methodHandle = METHOD_HANDLE_BOOLEAN;
-        }
-        else if (elementType.getJavaType() == long.class) {
-            methodHandle = METHOD_HANDLE_LONG;
-        }
-        else if (elementType.getJavaType() == double.class) {
-            methodHandle = METHOD_HANDLE_DOUBLE;
-        }
-        else if (elementType.getJavaType() == Slice.class) {
-            methodHandle = METHOD_HANDLE_SLICE;
-        }
-        else {
-            methodHandle = METHOD_HANDLE_OBJECT.asType(
-                    METHOD_HANDLE_OBJECT.type().changeReturnType(elementType.getJavaType()));
-        }
-        methodHandle = methodHandle.bindTo(elementType);
-        requireNonNull(methodHandle, "methodHandle is null");
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                NULLABLE_RETURN,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL),
-                methodHandle);
-    }
-
     @UsedByGeneratedCode
     public static Long longSubscript(Type elementType, Block array, long index)
     {
@@ -165,5 +134,36 @@ public class ArraySubscriptOperator
         if (index > array.getPositionCount()) {
             throw new TrinoException(INVALID_FUNCTION_ARGUMENT, format("Array subscript must be less than or equal to array length: %s > %s", index, array.getPositionCount()));
         }
+    }
+
+    @Override
+    protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
+    {
+        Type elementType = functionBinding.getTypeVariable("E");
+
+        MethodHandle methodHandle;
+        if (elementType.getJavaType() == boolean.class) {
+            methodHandle = METHOD_HANDLE_BOOLEAN;
+        }
+        else if (elementType.getJavaType() == long.class) {
+            methodHandle = METHOD_HANDLE_LONG;
+        }
+        else if (elementType.getJavaType() == double.class) {
+            methodHandle = METHOD_HANDLE_DOUBLE;
+        }
+        else if (elementType.getJavaType() == Slice.class) {
+            methodHandle = METHOD_HANDLE_SLICE;
+        }
+        else {
+            methodHandle = METHOD_HANDLE_OBJECT.asType(
+                    METHOD_HANDLE_OBJECT.type().changeReturnType(elementType.getJavaType()));
+        }
+        methodHandle = methodHandle.bindTo(elementType);
+        requireNonNull(methodHandle, "methodHandle is null");
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                NULLABLE_RETURN,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL),
+                methodHandle);
     }
 }

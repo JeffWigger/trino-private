@@ -51,6 +51,12 @@ import static org.openjdk.jmh.annotations.Mode.Throughput;
 @BenchmarkMode(Throughput)
 public class BenchmarkGeometrySerde
 {
+    public static void main(String[] args)
+            throws RunnerException
+    {
+        benchmark(BenchmarkGeometrySerde.class).run();
+    }
+
     // POINT
     @Benchmark
     public Object serializePoint(BenchmarkData data)
@@ -376,11 +382,5 @@ public class BenchmarkGeometrySerde
                     readResource("complex-multipolygon.txt")) + ")");
             complexGeometryCollectionSerialized = serialize(complexGeometryCollection);
         }
-    }
-
-    public static void main(String[] args)
-            throws RunnerException
-    {
-        benchmark(BenchmarkGeometrySerde.class).run();
     }
 }

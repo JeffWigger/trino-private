@@ -42,11 +42,11 @@ import static java.lang.Math.toIntExact;
 public class LongBigArrayFIFOQueue
         implements LongPriorityQueue
 {
-    private static final long INSTANCE_SIZE = ClassLayout.parseClass(LongBigArrayFIFOQueue.class).instanceSize();
     /**
      * The standard initial capacity of a queue.
      */
     public static final long INITIAL_CAPACITY = BigArrays.SEGMENT_SIZE;
+    private static final long INSTANCE_SIZE = ClassLayout.parseClass(LongBigArrayFIFOQueue.class).instanceSize();
     /**
      * The backing array.
      */

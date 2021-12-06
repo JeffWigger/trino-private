@@ -153,7 +153,8 @@ public class QueryTracker<T extends TrackedQuery>
     }
 
     public SessionContext getContext(QueryId queryId)
-            throws NoSuchElementException{
+            throws NoSuchElementException
+    {
         requireNonNull(queryId, "queryId is null");
         return Optional.ofNullable(contexts.get(queryId))
                 .orElseThrow(() -> new NoSuchElementException(queryId.toString()));
@@ -165,13 +166,15 @@ public class QueryTracker<T extends TrackedQuery>
         return Optional.ofNullable(queries.get(queryId));
     }
 
-    public boolean addQuery(T execution, SessionContext context){
+    public boolean addQuery(T execution, SessionContext context)
+    {
 
-        boolean addedQuery =  queries.putIfAbsent(execution.getQueryId(), execution) == null;
-        boolean addedContext =  contexts.putIfAbsent(execution.getQueryId(), context) == null;
+        boolean addedQuery = queries.putIfAbsent(execution.getQueryId(), execution) == null;
+        boolean addedContext = contexts.putIfAbsent(execution.getQueryId(), context) == null;
         // TODO handle case when one fails
         return addedQuery && addedContext;
     }
+
     public boolean addQuery(T execution)
     {
         return queries.putIfAbsent(execution.getQueryId(), execution) == null;

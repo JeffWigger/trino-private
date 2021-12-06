@@ -21,10 +21,9 @@ import java.util.Arrays;
 class IntMultimap
 {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(IntMultimap.class).instanceSize();
-
-    private IntList[] values;
     private final int capacity;
     private final int listCapacity;
+    private IntList[] values;
     private long valuesSize;
 
     public IntMultimap(int capacity, int listCapacity)

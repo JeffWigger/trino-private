@@ -48,6 +48,114 @@ public class TestOrcReaderMemoryUsage
 {
     private static final Metadata METADATA = createTestMetadataManager();
 
+    /**
+     * Write a file that contains a number of rows with 1 BIGINT column, and some rows have null values.
+     */
+    private static TempFile createSingleColumnFileWithNullValues(int rows)
+            throws IOException, SerDeException
+    {
+        Serializer serde = new OrcSerde();
+        TempFile tempFile = new TempFile();
+        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(tempFile.getFile(), ORC_12, CompressionKind.NONE, BIGINT);
+        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", BIGINT);
+        Object row = objectInspector.create();
+        StructField field = objectInspector.getAllStructFieldRefs().get(0);
+
+        for (int i = 0; i < rows; i++) {
+            if (i % 10 == 0) {
+                objectInspector.setStructFieldData(row, field, null);
+            }
+            else {
+                objectInspector.setStructFieldData(row, field, (long) i);
+            }
+
+            Writable record = serde.serialize(row, objectInspector);
+            writer.write(record);
+        }
+
+        writer.close(false);
+        return tempFile;
+    }
+
+    /**
+     * Write a file that contains a number of rows with 1 VARCHAR column, and all values are not null.
+     */
+    private static TempFile createSingleColumnVarcharFile(int count, int length)
+            throws Exception
+    {
+        Serializer serde = new OrcSerde();
+        TempFile tempFile = new TempFile();
+        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(tempFile.getFile(), ORC_12, CompressionKind.NONE, VARCHAR);
+        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", VARCHAR);
+        Object row = objectInspector.create();
+        StructField field = objectInspector.getAllStructFieldRefs().get(0);
+
+        for (int i = 0; i < count; i++) {
+            objectInspector.setStructFieldData(row, field, "0".repeat(length));
+            Writable record = serde.serialize(row, objectInspector);
+            writer.write(record);
+        }
+
+        writer.close(false);
+        return tempFile;
+    }
+
+    /**
+     * Write a file that contains a given number of maps where each row has 10 entries in total
+     * and some entries have null keys/values.
+     */
+    private static TempFile createSingleColumnMapFileWithNullValues(Type mapType, int rows)
+            throws IOException, SerDeException
+    {
+        Serializer serde = new OrcSerde();
+        TempFile tempFile = new TempFile();
+        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(tempFile.getFile(), ORC_12, CompressionKind.NONE, mapType);
+        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", mapType);
+        Object row = objectInspector.create();
+        StructField field = objectInspector.getAllStructFieldRefs().get(0);
+
+        for (int i = 1; i <= rows; i++) {
+            HashMap<Long, Long> map = new HashMap<>();
+
+            for (int j = 1; j <= 8; j++) {
+                Long value = (long) j;
+                map.put(value, value);
+            }
+
+            // Add null values so that the StreamReader nullVectors are not empty.
+            map.put(null, 0L);
+            map.put(0L, null);
+
+            objectInspector.setStructFieldData(row, field, map);
+            Writable record = serde.serialize(row, objectInspector);
+            writer.write(record);
+        }
+        writer.close(false);
+        return tempFile;
+    }
+
+    private static void assertInitialRetainedSizes(OrcRecordReader reader, int rows)
+    {
+        assertEquals(reader.getReaderRowCount(), rows);
+        assertEquals(reader.getReaderPosition(), 0);
+        assertEquals(reader.getCurrentStripeRetainedSizeInBytes(), 0);
+        // there will be object overheads
+        assertGreaterThan(reader.getStreamReaderRetainedSizeInBytes(), 0L);
+        // there will be object overheads
+        assertGreaterThan(reader.getRetainedSizeInBytes(), 0L);
+        assertEquals(reader.getSystemMemoryUsage(), 0);
+    }
+
+    private static void assertClosedRetainedSizes(OrcRecordReader reader)
+    {
+        assertEquals(reader.getCurrentStripeRetainedSizeInBytes(), 0);
+        // after close() we still account for the StreamReader instance sizes.
+        assertGreaterThan(reader.getStreamReaderRetainedSizeInBytes(), 0L);
+        // after close() we still account for the StreamReader instance sizes.
+        assertGreaterThan(reader.getRetainedSizeInBytes(), 0L);
+        assertEquals(reader.getSystemMemoryUsage(), 0);
+    }
+
     @Test
     public void testVarcharTypeWithoutNulls()
             throws Exception
@@ -183,113 +291,5 @@ public class TestOrcReaderMemoryUsage
             }
         }
         assertClosedRetainedSizes(reader);
-    }
-
-    /**
-     * Write a file that contains a number of rows with 1 BIGINT column, and some rows have null values.
-     */
-    private static TempFile createSingleColumnFileWithNullValues(int rows)
-            throws IOException, SerDeException
-    {
-        Serializer serde = new OrcSerde();
-        TempFile tempFile = new TempFile();
-        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(tempFile.getFile(), ORC_12, CompressionKind.NONE, BIGINT);
-        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", BIGINT);
-        Object row = objectInspector.create();
-        StructField field = objectInspector.getAllStructFieldRefs().get(0);
-
-        for (int i = 0; i < rows; i++) {
-            if (i % 10 == 0) {
-                objectInspector.setStructFieldData(row, field, null);
-            }
-            else {
-                objectInspector.setStructFieldData(row, field, (long) i);
-            }
-
-            Writable record = serde.serialize(row, objectInspector);
-            writer.write(record);
-        }
-
-        writer.close(false);
-        return tempFile;
-    }
-
-    /**
-     * Write a file that contains a number of rows with 1 VARCHAR column, and all values are not null.
-     */
-    private static TempFile createSingleColumnVarcharFile(int count, int length)
-            throws Exception
-    {
-        Serializer serde = new OrcSerde();
-        TempFile tempFile = new TempFile();
-        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(tempFile.getFile(), ORC_12, CompressionKind.NONE, VARCHAR);
-        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", VARCHAR);
-        Object row = objectInspector.create();
-        StructField field = objectInspector.getAllStructFieldRefs().get(0);
-
-        for (int i = 0; i < count; i++) {
-            objectInspector.setStructFieldData(row, field, "0".repeat(length));
-            Writable record = serde.serialize(row, objectInspector);
-            writer.write(record);
-        }
-
-        writer.close(false);
-        return tempFile;
-    }
-
-    /**
-     * Write a file that contains a given number of maps where each row has 10 entries in total
-     * and some entries have null keys/values.
-     */
-    private static TempFile createSingleColumnMapFileWithNullValues(Type mapType, int rows)
-            throws IOException, SerDeException
-    {
-        Serializer serde = new OrcSerde();
-        TempFile tempFile = new TempFile();
-        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(tempFile.getFile(), ORC_12, CompressionKind.NONE, mapType);
-        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", mapType);
-        Object row = objectInspector.create();
-        StructField field = objectInspector.getAllStructFieldRefs().get(0);
-
-        for (int i = 1; i <= rows; i++) {
-            HashMap<Long, Long> map = new HashMap<>();
-
-            for (int j = 1; j <= 8; j++) {
-                Long value = (long) j;
-                map.put(value, value);
-            }
-
-            // Add null values so that the StreamReader nullVectors are not empty.
-            map.put(null, 0L);
-            map.put(0L, null);
-
-            objectInspector.setStructFieldData(row, field, map);
-            Writable record = serde.serialize(row, objectInspector);
-            writer.write(record);
-        }
-        writer.close(false);
-        return tempFile;
-    }
-
-    private static void assertInitialRetainedSizes(OrcRecordReader reader, int rows)
-    {
-        assertEquals(reader.getReaderRowCount(), rows);
-        assertEquals(reader.getReaderPosition(), 0);
-        assertEquals(reader.getCurrentStripeRetainedSizeInBytes(), 0);
-        // there will be object overheads
-        assertGreaterThan(reader.getStreamReaderRetainedSizeInBytes(), 0L);
-        // there will be object overheads
-        assertGreaterThan(reader.getRetainedSizeInBytes(), 0L);
-        assertEquals(reader.getSystemMemoryUsage(), 0);
-    }
-
-    private static void assertClosedRetainedSizes(OrcRecordReader reader)
-    {
-        assertEquals(reader.getCurrentStripeRetainedSizeInBytes(), 0);
-        // after close() we still account for the StreamReader instance sizes.
-        assertGreaterThan(reader.getStreamReaderRetainedSizeInBytes(), 0L);
-        // after close() we still account for the StreamReader instance sizes.
-        assertGreaterThan(reader.getRetainedSizeInBytes(), 0L);
-        assertEquals(reader.getSystemMemoryUsage(), 0);
     }
 }

@@ -81,38 +81,12 @@ public class OrcMetadataReader
     private static final int REPLACEMENT_CHARACTER_CODE_POINT = 0xFFFD;
     private static final int PROTOBUF_MESSAGE_MAX_LIMIT = toIntExact(DataSize.of(1, GIGABYTE).toBytes());
 
-    @Override
-    public PostScript readPostScript(InputStream inputStream)
-            throws IOException
-    {
-        CodedInputStream input = CodedInputStream.newInstance(inputStream);
-        OrcProto.PostScript postScript = OrcProto.PostScript.parseFrom(input);
-
-        return new PostScript(
-                postScript.getVersionList(),
-                postScript.getFooterLength(),
-                postScript.getMetadataLength(),
-                toCompression(postScript.getCompression()),
-                postScript.getCompressionBlockSize(),
-                toHiveWriterVersion(postScript.getWriterVersion()));
-    }
-
     private static HiveWriterVersion toHiveWriterVersion(int writerVersion)
     {
         if (writerVersion >= 1) {
             return ORC_HIVE_8732;
         }
         return ORIGINAL;
-    }
-
-    @Override
-    public Metadata readMetadata(HiveWriterVersion hiveWriterVersion, InputStream inputStream)
-            throws IOException
-    {
-        CodedInputStream input = CodedInputStream.newInstance(inputStream);
-        input.setSizeLimit(PROTOBUF_MESSAGE_MAX_LIMIT);
-        OrcProto.Metadata metadata = OrcProto.Metadata.parseFrom(input);
-        return new Metadata(toStripeStatistics(hiveWriterVersion, metadata.getStripeStatsList()));
     }
 
     private static List<Optional<StripeStatistics>> toStripeStatistics(HiveWriterVersion hiveWriterVersion, List<OrcProto.StripeStatistics> types)
@@ -126,23 +100,6 @@ public class OrcMetadataReader
     {
         return toColumnStatistics(hiveWriterVersion, stripeStatistics.getColStatsList(), false)
                 .map(StripeStatistics::new);
-    }
-
-    @Override
-    public Footer readFooter(HiveWriterVersion hiveWriterVersion, InputStream inputStream)
-            throws IOException
-    {
-        CodedInputStream input = CodedInputStream.newInstance(inputStream);
-        input.setSizeLimit(PROTOBUF_MESSAGE_MAX_LIMIT);
-        OrcProto.Footer footer = OrcProto.Footer.parseFrom(input);
-        return new Footer(
-                footer.getNumberOfRows(),
-                footer.getRowIndexStride() == 0 ? OptionalInt.empty() : OptionalInt.of(footer.getRowIndexStride()),
-                toStripeInformation(footer.getStripesList()),
-                toType(footer.getTypesList()),
-                toColumnStatistics(hiveWriterVersion, footer.getStatisticsList(), false),
-                toUserMetadata(footer.getMetadataList()),
-                Optional.of(footer.getWriter()));
     }
 
     private static List<StripeInformation> toStripeInformation(List<OrcProto.StripeInformation> types)
@@ -160,20 +117,6 @@ public class OrcMetadataReader
                 stripeInformation.getIndexLength(),
                 stripeInformation.getDataLength(),
                 stripeInformation.getFooterLength());
-    }
-
-    @Override
-    public StripeFooter readStripeFooter(ColumnMetadata<OrcType> types, InputStream inputStream, ZoneId legacyFileTimeZone)
-            throws IOException
-    {
-        CodedInputStream input = CodedInputStream.newInstance(inputStream);
-        OrcProto.StripeFooter stripeFooter = OrcProto.StripeFooter.parseFrom(input);
-        return new StripeFooter(
-                toStream(stripeFooter.getStreamsList()),
-                toColumnEncoding(stripeFooter.getColumnsList()),
-                Optional.ofNullable(emptyToNull(stripeFooter.getWriterTimezone()))
-                        .map(ZoneId::of)
-                        .orElse(legacyFileTimeZone));
     }
 
     private static Stream toStream(OrcProto.Stream stream)
@@ -198,39 +141,6 @@ public class OrcMetadataReader
         return new ColumnMetadata<>(columnEncodings.stream()
                 .map(OrcMetadataReader::toColumnEncoding)
                 .collect(toImmutableList()));
-    }
-
-    @Override
-    public List<RowGroupIndex> readRowIndexes(HiveWriterVersion hiveWriterVersion, InputStream inputStream)
-            throws IOException
-    {
-        CodedInputStream input = CodedInputStream.newInstance(inputStream);
-        OrcProto.RowIndex rowIndex = OrcProto.RowIndex.parseFrom(input);
-        return rowIndex.getEntryList().stream()
-                .map(rowIndexEntry -> toRowGroupIndex(hiveWriterVersion, rowIndexEntry))
-                .collect(toImmutableList());
-    }
-
-    @Override
-    public List<BloomFilter> readBloomFilterIndexes(InputStream inputStream)
-            throws IOException
-    {
-        CodedInputStream input = CodedInputStream.newInstance(inputStream);
-        OrcProto.BloomFilterIndex bloomFilter = OrcProto.BloomFilterIndex.parseFrom(input);
-        List<OrcProto.BloomFilter> bloomFilterList = bloomFilter.getBloomFilterList();
-        ImmutableList.Builder<BloomFilter> builder = ImmutableList.builder();
-        for (OrcProto.BloomFilter orcBloomFilter : bloomFilterList) {
-            if (orcBloomFilter.hasUtf8Bitset()) {
-                ByteString utf8Bitset = orcBloomFilter.getUtf8Bitset();
-                long[] bits = new long[utf8Bitset.size() / 8];
-                utf8Bitset.asReadOnlyByteBuffer().order(ByteOrder.LITTLE_ENDIAN).asLongBuffer().get(bits);
-                builder.add(new BloomFilter(bits, orcBloomFilter.getNumHashFunctions()));
-            }
-            else {
-                builder.add(new BloomFilter(Longs.toArray(orcBloomFilter.getBitsetList()), orcBloomFilter.getNumHashFunctions()));
-            }
-        }
-        return builder.build();
     }
 
     private static RowGroupIndex toRowGroupIndex(HiveWriterVersion hiveWriterVersion, RowIndexEntry rowIndexEntry)
@@ -660,5 +570,95 @@ public class OrcMetadataReader
                 return ZSTD;
         }
         throw new IllegalStateException(compression + " compression not implemented yet");
+    }
+
+    @Override
+    public PostScript readPostScript(InputStream inputStream)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        OrcProto.PostScript postScript = OrcProto.PostScript.parseFrom(input);
+
+        return new PostScript(
+                postScript.getVersionList(),
+                postScript.getFooterLength(),
+                postScript.getMetadataLength(),
+                toCompression(postScript.getCompression()),
+                postScript.getCompressionBlockSize(),
+                toHiveWriterVersion(postScript.getWriterVersion()));
+    }
+
+    @Override
+    public Metadata readMetadata(HiveWriterVersion hiveWriterVersion, InputStream inputStream)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        input.setSizeLimit(PROTOBUF_MESSAGE_MAX_LIMIT);
+        OrcProto.Metadata metadata = OrcProto.Metadata.parseFrom(input);
+        return new Metadata(toStripeStatistics(hiveWriterVersion, metadata.getStripeStatsList()));
+    }
+
+    @Override
+    public Footer readFooter(HiveWriterVersion hiveWriterVersion, InputStream inputStream)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        input.setSizeLimit(PROTOBUF_MESSAGE_MAX_LIMIT);
+        OrcProto.Footer footer = OrcProto.Footer.parseFrom(input);
+        return new Footer(
+                footer.getNumberOfRows(),
+                footer.getRowIndexStride() == 0 ? OptionalInt.empty() : OptionalInt.of(footer.getRowIndexStride()),
+                toStripeInformation(footer.getStripesList()),
+                toType(footer.getTypesList()),
+                toColumnStatistics(hiveWriterVersion, footer.getStatisticsList(), false),
+                toUserMetadata(footer.getMetadataList()),
+                Optional.of(footer.getWriter()));
+    }
+
+    @Override
+    public StripeFooter readStripeFooter(ColumnMetadata<OrcType> types, InputStream inputStream, ZoneId legacyFileTimeZone)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        OrcProto.StripeFooter stripeFooter = OrcProto.StripeFooter.parseFrom(input);
+        return new StripeFooter(
+                toStream(stripeFooter.getStreamsList()),
+                toColumnEncoding(stripeFooter.getColumnsList()),
+                Optional.ofNullable(emptyToNull(stripeFooter.getWriterTimezone()))
+                        .map(ZoneId::of)
+                        .orElse(legacyFileTimeZone));
+    }
+
+    @Override
+    public List<RowGroupIndex> readRowIndexes(HiveWriterVersion hiveWriterVersion, InputStream inputStream)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        OrcProto.RowIndex rowIndex = OrcProto.RowIndex.parseFrom(input);
+        return rowIndex.getEntryList().stream()
+                .map(rowIndexEntry -> toRowGroupIndex(hiveWriterVersion, rowIndexEntry))
+                .collect(toImmutableList());
+    }
+
+    @Override
+    public List<BloomFilter> readBloomFilterIndexes(InputStream inputStream)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        OrcProto.BloomFilterIndex bloomFilter = OrcProto.BloomFilterIndex.parseFrom(input);
+        List<OrcProto.BloomFilter> bloomFilterList = bloomFilter.getBloomFilterList();
+        ImmutableList.Builder<BloomFilter> builder = ImmutableList.builder();
+        for (OrcProto.BloomFilter orcBloomFilter : bloomFilterList) {
+            if (orcBloomFilter.hasUtf8Bitset()) {
+                ByteString utf8Bitset = orcBloomFilter.getUtf8Bitset();
+                long[] bits = new long[utf8Bitset.size() / 8];
+                utf8Bitset.asReadOnlyByteBuffer().order(ByteOrder.LITTLE_ENDIAN).asLongBuffer().get(bits);
+                builder.add(new BloomFilter(bits, orcBloomFilter.getNumHashFunctions()));
+            }
+            else {
+                builder.add(new BloomFilter(Longs.toArray(orcBloomFilter.getBitsetList()), orcBloomFilter.getNumHashFunctions()));
+            }
+        }
+        return builder.build();
     }
 }

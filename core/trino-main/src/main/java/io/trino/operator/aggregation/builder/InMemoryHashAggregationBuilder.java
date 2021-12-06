@@ -132,6 +132,19 @@ public class InMemoryHashAggregationBuilder
         aggregators = builder.build();
     }
 
+    public static List<Type> toTypes(List<? extends Type> groupByType, Step step, List<AccumulatorFactory> factories, Optional<Integer> hashChannel)
+    {
+        ImmutableList.Builder<Type> types = ImmutableList.builder();
+        types.addAll(groupByType);
+        if (hashChannel.isPresent()) {
+            types.add(BIGINT);
+        }
+        for (AccumulatorFactory factory : factories) {
+            types.add(new Aggregator(factory, step, Optional.empty()).getType());
+        }
+        return types.build();
+    }
+
     @Override
     public void close() {}
 
@@ -344,8 +357,8 @@ public class InMemoryHashAggregationBuilder
     private static class Aggregator
     {
         private final GroupedAccumulator aggregation;
-        private AggregationNode.Step step;
         private final int intermediateChannel;
+        private AggregationNode.Step step;
 
         private Aggregator(AccumulatorFactory accumulatorFactory, AggregationNode.Step step, Optional<Integer> overwriteIntermediateChannel)
         {
@@ -414,18 +427,5 @@ public class InMemoryHashAggregationBuilder
         {
             return aggregation.getIntermediateType();
         }
-    }
-
-    public static List<Type> toTypes(List<? extends Type> groupByType, Step step, List<AccumulatorFactory> factories, Optional<Integer> hashChannel)
-    {
-        ImmutableList.Builder<Type> types = ImmutableList.builder();
-        types.addAll(groupByType);
-        if (hashChannel.isPresent()) {
-            types.add(BIGINT);
-        }
-        for (AccumulatorFactory factory : factories) {
-            types.add(new Aggregator(factory, step, Optional.empty()).getType());
-        }
-        return types.build();
     }
 }

@@ -143,12 +143,6 @@ public final class PlanNodeStatsEstimateMath
         return result.build();
     }
 
-    @FunctionalInterface
-    private interface RangeAdditionStrategy
-    {
-        StatisticRange add(StatisticRange leftRange, StatisticRange rightRange);
-    }
-
     public static PlanNodeStatsEstimate addStatsAndSumDistinctValues(PlanNodeStatsEstimate left, PlanNodeStatsEstimate right)
     {
         return addStats(left, right, StatisticRange::addAndSumDistinctValues);
@@ -215,5 +209,11 @@ public final class PlanNodeStatsEstimateMath
                 .setAverageRowSize(newAverageRowSize)
                 .setNullsFraction(newNullsFraction)
                 .build();
+    }
+
+    @FunctionalInterface
+    private interface RangeAdditionStrategy
+    {
+        StatisticRange add(StatisticRange leftRange, StatisticRange rightRange);
     }
 }

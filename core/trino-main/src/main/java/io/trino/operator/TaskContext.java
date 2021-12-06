@@ -98,50 +98,18 @@ public class TaskContext
     private final Object cumulativeMemoryLock = new Object();
     private final AtomicDouble cumulativeUserMemory = new AtomicDouble(0.0);
     private final AtomicDouble cumulativeSystemMemory = new AtomicDouble(0.0);
-
-    @GuardedBy("cumulativeMemoryLock")
-    private long lastUserMemoryReservation;
-
-    @GuardedBy("cumulativeMemoryLock")
-    private long lastSystemMemoryReservation;
-
-    @GuardedBy("cumulativeMemoryLock")
-    private long lastTaskStatCallNanos;
-
     private final MemoryTrackingContext taskMemoryContext;
     private final DynamicFiltersCollector dynamicFiltersCollector;
-
     // The collector is shared for dynamic filters collected from coordinator
     // as well as from local build-side of replicated joins. It is also shared with
     // with multiple table scans (e.g. co-located joins).
     private final LocalDynamicFiltersCollector localDynamicFiltersCollector;
-
-    public static TaskContext createTaskContext(
-            QueryContext queryContext,
-            TaskStateMachine taskStateMachine,
-            GcMonitor gcMonitor,
-            Executor notificationExecutor,
-            ScheduledExecutorService yieldExecutor,
-            Session session,
-            MemoryTrackingContext taskMemoryContext,
-            Runnable notifyStatusChanged,
-            boolean perOperatorCpuTimerEnabled,
-            boolean cpuTimerEnabled)
-    {
-        TaskContext taskContext = new TaskContext(
-                queryContext,
-                taskStateMachine,
-                gcMonitor,
-                notificationExecutor,
-                yieldExecutor,
-                session,
-                taskMemoryContext,
-                notifyStatusChanged,
-                perOperatorCpuTimerEnabled,
-                cpuTimerEnabled);
-        taskContext.initialize();
-        return taskContext;
-    }
+    @GuardedBy("cumulativeMemoryLock")
+    private long lastUserMemoryReservation;
+    @GuardedBy("cumulativeMemoryLock")
+    private long lastSystemMemoryReservation;
+    @GuardedBy("cumulativeMemoryLock")
+    private long lastTaskStatCallNanos;
 
     private TaskContext(
             QueryContext queryContext,
@@ -168,6 +136,33 @@ public class TaskContext
         this.localDynamicFiltersCollector = new LocalDynamicFiltersCollector(session);
         this.perOperatorCpuTimerEnabled = perOperatorCpuTimerEnabled;
         this.cpuTimerEnabled = cpuTimerEnabled;
+    }
+
+    public static TaskContext createTaskContext(
+            QueryContext queryContext,
+            TaskStateMachine taskStateMachine,
+            GcMonitor gcMonitor,
+            Executor notificationExecutor,
+            ScheduledExecutorService yieldExecutor,
+            Session session,
+            MemoryTrackingContext taskMemoryContext,
+            Runnable notifyStatusChanged,
+            boolean perOperatorCpuTimerEnabled,
+            boolean cpuTimerEnabled)
+    {
+        TaskContext taskContext = new TaskContext(
+                queryContext,
+                taskStateMachine,
+                gcMonitor,
+                notificationExecutor,
+                yieldExecutor,
+                session,
+                taskMemoryContext,
+                notifyStatusChanged,
+                perOperatorCpuTimerEnabled,
+                cpuTimerEnabled);
+        taskContext.initialize();
+        return taskContext;
     }
 
     // the state change listener is added here in a separate initialize() method

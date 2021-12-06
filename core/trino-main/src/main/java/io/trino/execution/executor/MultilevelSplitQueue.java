@@ -80,6 +80,18 @@ public class MultilevelSplitQueue
         this.levelTimeMultiplier = levelTimeMultiplier;
     }
 
+    public static int computeLevel(long threadUsageNanos)
+    {
+        long seconds = NANOSECONDS.toSeconds(threadUsageNanos);
+        for (int i = 0; i < (LEVEL_THRESHOLD_SECONDS.length - 1); i++) {
+            if (seconds < LEVEL_THRESHOLD_SECONDS[i + 1]) {
+                return i;
+            }
+        }
+
+        return LEVEL_THRESHOLD_SECONDS.length - 1;
+    }
+
     private void addLevelTime(int level, long nanos)
     {
         levelScheduledTime[level].addAndGet(nanos);
@@ -290,18 +302,6 @@ public class MultilevelSplitQueue
         finally {
             lock.unlock();
         }
-    }
-
-    public static int computeLevel(long threadUsageNanos)
-    {
-        long seconds = NANOSECONDS.toSeconds(threadUsageNanos);
-        for (int i = 0; i < (LEVEL_THRESHOLD_SECONDS.length - 1); i++) {
-            if (seconds < LEVEL_THRESHOLD_SECONDS[i + 1]) {
-                return i;
-            }
-        }
-
-        return LEVEL_THRESHOLD_SECONDS.length - 1;
     }
 
     @VisibleForTesting

@@ -29,6 +29,12 @@ public class Property<F, C, T>
     private final String name;
     private final BiFunction<F, C, Optional<T>> function;
 
+    public Property(String name, BiFunction<F, C, Optional<T>> function)
+    {
+        this.name = requireNonNull(name, "name is null");
+        this.function = requireNonNull(function, "function is null");
+    }
+
     public static <F, C, T> Property<F, C, T> property(String name, Function<F, T> function)
     {
         return property(name, (source, context) -> function.apply(source));
@@ -47,12 +53,6 @@ public class Property<F, C, T>
     public static <F, C, T> Property<F, C, T> optionalProperty(String name, BiFunction<F, C, Optional<T>> function)
     {
         return new Property<>(name, function);
-    }
-
-    public Property(String name, BiFunction<F, C, Optional<T>> function)
-    {
-        this.name = requireNonNull(name, "name is null");
-        this.function = requireNonNull(function, "function is null");
     }
 
     public String getName()

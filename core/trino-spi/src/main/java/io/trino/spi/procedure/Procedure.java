@@ -65,6 +65,20 @@ public class Procedure
         checkArgument(parameterCount == arguments.size(), "Method parameter count must match arguments");
     }
 
+    private static String checkNotNullOrEmpty(String value, String name)
+    {
+        requireNonNull(value, name + " is null");
+        checkArgument(!value.isEmpty(), name + " is empty");
+        return value;
+    }
+
+    private static void checkArgument(boolean assertion, String message)
+    {
+        if (!assertion) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
     public String getSchema()
     {
         return schema;
@@ -150,20 +164,6 @@ public class Procedure
         public String toString()
         {
             return name + " " + type;
-        }
-    }
-
-    private static String checkNotNullOrEmpty(String value, String name)
-    {
-        requireNonNull(value, name + " is null");
-        checkArgument(!value.isEmpty(), name + " is empty");
-        return value;
-    }
-
-    private static void checkArgument(boolean assertion, String message)
-    {
-        if (!assertion) {
-            throw new IllegalArgumentException(message);
         }
     }
 }

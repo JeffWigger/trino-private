@@ -71,6 +71,10 @@ import static java.util.Objects.requireNonNull;
 public class JoinFilterFunctionCompiler
 {
     private final Metadata metadata;
+    private final LoadingCache<JoinFilterCacheKey, JoinFilterFunctionFactory> joinFilterFunctionFactories = CacheBuilder.newBuilder()
+            .recordStats()
+            .maximumSize(1000)
+            .build(CacheLoader.from(key -> internalCompileFilterFunctionFactory(key.getFilter(), key.getLeftBlocksSize())));
 
     @Inject
     public JoinFilterFunctionCompiler(Metadata metadata)
@@ -78,10 +82,53 @@ public class JoinFilterFunctionCompiler
         this.metadata = metadata;
     }
 
-    private final LoadingCache<JoinFilterCacheKey, JoinFilterFunctionFactory> joinFilterFunctionFactories = CacheBuilder.newBuilder()
-            .recordStats()
-            .maximumSize(1000)
-            .build(CacheLoader.from(key -> internalCompileFilterFunctionFactory(key.getFilter(), key.getLeftBlocksSize())));
+    private static void generateConstructor(
+            ClassDefinition classDefinition,
+            FieldDefinition sessionField,
+            CachedInstanceBinder cachedInstanceBinder)
+    {
+        Parameter sessionParameter = arg("session", ConnectorSession.class);
+        MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC), sessionParameter);
+
+        BytecodeBlock body = constructorDefinition.getBody();
+        Variable thisVariable = constructorDefinition.getThis();
+
+        body.comment("super();")
+                .append(thisVariable)
+                .invokeConstructor(Object.class);
+
+        body.append(thisVariable.setField(sessionField, sessionParameter));
+        cachedInstanceBinder.generateInitializations(thisVariable, body);
+        body.ret();
+    }
+
+    private static void generateToString(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, String string)
+    {
+        // bind constant via invokedynamic to avoid constant pool issues due to large strings
+        classDefinition.declareMethod(a(PUBLIC), "toString", type(String.class))
+                .getBody()
+                .append(invoke(callSiteBinder.bind(string, String.class), "toString"))
+                .retObject();
+    }
+
+    private static RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler(
+            CallSiteBinder callSiteBinder,
+            Variable leftPosition,
+            Variable leftPage,
+            Variable rightPosition,
+            Variable rightPage,
+            int leftBlocksSize)
+    {
+        return new InputReferenceCompiler(
+                (scope, field) -> {
+                    if (field < leftBlocksSize) {
+                        return leftPage.invoke("getBlock", Block.class, constantInt(field));
+                    }
+                    return rightPage.invoke("getBlock", Block.class, constantInt(field - leftBlocksSize));
+                },
+                (scope, field) -> field < leftBlocksSize ? leftPosition : rightPosition,
+                callSiteBinder);
+    }
 
     @Managed
     @Nested
@@ -137,26 +184,6 @@ public class JoinFilterFunctionCompiler
         generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, compiledLambdaMap, filter, leftBlocksSize, sessionField);
 
         generateConstructor(classDefinition, sessionField, cachedInstanceBinder);
-    }
-
-    private static void generateConstructor(
-            ClassDefinition classDefinition,
-            FieldDefinition sessionField,
-            CachedInstanceBinder cachedInstanceBinder)
-    {
-        Parameter sessionParameter = arg("session", ConnectorSession.class);
-        MethodDefinition constructorDefinition = classDefinition.declareConstructor(a(PUBLIC), sessionParameter);
-
-        BytecodeBlock body = constructorDefinition.getBody();
-        Variable thisVariable = constructorDefinition.getThis();
-
-        body.comment("super();")
-                .append(thisVariable)
-                .invokeConstructor(Object.class);
-
-        body.append(thisVariable.setField(sessionField, sessionParameter));
-        cachedInstanceBinder.generateInitializations(thisVariable, body);
-        body.ret();
     }
 
     private void generateFilterMethod(
@@ -236,37 +263,9 @@ public class JoinFilterFunctionCompiler
         return compiledLambdaMap.build();
     }
 
-    private static void generateToString(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, String string)
-    {
-        // bind constant via invokedynamic to avoid constant pool issues due to large strings
-        classDefinition.declareMethod(a(PUBLIC), "toString", type(String.class))
-                .getBody()
-                .append(invoke(callSiteBinder.bind(string, String.class), "toString"))
-                .retObject();
-    }
-
     public interface JoinFilterFunctionFactory
     {
         JoinFilterFunction create(ConnectorSession session, LongArrayList addresses, List<Page> pages);
-    }
-
-    private static RowExpressionVisitor<BytecodeNode, Scope> fieldReferenceCompiler(
-            CallSiteBinder callSiteBinder,
-            Variable leftPosition,
-            Variable leftPage,
-            Variable rightPosition,
-            Variable rightPage,
-            int leftBlocksSize)
-    {
-        return new InputReferenceCompiler(
-                (scope, field) -> {
-                    if (field < leftBlocksSize) {
-                        return leftPage.invoke("getBlock", Block.class, constantInt(field));
-                    }
-                    return rightPage.invoke("getBlock", Block.class, constantInt(field - leftBlocksSize));
-                },
-                (scope, field) -> field < leftBlocksSize ? leftPosition : rightPosition,
-                callSiteBinder);
     }
 
     private static final class JoinFilterCacheKey

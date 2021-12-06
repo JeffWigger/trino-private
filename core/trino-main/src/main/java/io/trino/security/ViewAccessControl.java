@@ -37,6 +37,19 @@ public class ViewAccessControl
         this.invoker = requireNonNull(invoker, "invoker is null");
     }
 
+    private static void wrapAccessDeniedException(Runnable runnable)
+    {
+        try {
+            runnable.run();
+        }
+        catch (AccessDeniedException e) {
+            String prefix = AccessDeniedException.PREFIX;
+            verify(e.getMessage().startsWith(prefix));
+            String msg = e.getMessage().substring(prefix.length());
+            throw new AccessDeniedException("View owner does not have sufficient privileges: " + msg, e);
+        }
+    }
+
     @Override
     protected AccessControl delegate()
     {
@@ -81,18 +94,5 @@ public class ViewAccessControl
     public List<ViewExpression> getColumnMasks(SecurityContext context, QualifiedObjectName tableName, String columnName, Type type)
     {
         return delegate.getColumnMasks(context, tableName, columnName, type);
-    }
-
-    private static void wrapAccessDeniedException(Runnable runnable)
-    {
-        try {
-            runnable.run();
-        }
-        catch (AccessDeniedException e) {
-            String prefix = AccessDeniedException.PREFIX;
-            verify(e.getMessage().startsWith(prefix));
-            String msg = e.getMessage().substring(prefix.length());
-            throw new AccessDeniedException("View owner does not have sufficient privileges: " + msg, e);
-        }
     }
 }

@@ -44,23 +44,6 @@ public final class TypeSignatureProvider
         this.typeSignatureResolver = requireNonNull(typeSignatureResolver, "typeSignatureResolver is null");
     }
 
-    public boolean hasDependency()
-    {
-        return hasDependency;
-    }
-
-    public TypeSignature getTypeSignature()
-    {
-        checkState(!hasDependency);
-        return typeSignatureResolver.apply(ImmutableList.of());
-    }
-
-    public TypeSignature getTypeSignature(List<Type> boundTypeParameters)
-    {
-        checkState(hasDependency);
-        return typeSignatureResolver.apply(boundTypeParameters);
-    }
-
     public static List<TypeSignatureProvider> fromTypes(Type... types)
     {
         return fromTypes(ImmutableList.copyOf(types));
@@ -84,6 +67,23 @@ public final class TypeSignatureProvider
         return typeSignatures.stream()
                 .map(TypeSignatureProvider::new)
                 .collect(toImmutableList());
+    }
+
+    public boolean hasDependency()
+    {
+        return hasDependency;
+    }
+
+    public TypeSignature getTypeSignature()
+    {
+        checkState(!hasDependency);
+        return typeSignatureResolver.apply(ImmutableList.of());
+    }
+
+    public TypeSignature getTypeSignature(List<Type> boundTypeParameters)
+    {
+        checkState(hasDependency);
+        return typeSignatureResolver.apply(boundTypeParameters);
     }
 
     @Override

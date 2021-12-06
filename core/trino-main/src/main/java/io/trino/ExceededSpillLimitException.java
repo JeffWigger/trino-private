@@ -22,6 +22,11 @@ import static java.lang.String.format;
 public class ExceededSpillLimitException
         extends TrinoException
 {
+    private ExceededSpillLimitException(String message)
+    {
+        super(EXCEEDED_SPILL_LIMIT, message);
+    }
+
     public static ExceededSpillLimitException exceededLocalLimit(DataSize maxSpill)
     {
         return new ExceededSpillLimitException(format("Query exceeded local spill limit of %s", maxSpill));
@@ -30,10 +35,5 @@ public class ExceededSpillLimitException
     public static ExceededSpillLimitException exceededPerQueryLocalLimit(DataSize maxSpill)
     {
         return new ExceededSpillLimitException(format("Query exceeded per-query local spill limit of %s", maxSpill));
-    }
-
-    private ExceededSpillLimitException(String message)
-    {
-        super(EXCEEDED_SPILL_LIMIT, message);
     }
 }

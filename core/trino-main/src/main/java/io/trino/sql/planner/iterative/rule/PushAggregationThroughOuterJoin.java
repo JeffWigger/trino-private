@@ -106,6 +106,44 @@ public class PushAggregationThroughOuterJoin
     private static final Pattern<AggregationNode> PATTERN = aggregation()
             .with(source().matching(join().capturedAs(JOIN)));
 
+    private static PlanNode getInnerTable(JoinNode join)
+    {
+        checkState(join.getType() == JoinNode.Type.LEFT || join.getType() == JoinNode.Type.RIGHT, "expected LEFT or RIGHT JOIN");
+        PlanNode innerNode;
+        if (join.getType() == JoinNode.Type.LEFT) {
+            innerNode = join.getRight();
+        }
+        else {
+            innerNode = join.getLeft();
+        }
+        return innerNode;
+    }
+
+    private static PlanNode getOuterTable(JoinNode join)
+    {
+        checkState(join.getType() == JoinNode.Type.LEFT || join.getType() == JoinNode.Type.RIGHT, "expected LEFT or RIGHT JOIN");
+        PlanNode outerNode;
+        if (join.getType() == JoinNode.Type.LEFT) {
+            outerNode = join.getLeft();
+        }
+        else {
+            outerNode = join.getRight();
+        }
+        return outerNode;
+    }
+
+    private static boolean groupsOnAllColumns(AggregationNode node, List<Symbol> columns)
+    {
+        return node.getGroupingSetCount() == 1 && new HashSet<>(node.getGroupingKeys()).equals(new HashSet<>(columns));
+    }
+
+    private static boolean isAggregationOnSymbols(AggregationNode aggregationNode, PlanNode source)
+    {
+        Set<Symbol> sourceSymbols = ImmutableSet.copyOf(source.getOutputSymbols());
+        return aggregationNode.getAggregations().values().stream()
+                .allMatch(aggregation -> sourceSymbols.containsAll(SymbolsExtractor.extractUnique(aggregation)));
+    }
+
     @Override
     public Pattern<AggregationNode> getPattern()
     {
@@ -193,37 +231,6 @@ public class PushAggregationThroughOuterJoin
         }
 
         return Result.ofPlanNode(resultNode.get());
-    }
-
-    private static PlanNode getInnerTable(JoinNode join)
-    {
-        checkState(join.getType() == JoinNode.Type.LEFT || join.getType() == JoinNode.Type.RIGHT, "expected LEFT or RIGHT JOIN");
-        PlanNode innerNode;
-        if (join.getType() == JoinNode.Type.LEFT) {
-            innerNode = join.getRight();
-        }
-        else {
-            innerNode = join.getLeft();
-        }
-        return innerNode;
-    }
-
-    private static PlanNode getOuterTable(JoinNode join)
-    {
-        checkState(join.getType() == JoinNode.Type.LEFT || join.getType() == JoinNode.Type.RIGHT, "expected LEFT or RIGHT JOIN");
-        PlanNode outerNode;
-        if (join.getType() == JoinNode.Type.LEFT) {
-            outerNode = join.getLeft();
-        }
-        else {
-            outerNode = join.getRight();
-        }
-        return outerNode;
-    }
-
-    private static boolean groupsOnAllColumns(AggregationNode node, List<Symbol> columns)
-    {
-        return node.getGroupingSetCount() == 1 && new HashSet<>(node.getGroupingKeys()).equals(new HashSet<>(columns));
     }
 
     // When the aggregation is done after the join, there will be a null value that gets aggregated over
@@ -320,13 +327,6 @@ public class PushAggregationThroughOuterJoin
                 Optional.empty());
 
         return new MappedAggregationInfo(aggregationOverNullRow, aggregationsSymbolMapping);
-    }
-
-    private static boolean isAggregationOnSymbols(AggregationNode aggregationNode, PlanNode source)
-    {
-        Set<Symbol> sourceSymbols = ImmutableSet.copyOf(source.getOutputSymbols());
-        return aggregationNode.getAggregations().values().stream()
-                .allMatch(aggregation -> sourceSymbols.containsAll(SymbolsExtractor.extractUnique(aggregation)));
     }
 
     private static class MappedAggregationInfo

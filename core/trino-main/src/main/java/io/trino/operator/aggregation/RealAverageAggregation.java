@@ -78,6 +78,39 @@ public class RealAverageAggregation
                 false);
     }
 
+    private static List<ParameterMetadata> createInputParameterMetadata(Type value)
+    {
+        return ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(BLOCK_INPUT_CHANNEL, value), new ParameterMetadata(BLOCK_INDEX));
+    }
+
+    public static void input(LongState count, DoubleState sum, long value)
+    {
+        count.setLong(count.getLong() + 1);
+        sum.setDouble(sum.getDouble() + intBitsToFloat((int) value));
+    }
+
+    public static void removeInput(LongState count, DoubleState sum, long value)
+    {
+        count.setLong(count.getLong() - 1);
+        sum.setDouble(sum.getDouble() - intBitsToFloat((int) value));
+    }
+
+    public static void combine(LongState count, DoubleState sum, LongState otherCount, DoubleState otherSum)
+    {
+        count.setLong(count.getLong() + otherCount.getLong());
+        sum.setDouble(sum.getDouble() + otherSum.getDouble());
+    }
+
+    public static void output(LongState count, DoubleState sum, BlockBuilder out)
+    {
+        if (count.getLong() == 0) {
+            out.appendNull();
+        }
+        else {
+            REAL.writeLong(out, floatToIntBits((float) (sum.getDouble() / count.getLong())));
+        }
+    }
+
     @Override
     public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
     {
@@ -122,38 +155,5 @@ public class RealAverageAggregation
                         doubleStateSerializer.getSerializedType()),
                 REAL,
                 factory);
-    }
-
-    private static List<ParameterMetadata> createInputParameterMetadata(Type value)
-    {
-        return ImmutableList.of(new ParameterMetadata(STATE), new ParameterMetadata(BLOCK_INPUT_CHANNEL, value), new ParameterMetadata(BLOCK_INDEX));
-    }
-
-    public static void input(LongState count, DoubleState sum, long value)
-    {
-        count.setLong(count.getLong() + 1);
-        sum.setDouble(sum.getDouble() + intBitsToFloat((int) value));
-    }
-
-    public static void removeInput(LongState count, DoubleState sum, long value)
-    {
-        count.setLong(count.getLong() - 1);
-        sum.setDouble(sum.getDouble() - intBitsToFloat((int) value));
-    }
-
-    public static void combine(LongState count, DoubleState sum, LongState otherCount, DoubleState otherSum)
-    {
-        count.setLong(count.getLong() + otherCount.getLong());
-        sum.setDouble(sum.getDouble() + otherSum.getDouble());
-    }
-
-    public static void output(LongState count, DoubleState sum, BlockBuilder out)
-    {
-        if (count.getLong() == 0) {
-            out.appendNull();
-        }
-        else {
-            REAL.writeLong(out, floatToIntBits((float) (sum.getDouble() / count.getLong())));
-        }
     }
 }

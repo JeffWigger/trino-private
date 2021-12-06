@@ -188,6 +188,297 @@ class QueryPlanner
         this.recursiveSubqueries = recursiveSubqueries;
     }
 
+    private static boolean hasExpressionsToUnfold(List<SelectExpression> selectExpressions)
+    {
+        return selectExpressions.stream()
+                .map(SelectExpression::getUnfoldedExpressions)
+                .anyMatch(Optional::isPresent);
+    }
+
+    private static List<Expression> outputExpressions(List<SelectExpression> selectExpressions)
+    {
+        ImmutableList.Builder<Expression> result = ImmutableList.builder();
+        for (SelectExpression selectExpression : selectExpressions) {
+            if (selectExpression.getUnfoldedExpressions().isPresent()) {
+                result.addAll(selectExpression.getUnfoldedExpressions().get());
+            }
+            else {
+                result.add(selectExpression.getExpression());
+            }
+        }
+        return result.build();
+    }
+
+    private static Optional<PlanNodeId> getIdForLeftTableScan(PlanNode node)
+    {
+        if (node instanceof TableScanNode) {
+            return Optional.of(node.getId());
+        }
+        List<PlanNode> sources = node.getSources();
+        if (sources.isEmpty()) {
+            return Optional.empty();
+        }
+        return getIdForLeftTableScan(sources.get(0));
+    }
+
+    private static List<Symbol> computeOutputs(PlanBuilder builder, List<Expression> outputExpressions)
+    {
+        ImmutableList.Builder<Symbol> outputSymbols = ImmutableList.builder();
+        for (Expression expression : outputExpressions) {
+            outputSymbols.add(builder.translate(expression));
+        }
+        return outputSymbols.build();
+    }
+
+    private static OrderingScheme translateOrderingScheme(List<SortItem> items, Function<Expression, Symbol> coercions)
+    {
+        List<Symbol> coerced = items.stream()
+                .map(SortItem::getSortKey)
+                .map(coercions)
+                .collect(toImmutableList());
+
+        ImmutableList.Builder<Symbol> symbols = ImmutableList.builder();
+        Map<Symbol, SortOrder> orders = new HashMap<>();
+        for (int i = 0; i < coerced.size(); i++) {
+            Symbol symbol = coerced.get(i);
+            // for multiple sort items based on the same expression, retain the first one:
+            // ORDER BY x DESC, x ASC, y --> ORDER BY x DESC, y
+            if (!orders.containsKey(symbol)) {
+                symbols.add(symbol);
+                orders.put(symbol, OrderingScheme.sortItemToSortOrder(items.get(i)));
+            }
+        }
+
+        return new OrderingScheme(symbols.build(), orders);
+    }
+
+    private static List<Set<FieldId>> enumerateGroupingSets(GroupingSetAnalysis groupingSetAnalysis)
+    {
+        List<List<Set<FieldId>>> partialSets = new ArrayList<>();
+
+        for (Set<FieldId> cube : groupingSetAnalysis.getCubes()) {
+            partialSets.add(ImmutableList.copyOf(Sets.powerSet(cube)));
+        }
+
+        for (List<FieldId> rollup : groupingSetAnalysis.getRollups()) {
+            List<Set<FieldId>> sets = IntStream.rangeClosed(0, rollup.size())
+                    .mapToObj(i -> ImmutableSet.copyOf(rollup.subList(0, i)))
+                    .collect(toImmutableList());
+
+            partialSets.add(sets);
+        }
+
+        partialSets.addAll(groupingSetAnalysis.getOrdinarySets());
+
+        if (partialSets.isEmpty()) {
+            return ImmutableList.of(ImmutableSet.of());
+        }
+
+        // compute the cross product of the partial sets
+        List<Set<FieldId>> allSets = new ArrayList<>();
+        partialSets.get(0)
+                .stream()
+                .map(ImmutableSet::copyOf)
+                .forEach(allSets::add);
+
+        for (int i = 1; i < partialSets.size(); i++) {
+            List<Set<FieldId>> groupingSets = partialSets.get(i);
+            List<Set<FieldId>> oldGroupingSetsCrossProduct = ImmutableList.copyOf(allSets);
+            allSets.clear();
+            for (Set<FieldId> existingSet : oldGroupingSetsCrossProduct) {
+                for (Set<FieldId> groupingSet : groupingSets) {
+                    Set<FieldId> concatenatedSet = ImmutableSet.<FieldId>builder()
+                            .addAll(existingSet)
+                            .addAll(groupingSet)
+                            .build();
+                    allSets.add(concatenatedSet);
+                }
+            }
+        }
+
+        return allSets;
+    }
+
+    private static Expression zeroOfType(Type type)
+    {
+        if (isNumericType(type)) {
+            return new Cast(new LongLiteral("0"), toSqlType(type));
+        }
+        if (type.equals(INTERVAL_DAY_TIME)) {
+            return new IntervalLiteral("0", POSITIVE, DAY);
+        }
+        if (type.equals(INTERVAL_YEAR_MONTH)) {
+            return new IntervalLiteral("0", POSITIVE, YEAR);
+        }
+        throw new IllegalArgumentException("unexpected type: " + type);
+    }
+
+    public static WindowNode.Specification planWindowSpecification(List<Expression> partitionBy, Optional<OrderBy> orderBy, Function<Expression, Symbol> expressionRewrite)
+    {
+        // Rewrite PARTITION BY
+        ImmutableList.Builder<Symbol> partitionBySymbols = ImmutableList.builder();
+        for (Expression expression : partitionBy) {
+            partitionBySymbols.add(expressionRewrite.apply(expression));
+        }
+
+        // Rewrite ORDER BY
+        LinkedHashMap<Symbol, SortOrder> orderings = new LinkedHashMap<>();
+        for (SortItem item : getSortItemsFromOrderBy(orderBy)) {
+            Symbol symbol = expressionRewrite.apply(item.getSortKey());
+            // don't override existing keys, i.e. when "ORDER BY a ASC, a DESC" is specified
+            orderings.putIfAbsent(symbol, sortItemToSortOrder(item));
+        }
+
+        Optional<OrderingScheme> orderingScheme = Optional.empty();
+        if (!orderings.isEmpty()) {
+            orderingScheme = Optional.of(new OrderingScheme(ImmutableList.copyOf(orderings.keySet()), orderings));
+        }
+
+        return new WindowNode.Specification(partitionBySymbols.build(), orderingScheme);
+    }
+
+    public static List<Expression> extractPatternRecognitionExpressions(List<VariableDefinition> variableDefinitions, List<MeasureDefinition> measureDefinitions)
+    {
+        ImmutableList.Builder<Expression> expressions = ImmutableList.builder();
+
+        variableDefinitions.stream()
+                .map(VariableDefinition::getExpression)
+                .forEach(expressions::add);
+
+        measureDefinitions.stream()
+                .map(MeasureDefinition::getExpression)
+                .forEach(expressions::add);
+
+        return expressions.build();
+    }
+
+    /**
+     * Creates a projection with any additional coercions by identity of the provided expressions.
+     *
+     * @return the new subplan and a mapping of each expression to the symbol representing the coercion or an existing symbol if a coercion wasn't needed
+     */
+    public static PlanAndMappings coerce(PlanBuilder subPlan, List<Expression> expressions, Analysis analysis, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, TypeCoercion typeCoercion)
+    {
+        Assignments.Builder assignments = Assignments.builder();
+        assignments.putIdentities(subPlan.getRoot().getOutputSymbols());
+
+        Map<NodeRef<Expression>, Symbol> mappings = new HashMap<>();
+        for (Expression expression : expressions) {
+            Type coercion = analysis.getCoercion(expression);
+
+            // expressions may be repeated, for example, when resolving ordinal references in a GROUP BY clause
+            if (!mappings.containsKey(NodeRef.of(expression))) {
+                if (coercion != null) {
+                    Type type = analysis.getType(expression);
+                    Symbol symbol = symbolAllocator.newSymbol(expression, coercion);
+
+                    assignments.put(symbol, new Cast(
+                            subPlan.rewrite(expression),
+                            toSqlType(coercion),
+                            false,
+                            typeCoercion.isTypeOnlyCoercion(type, coercion)));
+
+                    mappings.put(NodeRef.of(expression), symbol);
+                }
+                else {
+                    mappings.put(NodeRef.of(expression), subPlan.translate(expression));
+                }
+            }
+        }
+
+        subPlan = subPlan.withNewRoot(
+                new ProjectNode(
+                        idAllocator.getNextId(),
+                        subPlan.getRoot(),
+                        assignments.build()));
+
+        return new PlanAndMappings(subPlan, mappings);
+    }
+
+    public static Expression coerceIfNecessary(Analysis analysis, Expression original, Expression rewritten)
+    {
+        Type coercion = analysis.getCoercion(original);
+        if (coercion == null) {
+            return rewritten;
+        }
+
+        return new Cast(
+                rewritten,
+                toSqlType(coercion),
+                false,
+                analysis.isTypeOnlyCoercion(original));
+    }
+
+    public static NodeAndMappings coerce(RelationPlan plan, List<Type> types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
+    {
+        List<Symbol> visibleFields = visibleFields(plan);
+        checkArgument(visibleFields.size() == types.size());
+
+        Assignments.Builder assignments = Assignments.builder();
+        ImmutableList.Builder<Symbol> mappings = ImmutableList.builder();
+        for (int i = 0; i < types.size(); i++) {
+            Symbol input = visibleFields.get(i);
+            Type type = types.get(i);
+
+            if (!symbolAllocator.getTypes().get(input).equals(type)) {
+                Symbol coerced = symbolAllocator.newSymbol(input.getName(), type);
+                assignments.put(coerced, new Cast(input.toSymbolReference(), toSqlType(type)));
+                mappings.add(coerced);
+            }
+            else {
+                assignments.putIdentity(input);
+                mappings.add(input);
+            }
+        }
+
+        ProjectNode coerced = new ProjectNode(idAllocator.getNextId(), plan.getRoot(), assignments.build());
+        return new NodeAndMappings(coerced, mappings.build());
+    }
+
+    public static List<Symbol> visibleFields(RelationPlan subPlan)
+    {
+        RelationType descriptor = subPlan.getDescriptor();
+        return descriptor.getAllFields().stream()
+                .filter(field -> !field.isHidden())
+                .map(descriptor::indexOf)
+                .map(subPlan.getFieldMappings()::get)
+                .collect(toImmutableList());
+    }
+
+    public static NodeAndMappings pruneInvisibleFields(RelationPlan plan, PlanNodeIdAllocator idAllocator)
+    {
+        List<Symbol> visibleFields = visibleFields(plan);
+        ProjectNode pruned = new ProjectNode(idAllocator.getNextId(), plan.getRoot(), Assignments.identity(visibleFields));
+        return new NodeAndMappings(pruned, visibleFields);
+    }
+
+    public static NodeAndMappings disambiguateOutputs(NodeAndMappings plan, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
+    {
+        Set<Symbol> distinctOutputs = ImmutableSet.copyOf(plan.getFields());
+
+        if (distinctOutputs.size() < plan.getFields().size()) {
+            Assignments.Builder assignments = Assignments.builder();
+            ImmutableList.Builder<Symbol> newOutputs = ImmutableList.builder();
+            Set<Symbol> uniqueOutputs = new HashSet<>();
+
+            for (Symbol output : plan.getFields()) {
+                if (uniqueOutputs.add(output)) {
+                    assignments.putIdentity(output);
+                    newOutputs.add(output);
+                }
+                else {
+                    Symbol newOutput = symbolAllocator.newSymbol(output);
+                    assignments.put(newOutput, output.toSymbolReference());
+                    newOutputs.add(newOutput);
+                }
+            }
+
+            return new NodeAndMappings(new ProjectNode(idAllocator.getNextId(), plan.getNode(), assignments.build()), newOutputs.build());
+        }
+
+        return plan;
+    }
+
     public RelationPlan plan(Query query)
     {
         PlanBuilder builder = planQueryBody(query);
@@ -456,27 +747,6 @@ class QueryPlanner
                 outerContext);
     }
 
-    private static boolean hasExpressionsToUnfold(List<SelectExpression> selectExpressions)
-    {
-        return selectExpressions.stream()
-                .map(SelectExpression::getUnfoldedExpressions)
-                .anyMatch(Optional::isPresent);
-    }
-
-    private static List<Expression> outputExpressions(List<SelectExpression> selectExpressions)
-    {
-        ImmutableList.Builder<Expression> result = ImmutableList.builder();
-        for (SelectExpression selectExpression : selectExpressions) {
-            if (selectExpression.getUnfoldedExpressions().isPresent()) {
-                result.addAll(selectExpression.getUnfoldedExpressions().get());
-            }
-            else {
-                result.add(selectExpression.getExpression());
-            }
-        }
-        return result.build();
-    }
-
     public DeleteNode plan(Delete node)
     {
         Table table = node.getTable();
@@ -579,27 +849,6 @@ class QueryPlanner
                 rowId,
                 updatedColumnValuesBuilder.build(),
                 outputs);
-    }
-
-    private static Optional<PlanNodeId> getIdForLeftTableScan(PlanNode node)
-    {
-        if (node instanceof TableScanNode) {
-            return Optional.of(node.getId());
-        }
-        List<PlanNode> sources = node.getSources();
-        if (sources.isEmpty()) {
-            return Optional.empty();
-        }
-        return getIdForLeftTableScan(sources.get(0));
-    }
-
-    private static List<Symbol> computeOutputs(PlanBuilder builder, List<Expression> outputExpressions)
-    {
-        ImmutableList.Builder<Symbol> outputSymbols = ImmutableList.builder();
-        for (Expression expression : outputExpressions) {
-            outputSymbols.add(builder.translate(expression));
-        }
-        return outputSymbols.build();
     }
 
     private PlanBuilder planQueryBody(Query query)
@@ -844,75 +1093,6 @@ class QueryPlanner
                 .distinct()
                 .map(ScopeAware::getNode)
                 .collect(toImmutableList());
-    }
-
-    private static OrderingScheme translateOrderingScheme(List<SortItem> items, Function<Expression, Symbol> coercions)
-    {
-        List<Symbol> coerced = items.stream()
-                .map(SortItem::getSortKey)
-                .map(coercions)
-                .collect(toImmutableList());
-
-        ImmutableList.Builder<Symbol> symbols = ImmutableList.builder();
-        Map<Symbol, SortOrder> orders = new HashMap<>();
-        for (int i = 0; i < coerced.size(); i++) {
-            Symbol symbol = coerced.get(i);
-            // for multiple sort items based on the same expression, retain the first one:
-            // ORDER BY x DESC, x ASC, y --> ORDER BY x DESC, y
-            if (!orders.containsKey(symbol)) {
-                symbols.add(symbol);
-                orders.put(symbol, OrderingScheme.sortItemToSortOrder(items.get(i)));
-            }
-        }
-
-        return new OrderingScheme(symbols.build(), orders);
-    }
-
-    private static List<Set<FieldId>> enumerateGroupingSets(GroupingSetAnalysis groupingSetAnalysis)
-    {
-        List<List<Set<FieldId>>> partialSets = new ArrayList<>();
-
-        for (Set<FieldId> cube : groupingSetAnalysis.getCubes()) {
-            partialSets.add(ImmutableList.copyOf(Sets.powerSet(cube)));
-        }
-
-        for (List<FieldId> rollup : groupingSetAnalysis.getRollups()) {
-            List<Set<FieldId>> sets = IntStream.rangeClosed(0, rollup.size())
-                    .mapToObj(i -> ImmutableSet.copyOf(rollup.subList(0, i)))
-                    .collect(toImmutableList());
-
-            partialSets.add(sets);
-        }
-
-        partialSets.addAll(groupingSetAnalysis.getOrdinarySets());
-
-        if (partialSets.isEmpty()) {
-            return ImmutableList.of(ImmutableSet.of());
-        }
-
-        // compute the cross product of the partial sets
-        List<Set<FieldId>> allSets = new ArrayList<>();
-        partialSets.get(0)
-                .stream()
-                .map(ImmutableSet::copyOf)
-                .forEach(allSets::add);
-
-        for (int i = 1; i < partialSets.size(); i++) {
-            List<Set<FieldId>> groupingSets = partialSets.get(i);
-            List<Set<FieldId>> oldGroupingSetsCrossProduct = ImmutableList.copyOf(allSets);
-            allSets.clear();
-            for (Set<FieldId> existingSet : oldGroupingSetsCrossProduct) {
-                for (Set<FieldId> groupingSet : groupingSets) {
-                    Set<FieldId> concatenatedSet = ImmutableSet.<FieldId>builder()
-                            .addAll(existingSet)
-                            .addAll(groupingSet)
-                            .build();
-                    allSets.add(concatenatedSet);
-                }
-            }
-        }
-
-        return allSets;
     }
 
     private PlanBuilder planGroupingOperations(PlanBuilder subPlan, QuerySpecification node, Optional<Symbol> groupIdSymbol, List<Set<FieldId>> groupingSets)
@@ -1224,20 +1404,6 @@ class QueryPlanner
         return new FrameOffsetPlanAndSymbol(subPlan, Optional.of(coercedOffsetSymbol));
     }
 
-    private static Expression zeroOfType(Type type)
-    {
-        if (isNumericType(type)) {
-            return new Cast(new LongLiteral("0"), toSqlType(type));
-        }
-        if (type.equals(INTERVAL_DAY_TIME)) {
-            return new IntervalLiteral("0", POSITIVE, DAY);
-        }
-        if (type.equals(INTERVAL_YEAR_MONTH)) {
-            return new IntervalLiteral("0", POSITIVE, YEAR);
-        }
-        throw new IllegalArgumentException("unexpected type: " + type);
-    }
-
     private PlanBuilder planWindow(
             PlanBuilder subPlan,
             FunctionCall windowFunction,
@@ -1388,30 +1554,6 @@ class QueryPlanner
                         components.getVariableDefinitions()));
     }
 
-    public static WindowNode.Specification planWindowSpecification(List<Expression> partitionBy, Optional<OrderBy> orderBy, Function<Expression, Symbol> expressionRewrite)
-    {
-        // Rewrite PARTITION BY
-        ImmutableList.Builder<Symbol> partitionBySymbols = ImmutableList.builder();
-        for (Expression expression : partitionBy) {
-            partitionBySymbols.add(expressionRewrite.apply(expression));
-        }
-
-        // Rewrite ORDER BY
-        LinkedHashMap<Symbol, SortOrder> orderings = new LinkedHashMap<>();
-        for (SortItem item : getSortItemsFromOrderBy(orderBy)) {
-            Symbol symbol = expressionRewrite.apply(item.getSortKey());
-            // don't override existing keys, i.e. when "ORDER BY a ASC, a DESC" is specified
-            orderings.putIfAbsent(symbol, sortItemToSortOrder(item));
-        }
-
-        Optional<OrderingScheme> orderingScheme = Optional.empty();
-        if (!orderings.isEmpty()) {
-            orderingScheme = Optional.of(new OrderingScheme(ImmutableList.copyOf(orderings.keySet()), orderings));
-        }
-
-        return new WindowNode.Specification(partitionBySymbols.build(), orderingScheme);
-    }
-
     private PlanBuilder planWindowMeasures(Node node, PlanBuilder subPlan, List<WindowOperation> windowMeasures)
     {
         if (windowMeasures.isEmpty()) {
@@ -1447,21 +1589,6 @@ class QueryPlanner
         }
 
         return subPlan;
-    }
-
-    public static List<Expression> extractPatternRecognitionExpressions(List<VariableDefinition> variableDefinitions, List<MeasureDefinition> measureDefinitions)
-    {
-        ImmutableList.Builder<Expression> expressions = ImmutableList.builder();
-
-        variableDefinitions.stream()
-                .map(VariableDefinition::getExpression)
-                .forEach(expressions::add);
-
-        measureDefinitions.stream()
-                .map(MeasureDefinition::getExpression)
-                .forEach(expressions::add);
-
-        return expressions.build();
     }
 
     private PlanBuilder planPatternRecognition(
@@ -1519,133 +1646,6 @@ class QueryPlanner
                         components.getPattern(),
                         components.getSubsets(),
                         components.getVariableDefinitions()));
-    }
-
-    /**
-     * Creates a projection with any additional coercions by identity of the provided expressions.
-     *
-     * @return the new subplan and a mapping of each expression to the symbol representing the coercion or an existing symbol if a coercion wasn't needed
-     */
-    public static PlanAndMappings coerce(PlanBuilder subPlan, List<Expression> expressions, Analysis analysis, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, TypeCoercion typeCoercion)
-    {
-        Assignments.Builder assignments = Assignments.builder();
-        assignments.putIdentities(subPlan.getRoot().getOutputSymbols());
-
-        Map<NodeRef<Expression>, Symbol> mappings = new HashMap<>();
-        for (Expression expression : expressions) {
-            Type coercion = analysis.getCoercion(expression);
-
-            // expressions may be repeated, for example, when resolving ordinal references in a GROUP BY clause
-            if (!mappings.containsKey(NodeRef.of(expression))) {
-                if (coercion != null) {
-                    Type type = analysis.getType(expression);
-                    Symbol symbol = symbolAllocator.newSymbol(expression, coercion);
-
-                    assignments.put(symbol, new Cast(
-                            subPlan.rewrite(expression),
-                            toSqlType(coercion),
-                            false,
-                            typeCoercion.isTypeOnlyCoercion(type, coercion)));
-
-                    mappings.put(NodeRef.of(expression), symbol);
-                }
-                else {
-                    mappings.put(NodeRef.of(expression), subPlan.translate(expression));
-                }
-            }
-        }
-
-        subPlan = subPlan.withNewRoot(
-                new ProjectNode(
-                        idAllocator.getNextId(),
-                        subPlan.getRoot(),
-                        assignments.build()));
-
-        return new PlanAndMappings(subPlan, mappings);
-    }
-
-    public static Expression coerceIfNecessary(Analysis analysis, Expression original, Expression rewritten)
-    {
-        Type coercion = analysis.getCoercion(original);
-        if (coercion == null) {
-            return rewritten;
-        }
-
-        return new Cast(
-                rewritten,
-                toSqlType(coercion),
-                false,
-                analysis.isTypeOnlyCoercion(original));
-    }
-
-    public static NodeAndMappings coerce(RelationPlan plan, List<Type> types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
-    {
-        List<Symbol> visibleFields = visibleFields(plan);
-        checkArgument(visibleFields.size() == types.size());
-
-        Assignments.Builder assignments = Assignments.builder();
-        ImmutableList.Builder<Symbol> mappings = ImmutableList.builder();
-        for (int i = 0; i < types.size(); i++) {
-            Symbol input = visibleFields.get(i);
-            Type type = types.get(i);
-
-            if (!symbolAllocator.getTypes().get(input).equals(type)) {
-                Symbol coerced = symbolAllocator.newSymbol(input.getName(), type);
-                assignments.put(coerced, new Cast(input.toSymbolReference(), toSqlType(type)));
-                mappings.add(coerced);
-            }
-            else {
-                assignments.putIdentity(input);
-                mappings.add(input);
-            }
-        }
-
-        ProjectNode coerced = new ProjectNode(idAllocator.getNextId(), plan.getRoot(), assignments.build());
-        return new NodeAndMappings(coerced, mappings.build());
-    }
-
-    public static List<Symbol> visibleFields(RelationPlan subPlan)
-    {
-        RelationType descriptor = subPlan.getDescriptor();
-        return descriptor.getAllFields().stream()
-                .filter(field -> !field.isHidden())
-                .map(descriptor::indexOf)
-                .map(subPlan.getFieldMappings()::get)
-                .collect(toImmutableList());
-    }
-
-    public static NodeAndMappings pruneInvisibleFields(RelationPlan plan, PlanNodeIdAllocator idAllocator)
-    {
-        List<Symbol> visibleFields = visibleFields(plan);
-        ProjectNode pruned = new ProjectNode(idAllocator.getNextId(), plan.getRoot(), Assignments.identity(visibleFields));
-        return new NodeAndMappings(pruned, visibleFields);
-    }
-
-    public static NodeAndMappings disambiguateOutputs(NodeAndMappings plan, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
-    {
-        Set<Symbol> distinctOutputs = ImmutableSet.copyOf(plan.getFields());
-
-        if (distinctOutputs.size() < plan.getFields().size()) {
-            Assignments.Builder assignments = Assignments.builder();
-            ImmutableList.Builder<Symbol> newOutputs = ImmutableList.builder();
-            Set<Symbol> uniqueOutputs = new HashSet<>();
-
-            for (Symbol output : plan.getFields()) {
-                if (uniqueOutputs.add(output)) {
-                    assignments.putIdentity(output);
-                    newOutputs.add(output);
-                }
-                else {
-                    Symbol newOutput = symbolAllocator.newSymbol(output);
-                    assignments.put(newOutput, output.toSymbolReference());
-                    newOutputs.add(newOutput);
-                }
-            }
-
-            return new NodeAndMappings(new ProjectNode(idAllocator.getNextId(), plan.getNode(), assignments.build()), newOutputs.build());
-        }
-
-        return plan;
     }
 
     private PlanBuilder distinct(PlanBuilder subPlan, QuerySpecification node, List<Expression> expressions)

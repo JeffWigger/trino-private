@@ -41,7 +41,7 @@ public class TypedSet
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(TypedSet.class).instanceSize();
     private static final int INT_ARRAY_LIST_INSTANCE_SIZE = ClassLayout.parseClass(IntArrayList.class).instanceSize();
     private static final float FILL_RATIO = 0.75f;
-
+    private static final int EMPTY_SLOT = -1;
     private final Type elementType;
     private final BlockPositionEqual elementEqualOperator;
     private final BlockPositionIsDistinctFrom elementDistinctFromOperator;
@@ -50,7 +50,6 @@ public class TypedSet
     private final BlockBuilder elementBlock;
     private final String functionName;
     private final long maxBlockMemoryInBytes;
-
     private final int initialElementBlockOffset;
     private final long initialElementBlockSizeInBytes;
     // size is the number of elements added to the TypedSet (including null).
@@ -59,9 +58,46 @@ public class TypedSet
     private int hashCapacity;
     private int maxFill;
     private int hashMask;
-    private static final int EMPTY_SLOT = -1;
-
     private boolean containsNullElement;
+
+    public TypedSet(
+            Type elementType,
+            BlockPositionEqual elementEqualOperator,
+            BlockPositionIsDistinctFrom elementDistinctFromOperator,
+            BlockPositionHashCode elementHashCodeOperator,
+            BlockBuilder blockBuilder,
+            int expectedSize,
+            String functionName,
+            boolean unboundedMemory)
+    {
+        checkArgument(expectedSize >= 0, "expectedSize must not be negative");
+        this.elementType = requireNonNull(elementType, "elementType is null");
+
+        checkArgument(elementEqualOperator == null ^ elementDistinctFromOperator == null, "Element equal or distinct_from operator must be provided");
+        this.elementEqualOperator = elementEqualOperator;
+        this.elementDistinctFromOperator = elementDistinctFromOperator;
+        this.elementHashCodeOperator = requireNonNull(elementHashCodeOperator, "elementHashCodeOperator is null");
+
+        this.elementBlock = requireNonNull(blockBuilder, "blockBuilder must not be null");
+        this.functionName = functionName;
+        this.maxBlockMemoryInBytes = unboundedMemory ? Long.MAX_VALUE : MAX_FUNCTION_MEMORY.toBytes();
+
+        initialElementBlockOffset = elementBlock.getPositionCount();
+        initialElementBlockSizeInBytes = elementBlock.getSizeInBytes();
+
+        this.size = 0;
+        this.hashCapacity = arraySize(expectedSize, FILL_RATIO);
+        this.maxFill = calculateMaxFill(hashCapacity);
+        this.hashMask = hashCapacity - 1;
+
+        blockPositionByHash = new IntArrayList(hashCapacity);
+        blockPositionByHash.size(hashCapacity);
+        for (int i = 0; i < hashCapacity; i++) {
+            blockPositionByHash.set(i, EMPTY_SLOT);
+        }
+
+        this.containsNullElement = false;
+    }
 
     public static TypedSet createEqualityTypedSet(
             Type elementType,
@@ -135,43 +171,15 @@ public class TypedSet
                 false);
     }
 
-    public TypedSet(
-            Type elementType,
-            BlockPositionEqual elementEqualOperator,
-            BlockPositionIsDistinctFrom elementDistinctFromOperator,
-            BlockPositionHashCode elementHashCodeOperator,
-            BlockBuilder blockBuilder,
-            int expectedSize,
-            String functionName,
-            boolean unboundedMemory)
+    private static int calculateMaxFill(int hashSize)
     {
-        checkArgument(expectedSize >= 0, "expectedSize must not be negative");
-        this.elementType = requireNonNull(elementType, "elementType is null");
-
-        checkArgument(elementEqualOperator == null ^ elementDistinctFromOperator == null, "Element equal or distinct_from operator must be provided");
-        this.elementEqualOperator = elementEqualOperator;
-        this.elementDistinctFromOperator = elementDistinctFromOperator;
-        this.elementHashCodeOperator = requireNonNull(elementHashCodeOperator, "elementHashCodeOperator is null");
-
-        this.elementBlock = requireNonNull(blockBuilder, "blockBuilder must not be null");
-        this.functionName = functionName;
-        this.maxBlockMemoryInBytes = unboundedMemory ? Long.MAX_VALUE : MAX_FUNCTION_MEMORY.toBytes();
-
-        initialElementBlockOffset = elementBlock.getPositionCount();
-        initialElementBlockSizeInBytes = elementBlock.getSizeInBytes();
-
-        this.size = 0;
-        this.hashCapacity = arraySize(expectedSize, FILL_RATIO);
-        this.maxFill = calculateMaxFill(hashCapacity);
-        this.hashMask = hashCapacity - 1;
-
-        blockPositionByHash = new IntArrayList(hashCapacity);
-        blockPositionByHash.size(hashCapacity);
-        for (int i = 0; i < hashCapacity; i++) {
-            blockPositionByHash.set(i, EMPTY_SLOT);
+        checkArgument(hashSize > 0, "hashSize must be greater than 0");
+        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
+        if (maxFill == hashSize) {
+            maxFill--;
         }
-
-        this.containsNullElement = false;
+        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
+        return maxFill;
     }
 
     public long getRetainedSizeInBytes()
@@ -285,17 +293,6 @@ public class TypedSet
         for (int blockPosition = initialElementBlockOffset; blockPosition < elementBlock.getPositionCount(); blockPosition++) {
             blockPositionByHash.set(getHashPositionOfElement(elementBlock, blockPosition), blockPosition);
         }
-    }
-
-    private static int calculateMaxFill(int hashSize)
-    {
-        checkArgument(hashSize > 0, "hashSize must be greater than 0");
-        int maxFill = (int) Math.ceil(hashSize * FILL_RATIO);
-        if (maxFill == hashSize) {
-            maxFill--;
-        }
-        checkArgument(hashSize > maxFill, "hashSize must be larger than maxFill");
-        return maxFill;
     }
 
     private int getMaskedHash(long rawHash)

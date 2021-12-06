@@ -44,29 +44,12 @@ import static java.util.Objects.requireNonNull;
 public class ExchangeNode
         extends PlanNode
 {
-    public enum Type
-    {
-        GATHER,
-        REPARTITION,
-        REPLICATE
-    }
-
-    public enum Scope
-    {
-        LOCAL,
-        REMOTE
-    }
-
     private final Type type;
     private final Scope scope;
-
     private final List<PlanNode> sources;
-
     private final PartitioningScheme partitioningScheme;
-
     // for each source, the list of inputs corresponding to each output
     private final List<List<Symbol>> inputs;
-
     private final Optional<OrderingScheme> orderingScheme;
 
     @JsonCreator
@@ -247,5 +230,18 @@ public class ExchangeNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         return new ExchangeNode(getId(), type, scope, partitioningScheme, newChildren, inputs, orderingScheme);
+    }
+
+    public enum Type
+    {
+        GATHER,
+        REPARTITION,
+        REPLICATE
+    }
+
+    public enum Scope
+    {
+        LOCAL,
+        REMOTE
     }
 }

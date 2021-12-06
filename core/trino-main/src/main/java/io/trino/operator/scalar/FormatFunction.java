@@ -104,15 +104,6 @@ public final class FormatFunction
                 SCALAR));
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies(FunctionBinding functionBinding)
-    {
-        FunctionDependencyDeclarationBuilder builder = FunctionDependencyDeclaration.builder();
-        functionBinding.getTypeVariable("T").getTypeParameters()
-                .forEach(type -> addDependencies(builder, type));
-        return builder.build();
-    }
-
     private static void addDependencies(FunctionDependencyDeclarationBuilder builder, Type type)
     {
         if (type.equals(UNKNOWN) ||
@@ -139,23 +130,6 @@ public final class FormatFunction
             return;
         }
         builder.addCast(type, VARCHAR);
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        Type rowType = functionBinding.getTypeVariable("T");
-
-        List<BiFunction<ConnectorSession, Block, Object>> converters = mapWithIndex(
-                rowType.getTypeParameters().stream(),
-                (type, index) -> converter(functionDependencies, type, toIntExact(index)))
-                .collect(toImmutableList());
-
-        return new ChoicesScalarFunctionImplementation(
-                functionBinding,
-                FAIL_ON_NULL,
-                ImmutableList.of(NEVER_NULL, NEVER_NULL),
-                METHOD_HANDLE.bindTo(converters));
     }
 
     @UsedByGeneratedCode
@@ -271,5 +245,31 @@ public final class FormatFunction
         catch (Throwable t) {
             throw internalError(t);
         }
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies(FunctionBinding functionBinding)
+    {
+        FunctionDependencyDeclarationBuilder builder = FunctionDependencyDeclaration.builder();
+        functionBinding.getTypeVariable("T").getTypeParameters()
+                .forEach(type -> addDependencies(builder, type));
+        return builder.build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        Type rowType = functionBinding.getTypeVariable("T");
+
+        List<BiFunction<ConnectorSession, Block, Object>> converters = mapWithIndex(
+                rowType.getTypeParameters().stream(),
+                (type, index) -> converter(functionDependencies, type, toIntExact(index)))
+                .collect(toImmutableList());
+
+        return new ChoicesScalarFunctionImplementation(
+                functionBinding,
+                FAIL_ON_NULL,
+                ImmutableList.of(NEVER_NULL, NEVER_NULL),
+                METHOD_HANDLE.bindTo(converters));
     }
 }

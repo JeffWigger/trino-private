@@ -55,9 +55,32 @@ import static java.lang.String.format;
 
 public final class DateTimeUtils
 {
-    private DateTimeUtils() {}
-
     private static final DateTimeFormatter DATE_FORMATTER = ISODateTimeFormat.date().withZoneUTC();
+    private static final DateTimeFormatter TIMESTAMP_WITH_TIME_ZONE_FORMATTER;
+    private static final DateTimeFormatter TIMESTAMP_WITH_OR_WITHOUT_TIME_ZONE_FORMATTER;
+    private static final DateTimeFormatter TIME_FORMATTER;
+    private static final DateTimeFormatter TIME_WITH_TIME_ZONE_FORMATTER;
+    private static final int YEAR_FIELD = 0;
+    private static final int MONTH_FIELD = 1;
+    private static final int DAY_FIELD = 3;
+    private static final int HOUR_FIELD = 4;
+    private static final int MINUTE_FIELD = 5;
+    private static final int SECOND_FIELD = 6;
+    private static final int MILLIS_FIELD = 7;
+    private static final PeriodFormatter INTERVAL_DAY_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.SECOND);
+    private static final PeriodFormatter INTERVAL_DAY_MINUTE_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.MINUTE);
+    private static final PeriodFormatter INTERVAL_DAY_HOUR_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.HOUR);
+    private static final PeriodFormatter INTERVAL_DAY_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.DAY);
+    private static final PeriodFormatter INTERVAL_HOUR_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.HOUR, IntervalField.SECOND);
+    private static final PeriodFormatter INTERVAL_HOUR_MINUTE_FORMATTER = cretePeriodFormatter(IntervalField.HOUR, IntervalField.MINUTE);
+    private static final PeriodFormatter INTERVAL_HOUR_FORMATTER = cretePeriodFormatter(IntervalField.HOUR, IntervalField.HOUR);
+    private static final PeriodFormatter INTERVAL_MINUTE_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.MINUTE, IntervalField.SECOND);
+    private static final PeriodFormatter INTERVAL_MINUTE_FORMATTER = cretePeriodFormatter(IntervalField.MINUTE, IntervalField.MINUTE);
+    private static final PeriodFormatter INTERVAL_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.SECOND, IntervalField.SECOND);
+    private static final PeriodFormatter INTERVAL_YEAR_MONTH_FORMATTER = cretePeriodFormatter(IntervalField.YEAR, IntervalField.MONTH);
+    private static final PeriodFormatter INTERVAL_YEAR_FORMATTER = cretePeriodFormatter(IntervalField.YEAR, IntervalField.YEAR);
+    private static final PeriodFormatter INTERVAL_MONTH_FORMATTER = cretePeriodFormatter(IntervalField.MONTH, IntervalField.MONTH);
+    private DateTimeUtils() {}
 
     public static int parseDate(String value)
     {
@@ -67,48 +90,6 @@ public final class DateTimeUtils
     public static String printDate(int days)
     {
         return DATE_FORMATTER.print(TimeUnit.DAYS.toMillis(days));
-    }
-
-    private static final DateTimeFormatter TIMESTAMP_WITH_TIME_ZONE_FORMATTER;
-    private static final DateTimeFormatter TIMESTAMP_WITH_OR_WITHOUT_TIME_ZONE_FORMATTER;
-
-    static {
-        DateTimeParser[] timestampWithoutTimeZoneParser = {
-                DateTimeFormat.forPattern("yyyyyy-M-d").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSS").getParser()};
-
-        DateTimeParser[] timestampWithTimeZoneParser = {
-                DateTimeFormat.forPattern("yyyyyy-M-dZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d Z").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:mZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m Z").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:sZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s Z").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSSZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSS Z").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-dZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d ZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:mZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m ZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:sZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s ZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSSZZZ").getParser(),
-                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSS ZZZ").getParser()};
-
-        DateTimePrinter timestampWithTimeZonePrinter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSS ZZZ").getPrinter();
-        TIMESTAMP_WITH_TIME_ZONE_FORMATTER = new DateTimeFormatterBuilder()
-                .append(timestampWithTimeZonePrinter, timestampWithTimeZoneParser)
-                .toFormatter()
-                .withOffsetParsed();
-
-        DateTimeParser[] timestampWithOrWithoutTimeZoneParser = Stream.concat(Stream.of(timestampWithoutTimeZoneParser), Stream.of(timestampWithTimeZoneParser))
-                .toArray(DateTimeParser[]::new);
-        TIMESTAMP_WITH_OR_WITHOUT_TIME_ZONE_FORMATTER = new DateTimeFormatterBuilder()
-                .append(timestampWithTimeZonePrinter, timestampWithOrWithoutTimeZoneParser)
-                .toFormatter()
-                .withOffsetParsed();
     }
 
     /**
@@ -132,34 +113,6 @@ public final class DateTimeUtils
         ISOChronology chronology = unpackChronology(timestampWithTimeZone);
         long millis = unpackMillisUtc(timestampWithTimeZone);
         return TIMESTAMP_WITH_TIME_ZONE_FORMATTER.withChronology(chronology).print(millis);
-    }
-
-    private static final DateTimeFormatter TIME_FORMATTER;
-    private static final DateTimeFormatter TIME_WITH_TIME_ZONE_FORMATTER;
-
-    static {
-        DateTimeParser[] timeWithoutTimeZoneParser = {
-                DateTimeFormat.forPattern("H:m").getParser(),
-                DateTimeFormat.forPattern("H:m:s").getParser(),
-                DateTimeFormat.forPattern("H:m:s.SSS").getParser()};
-        DateTimePrinter timeWithoutTimeZonePrinter = DateTimeFormat.forPattern("HH:mm:ss.SSS").getPrinter();
-        TIME_FORMATTER = new DateTimeFormatterBuilder().append(timeWithoutTimeZonePrinter, timeWithoutTimeZoneParser).toFormatter().withZoneUTC();
-
-        DateTimeParser[] timeWithTimeZoneParser = {
-                DateTimeFormat.forPattern("H:mZ").getParser(),
-                DateTimeFormat.forPattern("H:m Z").getParser(),
-                DateTimeFormat.forPattern("H:m:sZ").getParser(),
-                DateTimeFormat.forPattern("H:m:s Z").getParser(),
-                DateTimeFormat.forPattern("H:m:s.SSSZ").getParser(),
-                DateTimeFormat.forPattern("H:m:s.SSS Z").getParser(),
-                DateTimeFormat.forPattern("H:mZZZ").getParser(),
-                DateTimeFormat.forPattern("H:m ZZZ").getParser(),
-                DateTimeFormat.forPattern("H:m:sZZZ").getParser(),
-                DateTimeFormat.forPattern("H:m:s ZZZ").getParser(),
-                DateTimeFormat.forPattern("H:m:s.SSSZZZ").getParser(),
-                DateTimeFormat.forPattern("H:m:s.SSS ZZZ").getParser()};
-        DateTimePrinter timeWithTimeZonePrinter = DateTimeFormat.forPattern("HH:mm:ss.SSS ZZZ").getPrinter();
-        TIME_WITH_TIME_ZONE_FORMATTER = new DateTimeFormatterBuilder().append(timeWithTimeZonePrinter, timeWithTimeZoneParser).toFormatter().withOffsetParsed();
     }
 
     /**
@@ -194,33 +147,6 @@ public final class DateTimeUtils
     {
         return TIME_FORMATTER.withZone(getDateTimeZone(timeZoneKey)).print(value);
     }
-
-    private static final int YEAR_FIELD = 0;
-    private static final int MONTH_FIELD = 1;
-    private static final int DAY_FIELD = 3;
-    private static final int HOUR_FIELD = 4;
-    private static final int MINUTE_FIELD = 5;
-    private static final int SECOND_FIELD = 6;
-    private static final int MILLIS_FIELD = 7;
-
-    private static final PeriodFormatter INTERVAL_DAY_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.SECOND);
-    private static final PeriodFormatter INTERVAL_DAY_MINUTE_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.MINUTE);
-    private static final PeriodFormatter INTERVAL_DAY_HOUR_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.HOUR);
-    private static final PeriodFormatter INTERVAL_DAY_FORMATTER = cretePeriodFormatter(IntervalField.DAY, IntervalField.DAY);
-
-    private static final PeriodFormatter INTERVAL_HOUR_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.HOUR, IntervalField.SECOND);
-    private static final PeriodFormatter INTERVAL_HOUR_MINUTE_FORMATTER = cretePeriodFormatter(IntervalField.HOUR, IntervalField.MINUTE);
-    private static final PeriodFormatter INTERVAL_HOUR_FORMATTER = cretePeriodFormatter(IntervalField.HOUR, IntervalField.HOUR);
-
-    private static final PeriodFormatter INTERVAL_MINUTE_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.MINUTE, IntervalField.SECOND);
-    private static final PeriodFormatter INTERVAL_MINUTE_FORMATTER = cretePeriodFormatter(IntervalField.MINUTE, IntervalField.MINUTE);
-
-    private static final PeriodFormatter INTERVAL_SECOND_FORMATTER = cretePeriodFormatter(IntervalField.SECOND, IntervalField.SECOND);
-
-    private static final PeriodFormatter INTERVAL_YEAR_MONTH_FORMATTER = cretePeriodFormatter(IntervalField.YEAR, IntervalField.MONTH);
-    private static final PeriodFormatter INTERVAL_YEAR_FORMATTER = cretePeriodFormatter(IntervalField.YEAR, IntervalField.YEAR);
-
-    private static final PeriodFormatter INTERVAL_MONTH_FORMATTER = cretePeriodFormatter(IntervalField.MONTH, IntervalField.MONTH);
 
     public static long parseDayTimeInterval(String value, IntervalField startField, Optional<IntervalField> endField)
     {
@@ -451,5 +377,69 @@ public final class DateTimeUtils
 
             return ~bestInvalidPos;
         }
+    }
+
+    static {
+        DateTimeParser[] timestampWithoutTimeZoneParser = {
+                DateTimeFormat.forPattern("yyyyyy-M-d").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSS").getParser()};
+
+        DateTimeParser[] timestampWithTimeZoneParser = {
+                DateTimeFormat.forPattern("yyyyyy-M-dZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d Z").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:mZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m Z").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:sZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s Z").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSSZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSS Z").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-dZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d ZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:mZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m ZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:sZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s ZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSSZZZ").getParser(),
+                DateTimeFormat.forPattern("yyyyyy-M-d H:m:s.SSS ZZZ").getParser()};
+
+        DateTimePrinter timestampWithTimeZonePrinter = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSS ZZZ").getPrinter();
+        TIMESTAMP_WITH_TIME_ZONE_FORMATTER = new DateTimeFormatterBuilder()
+                .append(timestampWithTimeZonePrinter, timestampWithTimeZoneParser)
+                .toFormatter()
+                .withOffsetParsed();
+
+        DateTimeParser[] timestampWithOrWithoutTimeZoneParser = Stream.concat(Stream.of(timestampWithoutTimeZoneParser), Stream.of(timestampWithTimeZoneParser))
+                .toArray(DateTimeParser[]::new);
+        TIMESTAMP_WITH_OR_WITHOUT_TIME_ZONE_FORMATTER = new DateTimeFormatterBuilder()
+                .append(timestampWithTimeZonePrinter, timestampWithOrWithoutTimeZoneParser)
+                .toFormatter()
+                .withOffsetParsed();
+    }
+
+    static {
+        DateTimeParser[] timeWithoutTimeZoneParser = {
+                DateTimeFormat.forPattern("H:m").getParser(),
+                DateTimeFormat.forPattern("H:m:s").getParser(),
+                DateTimeFormat.forPattern("H:m:s.SSS").getParser()};
+        DateTimePrinter timeWithoutTimeZonePrinter = DateTimeFormat.forPattern("HH:mm:ss.SSS").getPrinter();
+        TIME_FORMATTER = new DateTimeFormatterBuilder().append(timeWithoutTimeZonePrinter, timeWithoutTimeZoneParser).toFormatter().withZoneUTC();
+
+        DateTimeParser[] timeWithTimeZoneParser = {
+                DateTimeFormat.forPattern("H:mZ").getParser(),
+                DateTimeFormat.forPattern("H:m Z").getParser(),
+                DateTimeFormat.forPattern("H:m:sZ").getParser(),
+                DateTimeFormat.forPattern("H:m:s Z").getParser(),
+                DateTimeFormat.forPattern("H:m:s.SSSZ").getParser(),
+                DateTimeFormat.forPattern("H:m:s.SSS Z").getParser(),
+                DateTimeFormat.forPattern("H:mZZZ").getParser(),
+                DateTimeFormat.forPattern("H:m ZZZ").getParser(),
+                DateTimeFormat.forPattern("H:m:sZZZ").getParser(),
+                DateTimeFormat.forPattern("H:m:s ZZZ").getParser(),
+                DateTimeFormat.forPattern("H:m:s.SSSZZZ").getParser(),
+                DateTimeFormat.forPattern("H:m:s.SSS ZZZ").getParser()};
+        DateTimePrinter timeWithTimeZonePrinter = DateTimeFormat.forPattern("HH:mm:ss.SSS ZZZ").getPrinter();
+        TIME_WITH_TIME_ZONE_FORMATTER = new DateTimeFormatterBuilder().append(timeWithTimeZonePrinter, timeWithTimeZoneParser).toFormatter().withOffsetParsed();
     }
 }

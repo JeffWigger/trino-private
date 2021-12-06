@@ -31,6 +31,20 @@ import static org.testng.Assert.fail;
 
 public class TestDecimals
 {
+    private static Slice sliceFromBytes(int... bytes)
+    {
+        byte[] buffer = new byte[bytes.length];
+        for (int i = 0; i < bytes.length; i++) {
+            buffer[i] = UnsignedBytes.checkedCast(bytes[i]);
+        }
+        return Slices.wrappedBuffer(buffer);
+    }
+
+    private static Slice encodeUnscaledValue(String unscaledValue)
+    {
+        return Decimals.encodeUnscaledValue(new BigInteger(unscaledValue));
+    }
+
     @Test
     public void testParse()
     {
@@ -162,15 +176,6 @@ public class TestDecimals
         assertEquals(encodeScaledValue(new BigDecimal("-172.60"), 2), sliceFromBytes(108, 67, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, minus));
     }
 
-    private static Slice sliceFromBytes(int... bytes)
-    {
-        byte[] buffer = new byte[bytes.length];
-        for (int i = 0; i < bytes.length; i++) {
-            buffer[i] = UnsignedBytes.checkedCast(bytes[i]);
-        }
-        return Slices.wrappedBuffer(buffer);
-    }
-
     private void assertParseResult(String value, Object expectedObject, int expectedPrecision, int expectedScale)
     {
         assertEquals(Decimals.parse(value),
@@ -200,10 +205,5 @@ public class TestDecimals
             return;
         }
         fail("Parse failure was expected");
-    }
-
-    private static Slice encodeUnscaledValue(String unscaledValue)
-    {
-        return Decimals.encodeUnscaledValue(new BigInteger(unscaledValue));
     }
 }

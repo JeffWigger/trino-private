@@ -22,6 +22,15 @@ import static io.airlift.slice.Slices.wrappedBuffer;
  */
 public final class FieldValueProviders
 {
+    private static final FieldValueProvider NULL_VALUE_PROVIDER = new FieldValueProvider()
+    {
+        @Override
+        public boolean isNull()
+        {
+            return true;
+        }
+    };
+
     private FieldValueProviders() {}
 
     public static FieldValueProvider booleanValueProvider(boolean value)
@@ -77,15 +86,6 @@ public final class FieldValueProviders
             }
         };
     }
-
-    private static final FieldValueProvider NULL_VALUE_PROVIDER = new FieldValueProvider()
-    {
-        @Override
-        public boolean isNull()
-        {
-            return true;
-        }
-    };
 
     public static FieldValueProvider nullValueProvider()
     {

@@ -38,6 +38,22 @@ public class PushdownLimitIntoRowNumber
             .matching(limit -> !limit.isWithTies() && limit.getCount() != 0 && limit.getCount() <= Integer.MAX_VALUE)
             .with(source().matching(rowNumber().capturedAs(CHILD)));
 
+    private static RowNumberNode mergeLimit(RowNumberNode node, LimitNode limitNode)
+    {
+        int newRowCountPerPartition = toIntExact(limitNode.getCount());
+        if (node.getMaxRowCountPerPartition().isPresent()) {
+            newRowCountPerPartition = Math.min(node.getMaxRowCountPerPartition().get(), newRowCountPerPartition);
+        }
+        return new RowNumberNode(
+                node.getId(),
+                node.getSource(),
+                node.getPartitionBy(),
+                limitNode.requiresPreSortedInputs() || node.isOrderSensitive(),
+                node.getRowNumberSymbol(),
+                Optional.of(newRowCountPerPartition),
+                node.getHashSymbol());
+    }
+
     @Override
     public Pattern<LimitNode> getPattern()
     {
@@ -59,21 +75,5 @@ public class PushdownLimitIntoRowNumber
             }
         }
         return Result.ofPlanNode(replaceChildren(node, ImmutableList.of(rowNumberNode)));
-    }
-
-    private static RowNumberNode mergeLimit(RowNumberNode node, LimitNode limitNode)
-    {
-        int newRowCountPerPartition = toIntExact(limitNode.getCount());
-        if (node.getMaxRowCountPerPartition().isPresent()) {
-            newRowCountPerPartition = Math.min(node.getMaxRowCountPerPartition().get(), newRowCountPerPartition);
-        }
-        return new RowNumberNode(
-                node.getId(),
-                node.getSource(),
-                node.getPartitionBy(),
-                limitNode.requiresPreSortedInputs() || node.isOrderSensitive(),
-                node.getRowNumberSymbol(),
-                Optional.of(newRowCountPerPartition),
-                node.getHashSymbol());
     }
 }

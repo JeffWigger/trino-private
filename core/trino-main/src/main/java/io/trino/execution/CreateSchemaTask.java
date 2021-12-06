@@ -46,31 +46,6 @@ import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 public class CreateSchemaTask
         implements DataDefinitionTask<CreateSchema>
 {
-    @Override
-    public String getName()
-    {
-        return "CREATE SCHEMA";
-    }
-
-    @Override
-    public String explain(CreateSchema statement, List<Expression> parameters)
-    {
-        return "CREATE SCHEMA " + statement.getSchemaName();
-    }
-
-    @Override
-    public ListenableFuture<Void> execute(
-            CreateSchema statement,
-            TransactionManager transactionManager,
-            Metadata metadata,
-            AccessControl accessControl,
-            QueryStateMachine stateMachine,
-            List<Expression> parameters,
-            WarningCollector warningCollector)
-    {
-        return internalExecute(statement, metadata, accessControl, stateMachine.getSession(), parameters);
-    }
-
     @VisibleForTesting
     static ListenableFuture<Void> internalExecute(CreateSchema statement, Metadata metadata, AccessControl accessControl, Session session, List<Expression> parameters)
     {
@@ -121,5 +96,30 @@ public class CreateSchemaTask
         TrinoPrincipal principal = createPrincipal(statement.getPrincipal().get());
         checkRoleExists(session, statement, metadata, principal, Optional.of(catalog));
         return principal;
+    }
+
+    @Override
+    public String getName()
+    {
+        return "CREATE SCHEMA";
+    }
+
+    @Override
+    public String explain(CreateSchema statement, List<Expression> parameters)
+    {
+        return "CREATE SCHEMA " + statement.getSchemaName();
+    }
+
+    @Override
+    public ListenableFuture<Void> execute(
+            CreateSchema statement,
+            TransactionManager transactionManager,
+            Metadata metadata,
+            AccessControl accessControl,
+            QueryStateMachine stateMachine,
+            List<Expression> parameters,
+            WarningCollector warningCollector)
+    {
+        return internalExecute(statement, metadata, accessControl, stateMachine.getSession(), parameters);
     }
 }

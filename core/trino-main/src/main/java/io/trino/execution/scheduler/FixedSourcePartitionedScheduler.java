@@ -61,8 +61,8 @@ public class FixedSourcePartitionedScheduler
     private final List<InternalNode> nodes;
     private final List<SourceScheduler> sourceSchedulers;
     private final List<ConnectorPartitionHandle> partitionHandles;
-    private boolean scheduledTasks;
     private final Optional<LifespanScheduler> groupedLifespanScheduler;
+    private boolean scheduledTasks;
 
     public FixedSourcePartitionedScheduler(
             SqlStageExecution stage,
@@ -173,8 +173,8 @@ public class FixedSourcePartitionedScheduler
         List<RemoteTask> newTasks = ImmutableList.of();
         if (!scheduledTasks) {
             newTasks = Streams.mapWithIndex(
-                    nodes.stream(),
-                    (node, id) -> stage.scheduleTask(node, toIntExact(id)))
+                            nodes.stream(),
+                            (node, id) -> stage.scheduleTask(node, toIntExact(id)))
                     .filter(Optional::isPresent)
                     .map(Optional::get)
                     .collect(toImmutableList());
@@ -301,9 +301,9 @@ public class FixedSourcePartitionedScheduler
             implements SourceScheduler
     {
         private final SourceScheduler sourceScheduler;
+        private final List<Lifespan> pendingCompleted;
         private boolean started;
         private boolean completed;
-        private final List<Lifespan> pendingCompleted;
 
         public AsGroupedSourceScheduler(SourceScheduler sourceScheduler)
         {

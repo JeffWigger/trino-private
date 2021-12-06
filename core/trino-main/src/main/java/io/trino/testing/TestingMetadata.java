@@ -68,6 +68,14 @@ public class TestingMetadata
     private final ConcurrentMap<SchemaTableName, ConnectorMaterializedViewDefinition> materializedViews = new ConcurrentHashMap<>();
     private final Set<SchemaTableName> freshMaterializedViews = synchronizedSet(new HashSet<>());
 
+    private static SchemaTableName getTableName(ConnectorTableHandle tableHandle)
+    {
+        requireNonNull(tableHandle, "tableHandle is null");
+        checkArgument(tableHandle instanceof TestingTableHandle, "tableHandle is not an instance of TestingTableHandle");
+        TestingTableHandle testingTableHandle = (TestingTableHandle) tableHandle;
+        return testingTableHandle.getTableName();
+    }
+
     @Override
     public List<String> listSchemaNames(ConnectorSession session)
     {
@@ -332,14 +340,6 @@ public class TestingMetadata
     {
         views.clear();
         tables.clear();
-    }
-
-    private static SchemaTableName getTableName(ConnectorTableHandle tableHandle)
-    {
-        requireNonNull(tableHandle, "tableHandle is null");
-        checkArgument(tableHandle instanceof TestingTableHandle, "tableHandle is not an instance of TestingTableHandle");
-        TestingTableHandle testingTableHandle = (TestingTableHandle) tableHandle;
-        return testingTableHandle.getTableName();
     }
 
     public static class TestingTableHandle

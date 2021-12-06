@@ -25,6 +25,14 @@ import static java.util.Objects.requireNonNull;
 public class CheckpointInputStreamSource<S extends ValueInputStream<C>, C extends StreamCheckpoint>
         implements InputStreamSource<S>
 {
+    private final S stream;
+    private final C checkpoint;
+    private CheckpointInputStreamSource(S stream, C checkpoint)
+    {
+        this.stream = requireNonNull(stream, "stream is null");
+        this.checkpoint = requireNonNull(checkpoint, "checkpoint is null");
+    }
+
     public static <S extends ValueInputStream<C>, C extends StreamCheckpoint> CheckpointInputStreamSource<S, C> createCheckpointStreamSource(S stream, StreamCheckpoint checkpoint)
     {
         requireNonNull(stream, "stream is null");
@@ -32,15 +40,6 @@ public class CheckpointInputStreamSource<S extends ValueInputStream<C>, C extend
 
         C verifiedCheckpoint = (C) checkpoint;
         return new CheckpointInputStreamSource<>(stream, verifiedCheckpoint);
-    }
-
-    private final S stream;
-    private final C checkpoint;
-
-    private CheckpointInputStreamSource(S stream, C checkpoint)
-    {
-        this.stream = requireNonNull(stream, "stream is null");
-        this.checkpoint = requireNonNull(checkpoint, "checkpoint is null");
     }
 
     @Override

@@ -36,6 +36,22 @@ public class LongDecimalStatisticsBuilder
     private BigDecimal minimum;
     private BigDecimal maximum;
 
+    public static Optional<DecimalStatistics> mergeDecimalStatistics(List<ColumnStatistics> stats)
+    {
+        LongDecimalStatisticsBuilder decimalStatisticsBuilder = new LongDecimalStatisticsBuilder();
+        for (ColumnStatistics columnStatistics : stats) {
+            DecimalStatistics partialStatistics = columnStatistics.getDecimalStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null) {
+                    // there are non null values but no statistics, so we cannot say anything about the data
+                    return Optional.empty();
+                }
+                decimalStatisticsBuilder.addDecimalStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return decimalStatisticsBuilder.buildDecimalStatistics();
+    }
+
     @Override
     public void addBlock(Type type, Block block)
     {
@@ -106,21 +122,5 @@ public class LongDecimalStatisticsBuilder
                 decimalStatistics.orElse(null),
                 null,
                 null);
-    }
-
-    public static Optional<DecimalStatistics> mergeDecimalStatistics(List<ColumnStatistics> stats)
-    {
-        LongDecimalStatisticsBuilder decimalStatisticsBuilder = new LongDecimalStatisticsBuilder();
-        for (ColumnStatistics columnStatistics : stats) {
-            DecimalStatistics partialStatistics = columnStatistics.getDecimalStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null) {
-                    // there are non null values but no statistics, so we cannot say anything about the data
-                    return Optional.empty();
-                }
-                decimalStatisticsBuilder.addDecimalStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return decimalStatisticsBuilder.buildDecimalStatistics();
     }
 }

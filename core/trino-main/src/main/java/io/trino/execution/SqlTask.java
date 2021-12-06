@@ -92,23 +92,6 @@ public class SqlTask
     private final AtomicReference<TaskHolder> taskHolderReference = new AtomicReference<>(new TaskHolder());
     private final AtomicBoolean needsPlan = new AtomicBoolean(true);
 
-    public static SqlTask createSqlTask(
-            TaskId taskId,
-            URI location,
-            String nodeId,
-            QueryContext queryContext,
-            SqlTaskExecutionFactory sqlTaskExecutionFactory,
-            ExecutorService taskNotificationExecutor,
-            Consumer<SqlTask> onDone,
-            DataSize maxBufferSize,
-            DataSize maxBroadcastBufferSize,
-            CounterStat failedTasks)
-    {
-        SqlTask sqlTask = new SqlTask(taskId, location, nodeId, queryContext, sqlTaskExecutionFactory, taskNotificationExecutor, maxBufferSize, maxBroadcastBufferSize);
-        sqlTask.initialize(onDone, failedTasks);
-        return sqlTask;
-    }
-
     private SqlTask(
             TaskId taskId,
             URI location,
@@ -139,6 +122,49 @@ public class SqlTask
                 () -> queryContext.getTaskContextByTaskId(taskId).localSystemMemoryContext(),
                 () -> notifyStatusChanged());
         taskStateMachine = new TaskStateMachine(taskId, taskNotificationExecutor);
+    }
+
+    public static SqlTask createSqlTask(
+            TaskId taskId,
+            URI location,
+            String nodeId,
+            QueryContext queryContext,
+            SqlTaskExecutionFactory sqlTaskExecutionFactory,
+            ExecutorService taskNotificationExecutor,
+            Consumer<SqlTask> onDone,
+            DataSize maxBufferSize,
+            DataSize maxBroadcastBufferSize,
+            CounterStat failedTasks)
+    {
+        SqlTask sqlTask = new SqlTask(taskId, location, nodeId, queryContext, sqlTaskExecutionFactory, taskNotificationExecutor, maxBufferSize, maxBroadcastBufferSize);
+        sqlTask.initialize(onDone, failedTasks);
+        return sqlTask;
+    }
+
+    private static Set<PlanNodeId> getNoMoreSplits(TaskHolder taskHolder)
+    {
+        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
+        if (finalTaskInfo != null) {
+            return finalTaskInfo.getNoMoreSplits();
+        }
+        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
+        if (taskExecution != null) {
+            return taskExecution.getNoMoreSplits();
+        }
+        return ImmutableSet.of();
+    }
+
+    private static Set<PlanNodeId> getNoMoreDeltaSplits(TaskHolder taskHolder)
+    {
+        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
+        if (finalTaskInfo != null) {
+            return finalTaskInfo.getNoMoreDeltaSplits();
+        }
+        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
+        if (taskExecution != null) {
+            return taskExecution.getNoMoreDeltaSplits();
+        }
+        return ImmutableSet.of();
     }
 
     // this is a separate method to ensure that the `this` reference is not leaked during construction
@@ -356,32 +382,6 @@ public class SqlTask
         return new TaskStats(taskStateMachine.getCreatedTime(), endTime);
     }
 
-    private static Set<PlanNodeId> getNoMoreSplits(TaskHolder taskHolder)
-    {
-        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
-        if (finalTaskInfo != null) {
-            return finalTaskInfo.getNoMoreSplits();
-        }
-        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
-        if (taskExecution != null) {
-            return taskExecution.getNoMoreSplits();
-        }
-        return ImmutableSet.of();
-    }
-
-    private static Set<PlanNodeId> getNoMoreDeltaSplits(TaskHolder taskHolder)
-    {
-        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
-        if (finalTaskInfo != null) {
-            return finalTaskInfo.getNoMoreDeltaSplits();
-        }
-        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
-        if (taskExecution != null) {
-            return taskExecution.getNoMoreDeltaSplits();
-        }
-        return ImmutableSet.of();
-    }
-
     private TaskInfo createTaskInfo(TaskHolder taskHolder)
     {
         TaskStats taskStats = getTaskStats(taskHolder);
@@ -498,7 +498,7 @@ public class SqlTask
                 // TODO: is this still necessary
                 taskStateMachine.transitionBackToRunning();
                 //if (taskHolder.isFinished()) {
-                  //  return taskHolder.getFinalTaskInfo();
+                //  return taskHolder.getFinalTaskInfo();
                 //}
                 taskExecution = taskHolder.getTaskExecution();
                 // this should not happen
@@ -542,7 +542,7 @@ public class SqlTask
                 // is task already complete?
                 TaskHolder taskHolder = taskHolderReference.get();
                 if (taskHolder.isFinished()) {
-                  return taskHolder.getFinalTaskInfo();
+                    return taskHolder.getFinalTaskInfo();
                 }
                 taskExecution = taskHolder.getTaskExecution();
                 // this should not happen
@@ -613,6 +613,30 @@ public class SqlTask
         return taskId.toString();
     }
 
+    /**
+     * Listener is always notified asynchronously using a dedicated notification thread pool so, care should
+     * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
+     * possible notifications are observed out of order due to the asynchronous execution.
+     */
+    public void addStateChangeListener(StateChangeListener<TaskState> stateChangeListener)
+    {
+        taskStateMachine.addStateChangeListener(stateChangeListener);
+    }
+
+    public QueryContext getQueryContext()
+    {
+        return queryContext;
+    }
+
+    public Optional<TaskContext> getTaskContext()
+    {
+        SqlTaskExecution taskExecution = taskHolderReference.get().getTaskExecution();
+        if (taskExecution == null) {
+            return Optional.empty();
+        }
+        return Optional.of(taskExecution.getTaskContext());
+    }
+
     private static final class TaskHolder
     {
         private final SqlTaskExecution taskExecution;
@@ -671,29 +695,5 @@ public class SqlTask
             TaskContext taskContext = taskExecution.getTaskContext();
             return new SqlTaskIoStats(taskContext.getProcessedInputDataSize(), taskContext.getInputPositions(), taskContext.getOutputDataSize(), taskContext.getOutputPositions());
         }
-    }
-
-    /**
-     * Listener is always notified asynchronously using a dedicated notification thread pool so, care should
-     * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
-     * possible notifications are observed out of order due to the asynchronous execution.
-     */
-    public void addStateChangeListener(StateChangeListener<TaskState> stateChangeListener)
-    {
-        taskStateMachine.addStateChangeListener(stateChangeListener);
-    }
-
-    public QueryContext getQueryContext()
-    {
-        return queryContext;
-    }
-
-    public Optional<TaskContext> getTaskContext()
-    {
-        SqlTaskExecution taskExecution = taskHolderReference.get().getTaskExecution();
-        if (taskExecution == null) {
-            return Optional.empty();
-        }
-        return Optional.of(taskExecution.getTaskContext());
     }
 }

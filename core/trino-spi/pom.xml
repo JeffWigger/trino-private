@@ -33,6 +33,11 @@
             <artifactId>jsr305</artifactId>
             <optional>true</optional>
         </dependency>
+        
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.openjdk.jol</groupId>
@@ -71,12 +76,6 @@
         </dependency>
 
         <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
             <groupId>it.unimi.dsi</groupId>
             <artifactId>fastutil</artifactId>
             <scope>test</scope>
@@ -104,10 +103,6 @@
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
         </dependency>
     </dependencies>
 </project>

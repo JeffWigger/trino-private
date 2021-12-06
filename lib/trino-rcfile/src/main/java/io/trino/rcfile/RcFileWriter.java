@@ -51,6 +51,8 @@ import static java.util.Objects.requireNonNull;
 public class RcFileWriter
         implements Closeable
 {
+    static final String PRESTO_RCFILE_WRITER_VERSION_METADATA_KEY = "presto.writer.version";
+    static final String PRESTO_RCFILE_WRITER_VERSION;
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(RcFileWriter.class).instanceSize();
     private static final Slice RCFILE_MAGIC = utf8Slice("RCF");
     private static final int CURRENT_VERSION = 1;
@@ -59,36 +61,22 @@ public class RcFileWriter
     private static final DataSize DEFAULT_TARGET_MAX_ROW_GROUP_SIZE = DataSize.of(8, MEGABYTE);
     private static final DataSize MIN_BUFFER_SIZE = DataSize.of(4, KILOBYTE);
     private static final DataSize MAX_BUFFER_SIZE = DataSize.of(1, MEGABYTE);
-
-    static final String PRESTO_RCFILE_WRITER_VERSION_METADATA_KEY = "presto.writer.version";
-    static final String PRESTO_RCFILE_WRITER_VERSION;
-
-    static {
-        String version = RcFileWriter.class.getPackage().getImplementationVersion();
-        PRESTO_RCFILE_WRITER_VERSION = version == null ? "UNKNOWN" : version;
-    }
-
     private final SliceOutput output;
     private final List<Type> types;
     private final RcFileEncoding encoding;
     private final RcFileCodecFactory codecFactory;
-
     private final long syncFirst = ThreadLocalRandom.current().nextLong();
     private final long syncSecond = ThreadLocalRandom.current().nextLong();
-
-    private CompressedSliceOutput keySectionOutput;
     private final ColumnEncoder[] columnEncoders;
-
     private final int targetMinRowGroupSize;
     private final int targetMaxRowGroupSize;
-
+    @Nullable
+    private final RcFileWriteValidationBuilder validationBuilder;
+    private CompressedSliceOutput keySectionOutput;
     private int bufferedSize;
     private int bufferedRows;
 
     private long totalRowCount;
-
-    @Nullable
-    private final RcFileWriteValidationBuilder validationBuilder;
 
     public RcFileWriter(
             SliceOutput output,
@@ -332,11 +320,8 @@ public class RcFileWriter
         private static final int INSTANCE_SIZE = ClassLayout.parseClass(ColumnEncoder.class).instanceSize() + ClassLayout.parseClass(ColumnEncodeOutput.class).instanceSize();
 
         private final ColumnEncoding columnEncoding;
-
-        private ColumnEncodeOutput encodeOutput;
-
         private final SliceOutput lengthOutput = new DynamicSliceOutput(512);
-
+        private ColumnEncodeOutput encodeOutput;
         private CompressedSliceOutput output;
 
         private boolean columnClosed;
@@ -465,5 +450,10 @@ public class RcFileWriter
                 runLength = 0;
             }
         }
+    }
+
+    static {
+        String version = RcFileWriter.class.getPackage().getImplementationVersion();
+        PRESTO_RCFILE_WRITER_VERSION = version == null ? "UNKNOWN" : version;
     }
 }

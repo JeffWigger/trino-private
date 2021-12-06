@@ -92,6 +92,58 @@ public class UniformNodeSelector
         this.optimizedLocalScheduling = optimizedLocalScheduling;
     }
 
+    /**
+     * The method selects and removes a split from the fromNode and assigns it to the toNode. There is an attempt to
+     * redistribute a Non-local split if possible. This case is possible when there are multiple queries running
+     * simultaneously. If a Non-local split cannot be found in the maxNode, any split is selected randomly and reassigned.
+     */
+    @VisibleForTesting
+    public static void redistributeSplit(Multimap<InternalNode, Split> assignment, InternalNode fromNode, InternalNode toNode, SetMultimap<InetAddress, InternalNode> nodesByHost)
+    {
+        Iterator<Split> splitIterator = assignment.get(fromNode).iterator();
+        Split splitToBeRedistributed = null;
+        while (splitIterator.hasNext()) {
+            Split split = splitIterator.next();
+            // Try to select non-local split for redistribution
+            if (!split.getAddresses().isEmpty() && !isSplitLocal(split.getAddresses(), fromNode.getHostAndPort(), nodesByHost)) {
+                splitToBeRedistributed = split;
+                break;
+            }
+        }
+        // Select any split if maxNode has no non-local splits in the current batch of assignment
+        if (splitToBeRedistributed == null) {
+            splitIterator = assignment.get(fromNode).iterator();
+            splitToBeRedistributed = splitIterator.next();
+        }
+        splitIterator.remove();
+        assignment.put(toNode, splitToBeRedistributed);
+    }
+
+    /**
+     * Helper method to determine if a split is local to a node irrespective of whether splitAddresses contain port information or not
+     */
+    private static boolean isSplitLocal(List<HostAddress> splitAddresses, HostAddress nodeAddress, SetMultimap<InetAddress, InternalNode> nodesByHost)
+    {
+        for (HostAddress address : splitAddresses) {
+            if (nodeAddress.equals(address)) {
+                return true;
+            }
+            InetAddress inetAddress;
+            try {
+                inetAddress = address.toInetAddress();
+            }
+            catch (UnknownHostException e) {
+                continue;
+            }
+            if (!address.hasPort()) {
+                Set<InternalNode> localNodes = nodesByHost.get(inetAddress);
+                return localNodes.stream()
+                        .anyMatch(node -> node.getHostAndPort().equals(nodeAddress));
+            }
+        }
+        return false;
+    }
+
     @Override
     public void lockDownNodes()
     {
@@ -293,57 +345,5 @@ public class UniformNodeSelector
             minNodes.addOrUpdate(minNode, Long.MAX_VALUE - assignmentStats.getTotalSplitCount(minNode));
             minNodes.addOrUpdate(maxNode, Long.MAX_VALUE - assignmentStats.getTotalSplitCount(maxNode));
         }
-    }
-
-    /**
-     * The method selects and removes a split from the fromNode and assigns it to the toNode. There is an attempt to
-     * redistribute a Non-local split if possible. This case is possible when there are multiple queries running
-     * simultaneously. If a Non-local split cannot be found in the maxNode, any split is selected randomly and reassigned.
-     */
-    @VisibleForTesting
-    public static void redistributeSplit(Multimap<InternalNode, Split> assignment, InternalNode fromNode, InternalNode toNode, SetMultimap<InetAddress, InternalNode> nodesByHost)
-    {
-        Iterator<Split> splitIterator = assignment.get(fromNode).iterator();
-        Split splitToBeRedistributed = null;
-        while (splitIterator.hasNext()) {
-            Split split = splitIterator.next();
-            // Try to select non-local split for redistribution
-            if (!split.getAddresses().isEmpty() && !isSplitLocal(split.getAddresses(), fromNode.getHostAndPort(), nodesByHost)) {
-                splitToBeRedistributed = split;
-                break;
-            }
-        }
-        // Select any split if maxNode has no non-local splits in the current batch of assignment
-        if (splitToBeRedistributed == null) {
-            splitIterator = assignment.get(fromNode).iterator();
-            splitToBeRedistributed = splitIterator.next();
-        }
-        splitIterator.remove();
-        assignment.put(toNode, splitToBeRedistributed);
-    }
-
-    /**
-     * Helper method to determine if a split is local to a node irrespective of whether splitAddresses contain port information or not
-     */
-    private static boolean isSplitLocal(List<HostAddress> splitAddresses, HostAddress nodeAddress, SetMultimap<InetAddress, InternalNode> nodesByHost)
-    {
-        for (HostAddress address : splitAddresses) {
-            if (nodeAddress.equals(address)) {
-                return true;
-            }
-            InetAddress inetAddress;
-            try {
-                inetAddress = address.toInetAddress();
-            }
-            catch (UnknownHostException e) {
-                continue;
-            }
-            if (!address.hasPort()) {
-                Set<InternalNode> localNodes = nodesByHost.get(inetAddress);
-                return localNodes.stream()
-                        .anyMatch(node -> node.getHostAndPort().equals(nodeAddress));
-            }
-        }
-        return false;
     }
 }

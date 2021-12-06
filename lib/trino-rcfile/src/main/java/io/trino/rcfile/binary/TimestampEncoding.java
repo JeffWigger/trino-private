@@ -50,6 +50,83 @@ public class TimestampEncoding
         trinoTimestampEncoder = createTimestampEncoder(this.type, timeZone);
     }
 
+    private static boolean hasNanosVInt(byte b)
+    {
+        return (b >> 7) != 0;
+    }
+
+    @SuppressWarnings("NonReproducibleMathCall")
+    private static int decodeNanos(int nanos)
+    {
+        if (nanos < 0) {
+            // This means there is a second VInt present that specifies additional bits of the timestamp.
+            // The reversed nanoseconds value is still encoded in this VInt.
+            nanos = -nanos - 1;
+        }
+        int nanosDigits = (int) Math.floor(Math.log10(nanos)) + 1;
+
+        // Reverse the nanos digits (base 10)
+        int temp = 0;
+        while (nanos != 0) {
+            temp *= 10;
+            temp += nanos % 10;
+            nanos /= 10;
+        }
+        nanos = temp;
+
+        if (nanosDigits < 9) {
+            nanos *= Math.pow(10, 9 - nanosDigits);
+        }
+        return nanos;
+    }
+
+    private static void writeTimestamp(long seconds, int nanos, SliceOutput output)
+    {
+        // <seconds-low-32><nanos>[<seconds-high-32>]
+        //     seconds-low-32 is vint encoded
+        //     nanos is reversed
+        //     seconds-high-32 is vint encoded
+        //     seconds-low-32 and nanos have the top bit set when second-high is present
+
+        boolean hasSecondsHigh32 = seconds < 0 || seconds > Integer.MAX_VALUE;
+        int nanosReversed = reverseDecimal(nanos);
+
+        int secondsLow32 = (int) seconds;
+        if (nanosReversed == 0 && !hasSecondsHigh32) {
+            secondsLow32 &= 0X7FFF_FFFF;
+        }
+        else {
+            secondsLow32 |= 0x8000_0000;
+        }
+        output.writeInt(Integer.reverseBytes(secondsLow32));
+
+        if (hasSecondsHigh32 || nanosReversed != 0) {
+            // The sign of the reversed-nanoseconds field indicates that there is a second VInt present
+            int value = hasSecondsHigh32 ? ~nanosReversed : nanosReversed;
+            writeVInt(output, value);
+        }
+
+        if (hasSecondsHigh32) {
+            int secondsHigh32 = (int) (seconds >> 31);
+            writeVInt(output, secondsHigh32);
+        }
+    }
+
+    private static int reverseDecimal(int nanos)
+    {
+        int decimal = 0;
+        if (nanos != 0) {
+            int counter = 0;
+            while (counter < 9) {
+                decimal *= 10;
+                decimal += nanos % 10;
+                nanos /= 10;
+                counter++;
+            }
+        }
+        return decimal;
+    }
+
     @Override
     public void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)
     {
@@ -118,11 +195,6 @@ public class TimestampEncoding
         trinoTimestampEncoder.write(decodedTimestamp, builder);
     }
 
-    private static boolean hasNanosVInt(byte b)
-    {
-        return (b >> 7) != 0;
-    }
-
     private DecodedTimestamp getTimestamp(Slice slice, int offset)
     {
         // read seconds (low 32 bits)
@@ -152,83 +224,11 @@ public class TimestampEncoding
         return new DecodedTimestamp(seconds, nanos);
     }
 
-    @SuppressWarnings("NonReproducibleMathCall")
-    private static int decodeNanos(int nanos)
-    {
-        if (nanos < 0) {
-            // This means there is a second VInt present that specifies additional bits of the timestamp.
-            // The reversed nanoseconds value is still encoded in this VInt.
-            nanos = -nanos - 1;
-        }
-        int nanosDigits = (int) Math.floor(Math.log10(nanos)) + 1;
-
-        // Reverse the nanos digits (base 10)
-        int temp = 0;
-        while (nanos != 0) {
-            temp *= 10;
-            temp += nanos % 10;
-            nanos /= 10;
-        }
-        nanos = temp;
-
-        if (nanosDigits < 9) {
-            nanos *= Math.pow(10, 9 - nanosDigits);
-        }
-        return nanos;
-    }
-
     private void writeTimestamp(SliceOutput output, TimestampHolder timestamp)
     {
         long millis = timeZone.convertLocalToUTC(timestamp.getSeconds() * MILLISECONDS_PER_SECOND, false);
         long seconds = millis / MILLISECONDS_PER_SECOND;
         int nanos = timestamp.getNanosOfSecond();
         writeTimestamp(seconds, nanos, output);
-    }
-
-    private static void writeTimestamp(long seconds, int nanos, SliceOutput output)
-    {
-        // <seconds-low-32><nanos>[<seconds-high-32>]
-        //     seconds-low-32 is vint encoded
-        //     nanos is reversed
-        //     seconds-high-32 is vint encoded
-        //     seconds-low-32 and nanos have the top bit set when second-high is present
-
-        boolean hasSecondsHigh32 = seconds < 0 || seconds > Integer.MAX_VALUE;
-        int nanosReversed = reverseDecimal(nanos);
-
-        int secondsLow32 = (int) seconds;
-        if (nanosReversed == 0 && !hasSecondsHigh32) {
-            secondsLow32 &= 0X7FFF_FFFF;
-        }
-        else {
-            secondsLow32 |= 0x8000_0000;
-        }
-        output.writeInt(Integer.reverseBytes(secondsLow32));
-
-        if (hasSecondsHigh32 || nanosReversed != 0) {
-            // The sign of the reversed-nanoseconds field indicates that there is a second VInt present
-            int value = hasSecondsHigh32 ? ~nanosReversed : nanosReversed;
-            writeVInt(output, value);
-        }
-
-        if (hasSecondsHigh32) {
-            int secondsHigh32 = (int) (seconds >> 31);
-            writeVInt(output, secondsHigh32);
-        }
-    }
-
-    private static int reverseDecimal(int nanos)
-    {
-        int decimal = 0;
-        if (nanos != 0) {
-            int counter = 0;
-            while (counter < 9) {
-                decimal *= 10;
-                decimal += nanos % 10;
-                nanos /= 10;
-                counter++;
-            }
-        }
-        return decimal;
     }
 }

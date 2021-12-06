@@ -25,6 +25,13 @@ import static java.lang.System.identityHashCode;
 
 public class RelationId
 {
+    private final Optional<NodeRef<Node>> sourceNode;
+
+    private RelationId(Optional<NodeRef<Node>> sourceNode)
+    {
+        this.sourceNode = sourceNode;
+    }
+
     /**
      * Creates {@link RelationId} equal to any {@link RelationId} created from exactly the same source.
      */
@@ -39,13 +46,6 @@ public class RelationId
     public static RelationId anonymous()
     {
         return new RelationId(Optional.empty());
-    }
-
-    private final Optional<NodeRef<Node>> sourceNode;
-
-    private RelationId(Optional<NodeRef<Node>> sourceNode)
-    {
-        this.sourceNode = sourceNode;
     }
 
     public boolean isAnonymous()

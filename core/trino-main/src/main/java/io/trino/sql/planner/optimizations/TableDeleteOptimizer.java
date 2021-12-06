@@ -77,6 +77,26 @@ public class TableDeleteOptimizer
             this.idAllocator = idAllocator;
         }
 
+        private static <T> Optional<T> findNode(PlanNode source, Class<T> clazz)
+        {
+            while (true) {
+                // allow any chain of linear exchanges
+                if (source instanceof ExchangeNode) {
+                    List<PlanNode> sources = source.getSources();
+                    if (sources.size() != 1) {
+                        return Optional.empty();
+                    }
+                    source = sources.get(0);
+                }
+                else if (clazz.isInstance(source)) {
+                    return Optional.of(clazz.cast(source));
+                }
+                else {
+                    return Optional.empty();
+                }
+            }
+        }
+
         @Override
         public PlanNode visitTableFinish(TableFinishNode node, RewriteContext<Void> context)
         {
@@ -96,26 +116,6 @@ public class TableDeleteOptimizer
                     idAllocator.getNextId(),
                     tableScanNode.getTable(),
                     Iterables.getOnlyElement(node.getOutputSymbols()));
-        }
-
-        private static <T> Optional<T> findNode(PlanNode source, Class<T> clazz)
-        {
-            while (true) {
-                // allow any chain of linear exchanges
-                if (source instanceof ExchangeNode) {
-                    List<PlanNode> sources = source.getSources();
-                    if (sources.size() != 1) {
-                        return Optional.empty();
-                    }
-                    source = sources.get(0);
-                }
-                else if (clazz.isInstance(source)) {
-                    return Optional.of(clazz.cast(source));
-                }
-                else {
-                    return Optional.empty();
-                }
-            }
         }
     }
 }

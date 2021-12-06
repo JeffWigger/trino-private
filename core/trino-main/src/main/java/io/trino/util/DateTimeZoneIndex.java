@@ -26,31 +26,12 @@ import static io.trino.spi.type.TimeZoneKey.getTimeZoneKeys;
 
 public final class DateTimeZoneIndex
 {
-    private DateTimeZoneIndex() {}
-
     private static final DateTimeZone[] DATE_TIME_ZONES;
     private static final ISOChronology[] CHRONOLOGIES;
     private static final int[] FIXED_ZONE_OFFSET;
-
     private static final int VARIABLE_ZONE = Integer.MAX_VALUE;
 
-    static {
-        DATE_TIME_ZONES = new DateTimeZone[MAX_TIME_ZONE_KEY + 1];
-        CHRONOLOGIES = new ISOChronology[MAX_TIME_ZONE_KEY + 1];
-        FIXED_ZONE_OFFSET = new int[MAX_TIME_ZONE_KEY + 1];
-        for (TimeZoneKey timeZoneKey : getTimeZoneKeys()) {
-            short zoneKey = timeZoneKey.getKey();
-            DateTimeZone dateTimeZone = DateTimeZone.forID(timeZoneKey.getId());
-            DATE_TIME_ZONES[zoneKey] = dateTimeZone;
-            CHRONOLOGIES[zoneKey] = ISOChronology.getInstance(dateTimeZone);
-            if (dateTimeZone.isFixed() && dateTimeZone.getOffset(0) % 60_000 == 0) {
-                FIXED_ZONE_OFFSET[zoneKey] = dateTimeZone.getOffset(0) / 60_000;
-            }
-            else {
-                FIXED_ZONE_OFFSET[zoneKey] = VARIABLE_ZONE;
-            }
-        }
-    }
+    private DateTimeZoneIndex() {}
 
     public static ISOChronology getChronology(TimeZoneKey zoneKey)
     {
@@ -89,6 +70,24 @@ public final class DateTimeZoneIndex
         }
         else {
             return FIXED_ZONE_OFFSET[zoneKey];
+        }
+    }
+
+    static {
+        DATE_TIME_ZONES = new DateTimeZone[MAX_TIME_ZONE_KEY + 1];
+        CHRONOLOGIES = new ISOChronology[MAX_TIME_ZONE_KEY + 1];
+        FIXED_ZONE_OFFSET = new int[MAX_TIME_ZONE_KEY + 1];
+        for (TimeZoneKey timeZoneKey : getTimeZoneKeys()) {
+            short zoneKey = timeZoneKey.getKey();
+            DateTimeZone dateTimeZone = DateTimeZone.forID(timeZoneKey.getId());
+            DATE_TIME_ZONES[zoneKey] = dateTimeZone;
+            CHRONOLOGIES[zoneKey] = ISOChronology.getInstance(dateTimeZone);
+            if (dateTimeZone.isFixed() && dateTimeZone.getOffset(0) % 60_000 == 0) {
+                FIXED_ZONE_OFFSET[zoneKey] = dateTimeZone.getOffset(0) / 60_000;
+            }
+            else {
+                FIXED_ZONE_OFFSET[zoneKey] = VARIABLE_ZONE;
+            }
         }
     }
 }

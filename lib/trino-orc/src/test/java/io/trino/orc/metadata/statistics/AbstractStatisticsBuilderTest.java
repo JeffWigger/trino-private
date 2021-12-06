@@ -33,20 +33,33 @@ import static org.testng.Assert.assertNull;
 
 public abstract class AbstractStatisticsBuilderTest<B extends StatisticsBuilder, T>
 {
-    public enum StatisticsType
-    {
-        NONE, BOOLEAN, INTEGER, DOUBLE, STRING, DATE, DECIMAL, TIMESTAMP
-    }
-
     private final StatisticsType statisticsType;
     private final Supplier<B> statisticsBuilderSupplier;
     private final BiConsumer<B, T> adder;
-
     public AbstractStatisticsBuilderTest(StatisticsType statisticsType, Supplier<B> statisticsBuilderSupplier, BiConsumer<B, T> adder)
     {
         this.statisticsType = statisticsType;
         this.statisticsBuilderSupplier = statisticsBuilderSupplier;
         this.adder = adder;
+    }
+
+    protected static void assertNoColumnStatistics(ColumnStatistics columnStatistics, int expectedNumberOfValues)
+    {
+        assertEquals(columnStatistics.getNumberOfValues(), expectedNumberOfValues);
+        assertNull(columnStatistics.getBooleanStatistics());
+        assertNull(columnStatistics.getIntegerStatistics());
+        assertNull(columnStatistics.getDoubleStatistics());
+        assertNull(columnStatistics.getStringStatistics());
+        assertNull(columnStatistics.getDateStatistics());
+        assertNull(columnStatistics.getDecimalStatistics());
+        assertNull(columnStatistics.getBloomFilter());
+    }
+
+    static List<ColumnStatistics> insertEmptyColumnStatisticsAt(List<ColumnStatistics> statisticsList, int index, long numberOfValues)
+    {
+        List<ColumnStatistics> newStatisticsList = new ArrayList<>(statisticsList);
+        newStatisticsList.add(index, new ColumnStatistics(numberOfValues, 0, null, null, null, null, null, null, null, null, null));
+        return newStatisticsList;
     }
 
     @Test
@@ -130,18 +143,6 @@ public abstract class AbstractStatisticsBuilderTest<B extends StatisticsBuilder,
         }
     }
 
-    protected static void assertNoColumnStatistics(ColumnStatistics columnStatistics, int expectedNumberOfValues)
-    {
-        assertEquals(columnStatistics.getNumberOfValues(), expectedNumberOfValues);
-        assertNull(columnStatistics.getBooleanStatistics());
-        assertNull(columnStatistics.getIntegerStatistics());
-        assertNull(columnStatistics.getDoubleStatistics());
-        assertNull(columnStatistics.getStringStatistics());
-        assertNull(columnStatistics.getDateStatistics());
-        assertNull(columnStatistics.getDecimalStatistics());
-        assertNull(columnStatistics.getBloomFilter());
-    }
-
     private void assertColumnStatistics(
             ColumnStatistics columnStatistics,
             int expectedNumberOfValues,
@@ -166,13 +167,6 @@ public abstract class AbstractStatisticsBuilderTest<B extends StatisticsBuilder,
         assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, 0, 10)), totalCount + 10);
         assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size(), 10)), totalCount + 10);
         assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size() / 2, 10)), totalCount + 10);
-    }
-
-    static List<ColumnStatistics> insertEmptyColumnStatisticsAt(List<ColumnStatistics> statisticsList, int index, long numberOfValues)
-    {
-        List<ColumnStatistics> newStatisticsList = new ArrayList<>(statisticsList);
-        newStatisticsList.add(index, new ColumnStatistics(numberOfValues, 0, null, null, null, null, null, null, null, null, null));
-        return newStatisticsList;
     }
 
     protected void assertColumnStatistics(ColumnStatistics columnStatistics, int expectedNumberOfValues, T expectedMin, T expectedMax)
@@ -231,10 +225,27 @@ public abstract class AbstractStatisticsBuilderTest<B extends StatisticsBuilder,
         assertEquals(rangeStatistics.getMax(), expectedMax);
     }
 
+    public enum StatisticsType
+    {
+        NONE, BOOLEAN, INTEGER, DOUBLE, STRING, DATE, DECIMAL, TIMESTAMP
+    }
+
     public static class AggregateColumnStatistics
     {
-        private int totalCount;
         private final ImmutableList.Builder<ColumnStatistics> statisticsList = ImmutableList.builder();
+        private int totalCount;
+
+        private static ColumnStatistics getMergedColumnStatisticsPairwise(List<ColumnStatistics> statistics)
+        {
+            while (statistics.size() > 1) {
+                ImmutableList.Builder<ColumnStatistics> mergedStatistics = ImmutableList.builder();
+                for (int i = 0; i < statistics.size(); i += 2) {
+                    mergedStatistics.add(mergeColumnStatistics(statistics.subList(i, min(i + 2, statistics.size()))));
+                }
+                statistics = mergedStatistics.build();
+            }
+            return statistics.get(0);
+        }
 
         public void add(ColumnStatistics columnStatistics)
         {
@@ -264,18 +275,6 @@ public abstract class AbstractStatisticsBuilderTest<B extends StatisticsBuilder,
             List<ColumnStatistics> statistics = new ArrayList<>(statisticsList.build());
             random.ifPresent(rand -> Collections.shuffle(statistics, rand));
             return getMergedColumnStatisticsPairwise(ImmutableList.copyOf(statistics));
-        }
-
-        private static ColumnStatistics getMergedColumnStatisticsPairwise(List<ColumnStatistics> statistics)
-        {
-            while (statistics.size() > 1) {
-                ImmutableList.Builder<ColumnStatistics> mergedStatistics = ImmutableList.builder();
-                for (int i = 0; i < statistics.size(); i += 2) {
-                    mergedStatistics.add(mergeColumnStatistics(statistics.subList(i, min(i + 2, statistics.size()))));
-                }
-                statistics = mergedStatistics.build();
-            }
-            return statistics.get(0);
         }
     }
 }

@@ -26,9 +26,9 @@ import static java.util.Objects.requireNonNull;
 public abstract class PrimitiveValueWriter
         extends ValuesWriter
 {
-    private Statistics<?> statistics;
     private final PrimitiveType parquetType;
     private final ValuesWriter valuesWriter;
+    private Statistics<?> statistics;
 
     public PrimitiveValueWriter(PrimitiveType parquetType, ValuesWriter valuesWriter)
     {

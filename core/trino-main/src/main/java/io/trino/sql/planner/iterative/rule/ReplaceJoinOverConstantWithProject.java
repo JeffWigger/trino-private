@@ -79,6 +79,12 @@ public class ReplaceJoinOverConstantWithProject
     private static final Pattern<JoinNode> PATTERN = join()
             .matching(ReplaceJoinOverConstantWithProject::isUnconditional);
 
+    private static boolean isUnconditional(JoinNode joinNode)
+    {
+        return joinNode.getCriteria().isEmpty() &&
+                (joinNode.getFilter().isEmpty() || joinNode.getFilter().get().equals(TRUE_LITERAL));
+    }
+
     @Override
     public Pattern<JoinNode> getPattern()
     {
@@ -132,12 +138,6 @@ public class ReplaceJoinOverConstantWithProject
         }
 
         return Result.empty();
-    }
-
-    private static boolean isUnconditional(JoinNode joinNode)
-    {
-        return joinNode.getCriteria().isEmpty() &&
-                (joinNode.getFilter().isEmpty() || joinNode.getFilter().get().equals(TRUE_LITERAL));
     }
 
     private boolean canInlineJoinSource(PlanNode source)

@@ -50,6 +50,49 @@ public class FunctionResolver
         this.metadata = metadata;
     }
 
+    private static boolean possibleExactCastMatch(Signature signature, Signature declaredSignature)
+    {
+        if (!declaredSignature.getTypeVariableConstraints().isEmpty()) {
+            return false;
+        }
+        if (!declaredSignature.getReturnType().getBase().equalsIgnoreCase(signature.getReturnType().getBase())) {
+            return false;
+        }
+        if (!declaredSignature.getArgumentTypes().get(0).getBase().equalsIgnoreCase(signature.getArgumentTypes().get(0).getBase())) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean someParameterIsUnknown(List<Type> parameters)
+    {
+        return parameters.stream().anyMatch(type -> type.equals(UNKNOWN));
+    }
+
+    private static boolean allReturnNullOnGivenInputTypes(List<ApplicableFunction> applicableFunctions, List<Type> parameters)
+    {
+        return applicableFunctions.stream().allMatch(x -> returnsNullOnGivenInputTypes(x, parameters));
+    }
+
+    private static boolean returnsNullOnGivenInputTypes(ApplicableFunction applicableFunction, List<Type> parameterTypes)
+    {
+        FunctionMetadata function = applicableFunction.getFunction();
+
+        // Window and Aggregation functions have fixed semantic where NULL values are always skipped
+        if (function.getKind() != SCALAR) {
+            return true;
+        }
+
+        List<FunctionArgumentDefinition> argumentDefinitions = function.getArgumentDefinitions();
+        for (int i = 0; i < parameterTypes.size(); i++) {
+            // if the argument value will always be null and the function argument is not nullable, the function will always return null
+            if (parameterTypes.get(i).equals(UNKNOWN) && !argumentDefinitions.get(i).isNullable()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     FunctionBinding resolveCoercion(Collection<FunctionMetadata> allCandidates, Signature signature)
     {
         List<FunctionMetadata> exactCandidates = allCandidates.stream()
@@ -92,20 +135,6 @@ public class FunctionResolver
                 functionMetadata.getFunctionId(),
                 functionMetadata.getSignature(),
                 boundSignature);
-    }
-
-    private static boolean possibleExactCastMatch(Signature signature, Signature declaredSignature)
-    {
-        if (!declaredSignature.getTypeVariableConstraints().isEmpty()) {
-            return false;
-        }
-        if (!declaredSignature.getReturnType().getBase().equalsIgnoreCase(signature.getReturnType().getBase())) {
-            return false;
-        }
-        if (!declaredSignature.getArgumentTypes().get(0).getBase().equalsIgnoreCase(signature.getArgumentTypes().get(0).getBase())) {
-            return false;
-        }
-        return true;
     }
 
     FunctionBinding resolveFunction(Collection<FunctionMetadata> allCandidates, QualifiedName name, List<TypeSignatureProvider> parameterTypes)
@@ -269,11 +298,6 @@ public class FunctionResolver
         return representatives;
     }
 
-    private static boolean someParameterIsUnknown(List<Type> parameters)
-    {
-        return parameters.stream().anyMatch(type -> type.equals(UNKNOWN));
-    }
-
     private List<ApplicableFunction> getUnknownOnlyCastFunctions(List<ApplicableFunction> applicableFunction, List<Type> actualParameters)
     {
         return applicableFunction.stream()
@@ -301,30 +325,6 @@ public class FunctionResolver
                 .map(function -> metadata.getType(function.getBoundSignature().getReturnType()))
                 .collect(Collectors.toSet());
         return returnTypes.size() == 1;
-    }
-
-    private static boolean allReturnNullOnGivenInputTypes(List<ApplicableFunction> applicableFunctions, List<Type> parameters)
-    {
-        return applicableFunctions.stream().allMatch(x -> returnsNullOnGivenInputTypes(x, parameters));
-    }
-
-    private static boolean returnsNullOnGivenInputTypes(ApplicableFunction applicableFunction, List<Type> parameterTypes)
-    {
-        FunctionMetadata function = applicableFunction.getFunction();
-
-        // Window and Aggregation functions have fixed semantic where NULL values are always skipped
-        if (function.getKind() != SCALAR) {
-            return true;
-        }
-
-        List<FunctionArgumentDefinition> argumentDefinitions = function.getArgumentDefinitions();
-        for (int i = 0; i < parameterTypes.size(); i++) {
-            // if the argument value will always be null and the function argument is not nullable, the function will always return null
-            if (parameterTypes.get(i).equals(UNKNOWN) && !argumentDefinitions.get(i).isNullable()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private Optional<List<Type>> toTypes(List<TypeSignatureProvider> typeSignatureProviders)

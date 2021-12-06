@@ -37,10 +37,9 @@ import static java.util.Objects.requireNonNull;
 class ArrayOfRowsUnnester
         extends Unnester
 {
+    private final int fieldCount;
     private ColumnarArray columnarArray;
     private ColumnarRow columnarRow;
-    private final int fieldCount;
-
     // Keeping track of null row element count is required. This count needs to be deducted
     // when translating row block indexes to element block indexes.
     private int nullRowsEncountered;

@@ -26,24 +26,6 @@ import static java.time.ZoneOffset.UTC;
 
 public class Timestamps
 {
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss");
-
-    static final long[] POWERS_OF_TEN = {
-            1L,
-            10L,
-            100L,
-            1000L,
-            10_000L,
-            100_000L,
-            1_000_000L,
-            10_000_000L,
-            100_000_000L,
-            1_000_000_000L,
-            10_000_000_000L,
-            100_000_000_000L,
-            1000_000_000_000L
-    };
-
     public static final int MILLISECONDS_PER_SECOND = 1_000;
     public static final int MILLISECONDS_PER_MINUTE = MILLISECONDS_PER_SECOND * 60;
     public static final int MILLISECONDS_PER_HOUR = MILLISECONDS_PER_MINUTE * 60;
@@ -66,6 +48,22 @@ public class Timestamps
     public static final long SECONDS_PER_MINUTE = 60;
     public static final long MINUTES_PER_HOUR = 60;
     public static final long SECONDS_PER_DAY = SECONDS_PER_MINUTE * MINUTES_PER_HOUR * 24;
+    static final long[] POWERS_OF_TEN = {
+            1L,
+            10L,
+            100L,
+            1000L,
+            10_000L,
+            100_000L,
+            1_000_000L,
+            10_000_000L,
+            100_000_000L,
+            1_000_000_000L,
+            10_000_000_000L,
+            100_000_000_000L,
+            1000_000_000_000L
+    };
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss");
 
     private Timestamps() {}
 

@@ -52,6 +52,21 @@ public final class TestingBlockEncodingSerde
         addBlockEncoding(new LazyBlockEncoding());
     }
 
+    private static String readLengthPrefixedString(SliceInput input)
+    {
+        int length = input.readInt();
+        byte[] bytes = new byte[length];
+        input.readBytes(bytes);
+        return new String(bytes, UTF_8);
+    }
+
+    private static void writeLengthPrefixedString(SliceOutput output, String value)
+    {
+        byte[] bytes = value.getBytes(UTF_8);
+        output.writeInt(bytes.length);
+        output.writeBytes(bytes);
+    }
+
     private void addBlockEncoding(BlockEncoding blockEncoding)
     {
         blockEncodings.put(blockEncoding.getName(), blockEncoding);
@@ -117,20 +132,5 @@ public final class TestingBlockEncodingSerde
         requireNonNull(sliceOutput, "sliceOutput is null");
         requireNonNull(type, "type is null");
         writeLengthPrefixedString(sliceOutput, type.getTypeId().getId());
-    }
-
-    private static String readLengthPrefixedString(SliceInput input)
-    {
-        int length = input.readInt();
-        byte[] bytes = new byte[length];
-        input.readBytes(bytes);
-        return new String(bytes, UTF_8);
-    }
-
-    private static void writeLengthPrefixedString(SliceOutput output, String value)
-    {
-        byte[] bytes = value.getBytes(UTF_8);
-        output.writeInt(bytes.length);
-        output.writeBytes(bytes);
     }
 }

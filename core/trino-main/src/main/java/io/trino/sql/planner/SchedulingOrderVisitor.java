@@ -30,14 +30,14 @@ import static java.util.Objects.requireNonNull;
 
 public final class SchedulingOrderVisitor
 {
+    private SchedulingOrderVisitor() {}
+
     public static List<PlanNodeId> scheduleOrder(PlanNode root)
     {
         ImmutableList.Builder<PlanNodeId> schedulingOrder = ImmutableList.builder();
         root.accept(new Visitor(schedulingOrder::add), null);
         return schedulingOrder.build();
     }
-
-    private SchedulingOrderVisitor() {}
 
     private static class Visitor
             extends SimplePlanVisitor<Void>

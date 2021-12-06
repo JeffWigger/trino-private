@@ -66,6 +66,13 @@ public class OAuth2TokenExchange
                 });
     }
 
+    public static String hashAuthId(UUID authId)
+    {
+        return Hashing.sha256()
+                .hashString(authId.toString(), StandardCharsets.UTF_8)
+                .toString();
+    }
+
     @PreDestroy
     public void stop()
     {
@@ -92,13 +99,6 @@ public class OAuth2TokenExchange
     public void dropToken(UUID authId)
     {
         cache.invalidate(hashAuthId(authId));
-    }
-
-    public static String hashAuthId(UUID authId)
-    {
-        return Hashing.sha256()
-                .hashString(authId.toString(), StandardCharsets.UTF_8)
-                .toString();
     }
 
     public static class TokenPoll

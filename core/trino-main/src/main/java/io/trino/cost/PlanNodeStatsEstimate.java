@@ -44,11 +44,6 @@ public class PlanNodeStatsEstimate
     private final double outputRowCount;
     private final PMap<Symbol, SymbolStatsEstimate> symbolStatistics;
 
-    public static PlanNodeStatsEstimate unknown()
-    {
-        return UNKNOWN;
-    }
-
     @JsonCreator
     public PlanNodeStatsEstimate(
             @JsonProperty("outputRowCount") double outputRowCount,
@@ -62,6 +57,21 @@ public class PlanNodeStatsEstimate
         checkArgument(isNaN(outputRowCount) || outputRowCount >= 0, "outputRowCount cannot be negative");
         this.outputRowCount = outputRowCount;
         this.symbolStatistics = symbolStatistics;
+    }
+
+    public static PlanNodeStatsEstimate unknown()
+    {
+        return UNKNOWN;
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static Builder buildFrom(PlanNodeStatsEstimate other)
+    {
+        return new Builder(other.getOutputRowCount(), other.symbolStatistics);
     }
 
     /**
@@ -174,16 +184,6 @@ public class PlanNodeStatsEstimate
     public int hashCode()
     {
         return Objects.hash(outputRowCount, symbolStatistics);
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
-    public static Builder buildFrom(PlanNodeStatsEstimate other)
-    {
-        return new Builder(other.getOutputRowCount(), other.symbolStatistics);
     }
 
     public static final class Builder

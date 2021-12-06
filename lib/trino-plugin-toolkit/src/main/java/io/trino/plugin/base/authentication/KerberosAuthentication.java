@@ -60,19 +60,6 @@ public class KerberosAuthentication
         this.configuration = createConfiguration(this.principal.getName(), keytabLocation);
     }
 
-    public Subject getSubject()
-    {
-        Subject subject = new Subject(false, ImmutableSet.of(principal), emptySet(), emptySet());
-        try {
-            LoginContext loginContext = new LoginContext("", subject, null, configuration);
-            loginContext.login();
-            return loginContext.getSubject();
-        }
-        catch (LoginException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private static KerberosPrincipal createKerberosPrincipal(String principal)
     {
         try {
@@ -120,5 +107,18 @@ public class KerberosAuthentication
             return principal;
         }
         return format("%s/%s@%s", components[0], hostname.toLowerCase(ENGLISH), components[2]);
+    }
+
+    public Subject getSubject()
+    {
+        Subject subject = new Subject(false, ImmutableSet.of(principal), emptySet(), emptySet());
+        try {
+            LoginContext loginContext = new LoginContext("", subject, null, configuration);
+            loginContext.login();
+            return loginContext.getSubject();
+        }
+        catch (LoginException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

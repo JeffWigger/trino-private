@@ -48,7 +48,8 @@ public class HeaderAuthenticator
     }
 
     @Override
-    public Identity authenticate(ContainerRequestContext request) throws AuthenticationException
+    public Identity authenticate(ContainerRequestContext request)
+            throws AuthenticationException
     {
         AuthenticationException exception = null;
         Map<String, List<String>> lowerCasedHeaders = request.getHeaders().entrySet().stream()

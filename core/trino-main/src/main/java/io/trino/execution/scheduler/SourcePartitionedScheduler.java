@@ -64,31 +64,6 @@ import static java.util.Objects.requireNonNull;
 public class SourcePartitionedScheduler
         implements SourceScheduler
 {
-    private enum State
-    {
-        /**
-         * No splits have been added to pendingSplits set.
-         */
-        INITIALIZED,
-
-        /**
-         * At least one split has been added to pendingSplits set.
-         */
-        SPLITS_ADDED,
-
-        /**
-         * All splits from underlying SplitSource have been discovered.
-         * No more splits will be added to the pendingSplits set.
-         */
-        NO_MORE_SPLITS,
-
-        /**
-         * All splits have been provided to caller of this scheduler.
-         * Cleanup operations are done (e.g., drainCompletedLifespans has drained all driver groups).
-         */
-        FINISHED
-    }
-
     private final SqlStageExecution stage;
     private final SplitSource splitSource;
     private final SplitPlacementPolicy splitPlacementPolicy;
@@ -97,11 +72,9 @@ public class SourcePartitionedScheduler
     private final boolean groupedExecution;
     private final DynamicFilterService dynamicFilterService;
     private final BooleanSupplier anySourceTaskBlocked;
-
     private final Map<Lifespan, ScheduleGroup> scheduleGroups = new HashMap<>();
     private boolean noMoreScheduleGroups;
     private State state = State.INITIALIZED;
-
     private SettableFuture<Void> whenFinishedOrNewLifespanAdded = SettableFuture.create();
 
     private SourcePartitionedScheduler(
@@ -124,12 +97,6 @@ public class SourcePartitionedScheduler
         checkArgument(splitBatchSize > 0, "splitBatchSize must be at least one");
         this.splitBatchSize = splitBatchSize;
         this.groupedExecution = groupedExecution;
-    }
-
-    @Override
-    public PlanNodeId getPlanNodeId()
-    {
-        return partitionedNode;
     }
 
     /**
@@ -208,6 +175,17 @@ public class SourcePartitionedScheduler
                 groupedExecution,
                 dynamicFilterService,
                 anySourceTaskBlocked);
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
+    @Override
+    public PlanNodeId getPlanNodeId()
+    {
+        return partitionedNode;
     }
 
     @Override
@@ -424,11 +402,6 @@ public class SourcePartitionedScheduler
                 overallSplitAssignmentCount);
     }
 
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
-    }
-
     private synchronized void dropListenersFromWhenFinishedOrNewLifespansAdded()
     {
         // whenFinishedOrNewLifespanAdded may remain in a not-done state for an extended period of time.
@@ -537,18 +510,29 @@ public class SourcePartitionedScheduler
         return newTasks;
     }
 
-    private static class ScheduleGroup
+    private enum State
     {
-        public final ConnectorPartitionHandle partitionHandle;
-        public ListenableFuture<SplitBatch> nextSplitBatchFuture;
-        public ListenableFuture<Void> placementFuture = immediateVoidFuture();
-        public final Set<Split> pendingSplits = new HashSet<>();
-        public ScheduleGroupState state = ScheduleGroupState.INITIALIZED;
+        /**
+         * No splits have been added to pendingSplits set.
+         */
+        INITIALIZED,
 
-        public ScheduleGroup(ConnectorPartitionHandle partitionHandle)
-        {
-            this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
-        }
+        /**
+         * At least one split has been added to pendingSplits set.
+         */
+        SPLITS_ADDED,
+
+        /**
+         * All splits from underlying SplitSource have been discovered.
+         * No more splits will be added to the pendingSplits set.
+         */
+        NO_MORE_SPLITS,
+
+        /**
+         * All splits have been provided to caller of this scheduler.
+         * Cleanup operations are done (e.g., drainCompletedLifespans has drained all driver groups).
+         */
+        FINISHED
     }
 
     private enum ScheduleGroupState
@@ -574,5 +558,19 @@ public class SourcePartitionedScheduler
          * Cleanup operations (e.g. inform caller of noMoreSplits) are done.
          */
         DONE
+    }
+
+    private static class ScheduleGroup
+    {
+        public final ConnectorPartitionHandle partitionHandle;
+        public final Set<Split> pendingSplits = new HashSet<>();
+        public ListenableFuture<SplitBatch> nextSplitBatchFuture;
+        public ListenableFuture<Void> placementFuture = immediateVoidFuture();
+        public ScheduleGroupState state = ScheduleGroupState.INITIALIZED;
+
+        public ScheduleGroup(ConnectorPartitionHandle partitionHandle)
+        {
+            this.partitionHandle = requireNonNull(partitionHandle, "partitionHandle is null");
+        }
     }
 }

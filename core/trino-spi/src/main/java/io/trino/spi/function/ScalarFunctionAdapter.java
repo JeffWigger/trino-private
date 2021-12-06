@@ -66,6 +66,143 @@ public final class ScalarFunctionAdapter
         this.nullAdaptationPolicy = requireNonNull(nullAdaptationPolicy, "nullAdaptationPolicy is null");
     }
 
+    private static MethodHandle getBlockValue(Type argumentType, Class<?> expectedType)
+    {
+        Class<?> methodArgumentType = argumentType.getJavaType();
+        String getterName;
+        if (methodArgumentType == boolean.class) {
+            getterName = "getBoolean";
+        }
+        else if (methodArgumentType == long.class) {
+            getterName = "getLong";
+        }
+        else if (methodArgumentType == double.class) {
+            getterName = "getDouble";
+        }
+        else if (methodArgumentType == Slice.class) {
+            getterName = "getSlice";
+        }
+        else {
+            getterName = "getObject";
+            methodArgumentType = Object.class;
+        }
+
+        try {
+            MethodHandle getValue = lookup().findVirtual(Type.class, getterName, methodType(methodArgumentType, Block.class, int.class))
+                    .bindTo(argumentType);
+            return explicitCastArguments(getValue, getValue.type().changeReturnType(expectedType));
+        }
+        catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static MethodHandle boxedToNullFlagFilter(Class<?> argumentType)
+    {
+        // Start with identity
+        MethodHandle handle = identity(argumentType);
+        // if argument is a primitive, box it
+        if (isWrapperType(argumentType)) {
+            handle = explicitCastArguments(handle, handle.type().changeParameterType(0, unwrap(argumentType)));
+        }
+        // Add boolean null flag
+        handle = dropArguments(handle, 1, boolean.class);
+        // if flag is true, return null, otherwise invoke identity
+        return guardWithTest(
+                isTrueNullFlag(handle.type(), 0),
+                returnNull(handle.type()),
+                handle);
+    }
+
+    private static MethodHandle isTrueNullFlag(MethodType methodType, int index)
+    {
+        return permuteArguments(identity(boolean.class), methodType.changeReturnType(boolean.class), index + 1);
+    }
+
+    private static MethodHandle isNullArgument(MethodType methodType, int index)
+    {
+        // Start with Objects.isNull(Object):boolean
+        MethodHandle isNull = IS_NULL_METHOD;
+        // Cast in incoming type: isNull(T):boolean
+        isNull = explicitCastArguments(isNull, methodType(boolean.class, methodType.parameterType(index)));
+        // Add extra argument to match expected method type
+        isNull = permuteArguments(isNull, methodType.changeReturnType(boolean.class), index);
+        return isNull;
+    }
+
+    private static MethodHandle isBlockPositionNull(MethodType methodType, int index)
+    {
+        // Start with Objects.isNull(Object):boolean
+        MethodHandle isNull;
+        try {
+            isNull = lookup().findVirtual(Block.class, "isNull", methodType(boolean.class, int.class));
+        }
+        catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+        // Add extra argument to match expected method type
+        isNull = permuteArguments(isNull, methodType.changeReturnType(boolean.class), index, index + 1);
+        return isNull;
+    }
+
+    private static MethodHandle lookupIsNullMethod()
+    {
+        MethodHandle isNull;
+        try {
+            isNull = lookup().findStatic(Objects.class, "isNull", methodType(boolean.class, Object.class));
+        }
+        catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+        return isNull;
+    }
+
+    private static MethodHandle returnNull(MethodType methodType)
+    {
+        // Start with a constant null value of the expected return type: f():R
+        MethodHandle returnNull = constant(wrap(methodType.returnType()), null);
+
+        // Add extra argument to match expected method type: f(a, b, c, ..., n):R
+        returnNull = permuteArguments(returnNull, methodType.changeReturnType(wrap(methodType.returnType())));
+
+        // Convert return to a primitive is necessary: f(a, b, c, ..., n):r
+        returnNull = explicitCastArguments(returnNull, methodType);
+        return returnNull;
+    }
+
+    private static MethodHandle throwTrinoNullArgumentException(MethodType type)
+    {
+        MethodHandle throwException = collectArguments(throwException(type.returnType(), TrinoException.class), 0, trinoNullArgumentException());
+        return permuteArguments(throwException, type);
+    }
+
+    private static MethodHandle trinoNullArgumentException()
+    {
+        try {
+            return publicLookup().findConstructor(TrinoException.class, methodType(void.class, ErrorCodeSupplier.class, String.class))
+                    .bindTo(StandardErrorCode.INVALID_FUNCTION_ARGUMENT)
+                    .bindTo("A never null argument is null");
+        }
+        catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static boolean isWrapperType(Class<?> type)
+    {
+        return type != unwrap(type);
+    }
+
+    private static Class<?> wrap(Class<?> type)
+    {
+        return methodType(type).wrap().returnType();
+    }
+
+    private static Class<?> unwrap(Class<?> type)
+    {
+        return methodType(type).unwrap().returnType();
+    }
+
     /**
      * Can the actual calling convention of a method be converted to the expected calling convention?
      */
@@ -490,143 +627,6 @@ public final class ScalarFunctionAdapter
         }
 
         throw new IllegalArgumentException("Unsupported expected argument convention: " + expectedArgumentConvention);
-    }
-
-    private static MethodHandle getBlockValue(Type argumentType, Class<?> expectedType)
-    {
-        Class<?> methodArgumentType = argumentType.getJavaType();
-        String getterName;
-        if (methodArgumentType == boolean.class) {
-            getterName = "getBoolean";
-        }
-        else if (methodArgumentType == long.class) {
-            getterName = "getLong";
-        }
-        else if (methodArgumentType == double.class) {
-            getterName = "getDouble";
-        }
-        else if (methodArgumentType == Slice.class) {
-            getterName = "getSlice";
-        }
-        else {
-            getterName = "getObject";
-            methodArgumentType = Object.class;
-        }
-
-        try {
-            MethodHandle getValue = lookup().findVirtual(Type.class, getterName, methodType(methodArgumentType, Block.class, int.class))
-                    .bindTo(argumentType);
-            return explicitCastArguments(getValue, getValue.type().changeReturnType(expectedType));
-        }
-        catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
-    }
-
-    private static MethodHandle boxedToNullFlagFilter(Class<?> argumentType)
-    {
-        // Start with identity
-        MethodHandle handle = identity(argumentType);
-        // if argument is a primitive, box it
-        if (isWrapperType(argumentType)) {
-            handle = explicitCastArguments(handle, handle.type().changeParameterType(0, unwrap(argumentType)));
-        }
-        // Add boolean null flag
-        handle = dropArguments(handle, 1, boolean.class);
-        // if flag is true, return null, otherwise invoke identity
-        return guardWithTest(
-                isTrueNullFlag(handle.type(), 0),
-                returnNull(handle.type()),
-                handle);
-    }
-
-    private static MethodHandle isTrueNullFlag(MethodType methodType, int index)
-    {
-        return permuteArguments(identity(boolean.class), methodType.changeReturnType(boolean.class), index + 1);
-    }
-
-    private static MethodHandle isNullArgument(MethodType methodType, int index)
-    {
-        // Start with Objects.isNull(Object):boolean
-        MethodHandle isNull = IS_NULL_METHOD;
-        // Cast in incoming type: isNull(T):boolean
-        isNull = explicitCastArguments(isNull, methodType(boolean.class, methodType.parameterType(index)));
-        // Add extra argument to match expected method type
-        isNull = permuteArguments(isNull, methodType.changeReturnType(boolean.class), index);
-        return isNull;
-    }
-
-    private static MethodHandle isBlockPositionNull(MethodType methodType, int index)
-    {
-        // Start with Objects.isNull(Object):boolean
-        MethodHandle isNull;
-        try {
-            isNull = lookup().findVirtual(Block.class, "isNull", methodType(boolean.class, int.class));
-        }
-        catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
-        // Add extra argument to match expected method type
-        isNull = permuteArguments(isNull, methodType.changeReturnType(boolean.class), index, index + 1);
-        return isNull;
-    }
-
-    private static MethodHandle lookupIsNullMethod()
-    {
-        MethodHandle isNull;
-        try {
-            isNull = lookup().findStatic(Objects.class, "isNull", methodType(boolean.class, Object.class));
-        }
-        catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
-        return isNull;
-    }
-
-    private static MethodHandle returnNull(MethodType methodType)
-    {
-        // Start with a constant null value of the expected return type: f():R
-        MethodHandle returnNull = constant(wrap(methodType.returnType()), null);
-
-        // Add extra argument to match expected method type: f(a, b, c, ..., n):R
-        returnNull = permuteArguments(returnNull, methodType.changeReturnType(wrap(methodType.returnType())));
-
-        // Convert return to a primitive is necessary: f(a, b, c, ..., n):r
-        returnNull = explicitCastArguments(returnNull, methodType);
-        return returnNull;
-    }
-
-    private static MethodHandle throwTrinoNullArgumentException(MethodType type)
-    {
-        MethodHandle throwException = collectArguments(throwException(type.returnType(), TrinoException.class), 0, trinoNullArgumentException());
-        return permuteArguments(throwException, type);
-    }
-
-    private static MethodHandle trinoNullArgumentException()
-    {
-        try {
-            return publicLookup().findConstructor(TrinoException.class, methodType(void.class, ErrorCodeSupplier.class, String.class))
-                    .bindTo(StandardErrorCode.INVALID_FUNCTION_ARGUMENT)
-                    .bindTo("A never null argument is null");
-        }
-        catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
-    }
-
-    private static boolean isWrapperType(Class<?> type)
-    {
-        return type != unwrap(type);
-    }
-
-    private static Class<?> wrap(Class<?> type)
-    {
-        return methodType(type).wrap().returnType();
-    }
-
-    private static Class<?> unwrap(Class<?> type)
-    {
-        return methodType(type).unwrap().returnType();
     }
 
     public enum NullAdaptationPolicy

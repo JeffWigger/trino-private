@@ -54,6 +54,13 @@ public class ComposableStatsCalculator
                         ArrayListMultimap::create));
     }
 
+    private static <T extends PlanNode> Optional<PlanNodeStatsEstimate> calculateStats(Rule<T> rule, PlanNode node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types)
+    {
+        @SuppressWarnings("unchecked")
+        T typedNode = (T) node;
+        return rule.calculate(typedNode, sourceStats, lookup, session, types);
+    }
+
     private Stream<Rule<?>> getCandidates(PlanNode node)
     {
         for (Class<?> superclass = node.getClass().getSuperclass(); superclass != null; superclass = superclass.getSuperclass()) {
@@ -76,13 +83,6 @@ public class ComposableStatsCalculator
             }
         }
         return PlanNodeStatsEstimate.unknown();
-    }
-
-    private static <T extends PlanNode> Optional<PlanNodeStatsEstimate> calculateStats(Rule<T> rule, PlanNode node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types)
-    {
-        @SuppressWarnings("unchecked")
-        T typedNode = (T) node;
-        return rule.calculate(typedNode, sourceStats, lookup, session, types);
     }
 
     public interface Rule<T extends PlanNode>

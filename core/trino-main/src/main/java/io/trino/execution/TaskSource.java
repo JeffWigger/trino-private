@@ -16,7 +16,6 @@ package io.trino.execution;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableSet;
-import io.trino.metadata.DeltaSplit;
 import io.trino.sql.planner.plan.PlanNodeId;
 
 import java.util.Set;
@@ -53,7 +52,7 @@ public class TaskSource
             @JsonProperty("deltaSplits") Set<ScheduledSplit> deltaSplits,
             @JsonProperty("noMoreDeltaSplitsForLifespan") Set<Lifespan> noMoreDeltaSplitsForLifespan,
             @JsonProperty("noMoreDeltaSplits") boolean noMoreDeltaSplits
-            )
+    )
     {
         this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
         this.splits = ImmutableSet.copyOf(requireNonNull(splits, "splits is null"));
@@ -92,7 +91,6 @@ public class TaskSource
     {
         return noMoreSplits;
     }
-
 
     @JsonProperty
     public Set<ScheduledSplit> getDeltaSplits()
@@ -135,7 +133,7 @@ public class TaskSource
             ImmutableSet.Builder<Lifespan> newNoMoreDeltaSplitsForDriverGroup = ImmutableSet.<Lifespan>builder()
                     .addAll(noMoreSplitsForLifespan);
             boolean isNoMoreDeltaSplits = this.isNoMoreDeltaSplits();
-            if(isNewerDelta(source)){
+            if (isNewerDelta(source)) {
                 newDeltaSplits.addAll(source.getDeltaSplits());
                 newNoMoreDeltaSplitsForDriverGroup.addAll(source.getNoMoreDeltaSplitsForLifespan());
                 isNoMoreDeltaSplits = source.isNoMoreDeltaSplits();
@@ -149,9 +147,9 @@ public class TaskSource
                     newDeltaSplits.build(),
                     newNoMoreDeltaSplitsForDriverGroup.build(),
                     isNoMoreDeltaSplits
-                    );
+            );
         }
-        if(isNewerDelta(source)){
+        if (isNewerDelta(source)) {
             ImmutableSet.Builder<ScheduledSplit> newDeltaSplits = ImmutableSet.<ScheduledSplit>builder()
                     .addAll(deltaSplits);
             ImmutableSet.Builder<Lifespan> newNoMoreDeltaSplitsForDriverGroup = ImmutableSet.<Lifespan>builder()
@@ -160,7 +158,6 @@ public class TaskSource
             newDeltaSplits.addAll(source.getDeltaSplits());
             newNoMoreDeltaSplitsForDriverGroup.addAll(source.getNoMoreDeltaSplitsForLifespan());
             boolean isNoMoreDeltaSplits = source.isNoMoreDeltaSplits();
-
 
             return new TaskSource(
                     planNodeId,
@@ -175,13 +172,12 @@ public class TaskSource
 
         // the specified source is older than this one
         return this;
-
     }
 
     private boolean isNewer(TaskSource source)
     {
         // case when a delta update is created. isNoMoreSplits is set to false, this should not be wrongly copied
-        if (source.getSplits().isEmpty() && source.getNoMoreSplitsForLifespan().isEmpty() && !source.isNoMoreSplits()){
+        if (source.getSplits().isEmpty() && source.getNoMoreSplitsForLifespan().isEmpty() && !source.isNoMoreSplits()) {
             return false;
         }
         // the specified source is newer if it changes the no more
@@ -193,7 +189,7 @@ public class TaskSource
 
     private boolean isNewerDelta(TaskSource source)
     {
-        if (source.getDeltaSplits().isEmpty() && source.getNoMoreDeltaSplitsForLifespan().isEmpty() && !source.isNoMoreDeltaSplits()){
+        if (source.getDeltaSplits().isEmpty() && source.getNoMoreDeltaSplitsForLifespan().isEmpty() && !source.isNoMoreDeltaSplits()) {
             return false;
         }
         // the specified source is newer if it changes the no more
@@ -203,7 +199,8 @@ public class TaskSource
                 (!deltaSplits.containsAll(source.getDeltaSplits()));
     }
 
-    public boolean isDeltaSource(){
+    public boolean isDeltaSource()
+    {
         return !getDeltaSplits().isEmpty(); //this.splits.stream().allMatch(split -> split.getSplit() instanceof DeltaSplit);
     }
 

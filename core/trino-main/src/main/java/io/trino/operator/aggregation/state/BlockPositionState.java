@@ -23,14 +23,6 @@ import io.trino.spi.type.Type;
 public interface BlockPositionState
         extends AccumulatorState
 {
-    Block getBlock();
-
-    int getPosition();
-
-    void setBlock(Block value);
-
-    void setPosition(int position);
-
     static void write(Type type, BlockPositionState state, BlockBuilder out)
     {
         if (state.getBlock() == null) {
@@ -40,4 +32,12 @@ public interface BlockPositionState
             type.appendTo(state.getBlock(), state.getPosition(), out);
         }
     }
+
+    Block getBlock();
+
+    void setBlock(Block value);
+
+    int getPosition();
+
+    void setPosition(int position);
 }

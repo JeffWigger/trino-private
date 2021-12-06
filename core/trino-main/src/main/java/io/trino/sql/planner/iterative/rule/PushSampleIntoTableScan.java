@@ -49,6 +49,17 @@ public class PushSampleIntoTableScan
         this.metadata = metadata;
     }
 
+    private static SampleType getSamplingType(Type sampleNodeType)
+    {
+        switch (sampleNodeType) {
+            case SYSTEM:
+                return SampleType.SYSTEM;
+            case BERNOULLI:
+                return SampleType.BERNOULLI;
+        }
+        throw new UnsupportedOperationException("Not yet implemented for " + sampleNodeType);
+    }
+
     @Override
     public Pattern<SampleNode> getPattern()
     {
@@ -78,16 +89,5 @@ public class PushSampleIntoTableScan
                         // table scan partitioning might have changed with new table handle
                         Optional.empty())))
                 .orElseGet(Result::empty);
-    }
-
-    private static SampleType getSamplingType(Type sampleNodeType)
-    {
-        switch (sampleNodeType) {
-            case SYSTEM:
-                return SampleType.SYSTEM;
-            case BERNOULLI:
-                return SampleType.BERNOULLI;
-        }
-        throw new UnsupportedOperationException("Not yet implemented for " + sampleNodeType);
     }
 }

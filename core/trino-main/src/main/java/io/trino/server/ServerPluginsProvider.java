@@ -40,16 +40,6 @@ public class ServerPluginsProvider
         this.installedPluginsDir = config.getInstalledPluginsDir();
     }
 
-    @Override
-    public void loadPlugins(Loader loader, ClassLoaderFactory createClassLoader)
-    {
-        for (File file : listFiles(installedPluginsDir)) {
-            if (file.isDirectory()) {
-                loader.load(file.getAbsolutePath(), () -> createClassLoader.create(buildClassPath(file)));
-            }
-        }
-    }
-
     private static List<URL> buildClassPath(File path)
     {
         return listFiles(path).stream()
@@ -77,6 +67,16 @@ public class ServerPluginsProvider
         }
         catch (MalformedURLException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
+    public void loadPlugins(Loader loader, ClassLoaderFactory createClassLoader)
+    {
+        for (File file : listFiles(installedPluginsDir)) {
+            if (file.isDirectory()) {
+                loader.load(file.getAbsolutePath(), () -> createClassLoader.create(buildClassPath(file)));
+            }
         }
     }
 }

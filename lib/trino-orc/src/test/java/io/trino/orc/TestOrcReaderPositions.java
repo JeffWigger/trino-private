@@ -63,6 +63,119 @@ import static org.testng.Assert.fail;
 
 public class TestOrcReaderPositions
 {
+    private static void assertCurrentBatch(Page page, int rowIndex, int batchSize)
+    {
+        Block block = page.getBlock(0);
+        for (int i = 0; i < batchSize; i++) {
+            assertEquals(BIGINT.getLong(block, i), (rowIndex + i) * 3);
+        }
+    }
+
+    private static void assertCurrentBatch(Page page, int stripe)
+    {
+        Block block = page.getBlock(0);
+        for (int i = 0; i < 20; i++) {
+            assertEquals(BIGINT.getLong(block, i), ((stripe * 20L) + i) * 3);
+        }
+    }
+
+    // write 5 stripes of 20 values each: (0,3,6,..,57), (60,..,117), .., (..297)
+    private static void createMultiStripeFile(File file)
+            throws IOException, ReflectiveOperationException, SerDeException
+    {
+        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(file, ORC_12, CompressionKind.NONE, BIGINT);
+
+        Serializer serde = new OrcSerde();
+        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", BIGINT);
+        Object row = objectInspector.create();
+        StructField field = objectInspector.getAllStructFieldRefs().get(0);
+
+        for (int i = 0; i < 300; i += 3) {
+            if ((i > 0) && (i % 60 == 0)) {
+                flushWriter(writer);
+            }
+
+            objectInspector.setStructFieldData(row, field, (long) i);
+            Writable record = serde.serialize(row, objectInspector);
+            writer.write(record);
+        }
+
+        writer.close(false);
+    }
+
+    private static void createFileWithOnlyUserMetadata(File file, Map<String, String> metadata)
+            throws IOException
+    {
+        Configuration conf = new Configuration(false);
+        OrcFile.WriterOptions writerOptions = OrcFile.writerOptions(conf)
+                .memory(new NullMemoryManager())
+                .inspector(createSettableStructObjectInspector("test", BIGINT))
+                .compress(SNAPPY);
+        Writer writer = OrcFile.createWriter(new Path(file.toURI()), writerOptions);
+        for (Map.Entry<String, String> entry : metadata.entrySet()) {
+            writer.addUserMetadata(entry.getKey(), ByteBuffer.wrap(entry.getValue().getBytes(UTF_8)));
+        }
+        writer.close();
+    }
+
+    private static void flushWriter(FileSinkOperator.RecordWriter writer)
+            throws IOException, ReflectiveOperationException
+    {
+        Field field = OrcOutputFormat.class.getClassLoader()
+                .loadClass(OrcOutputFormat.class.getName() + "$OrcRecordWriter")
+                .getDeclaredField("writer");
+        field.setAccessible(true);
+        ((Writer) field.get(writer)).writeIntermediateFooter();
+    }
+
+    private static void createSequentialFile(File file, int count)
+            throws IOException, SerDeException
+    {
+        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(file, ORC_12, CompressionKind.NONE, BIGINT);
+
+        Serializer serde = new OrcSerde();
+        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", BIGINT);
+        Object row = objectInspector.create();
+        StructField field = objectInspector.getAllStructFieldRefs().get(0);
+
+        for (int i = 0; i < count; i++) {
+            objectInspector.setStructFieldData(row, field, (long) i);
+            Writable record = serde.serialize(row, objectInspector);
+            writer.write(record);
+        }
+
+        writer.close(false);
+    }
+
+    private static void createGrowingSequentialFile(File file, int count, int step, int initialLength)
+            throws IOException, SerDeException
+    {
+        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(file, ORC_12, CompressionKind.NONE, VARCHAR);
+
+        Serializer serde = new OrcSerde();
+        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", VARCHAR);
+        Object row = objectInspector.create();
+        StructField field = objectInspector.getAllStructFieldRefs().get(0);
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("0".repeat(Math.max(0, initialLength)));
+        String seedString = builder.toString();
+
+        // gradually grow the length of a cell
+        int previousLength = initialLength;
+        for (int i = 0; i < count; i++) {
+            if ((i / step + 1) * initialLength > previousLength) {
+                previousLength = (i / step + 1) * initialLength;
+                builder.append(seedString);
+            }
+            objectInspector.setStructFieldData(row, field, builder.toString());
+            Writable record = serde.serialize(row, objectInspector);
+            writer.write(record);
+        }
+
+        writer.close(false);
+    }
+
     @Test
     public void testEntireFile()
             throws Exception
@@ -367,118 +480,5 @@ public class TestOrcReaderPositions
                 assertEquals(reader.getFilePosition(), reader.getReaderPosition());
             }
         }
-    }
-
-    private static void assertCurrentBatch(Page page, int rowIndex, int batchSize)
-    {
-        Block block = page.getBlock(0);
-        for (int i = 0; i < batchSize; i++) {
-            assertEquals(BIGINT.getLong(block, i), (rowIndex + i) * 3);
-        }
-    }
-
-    private static void assertCurrentBatch(Page page, int stripe)
-    {
-        Block block = page.getBlock(0);
-        for (int i = 0; i < 20; i++) {
-            assertEquals(BIGINT.getLong(block, i), ((stripe * 20L) + i) * 3);
-        }
-    }
-
-    // write 5 stripes of 20 values each: (0,3,6,..,57), (60,..,117), .., (..297)
-    private static void createMultiStripeFile(File file)
-            throws IOException, ReflectiveOperationException, SerDeException
-    {
-        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(file, ORC_12, CompressionKind.NONE, BIGINT);
-
-        Serializer serde = new OrcSerde();
-        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", BIGINT);
-        Object row = objectInspector.create();
-        StructField field = objectInspector.getAllStructFieldRefs().get(0);
-
-        for (int i = 0; i < 300; i += 3) {
-            if ((i > 0) && (i % 60 == 0)) {
-                flushWriter(writer);
-            }
-
-            objectInspector.setStructFieldData(row, field, (long) i);
-            Writable record = serde.serialize(row, objectInspector);
-            writer.write(record);
-        }
-
-        writer.close(false);
-    }
-
-    private static void createFileWithOnlyUserMetadata(File file, Map<String, String> metadata)
-            throws IOException
-    {
-        Configuration conf = new Configuration(false);
-        OrcFile.WriterOptions writerOptions = OrcFile.writerOptions(conf)
-                .memory(new NullMemoryManager())
-                .inspector(createSettableStructObjectInspector("test", BIGINT))
-                .compress(SNAPPY);
-        Writer writer = OrcFile.createWriter(new Path(file.toURI()), writerOptions);
-        for (Map.Entry<String, String> entry : metadata.entrySet()) {
-            writer.addUserMetadata(entry.getKey(), ByteBuffer.wrap(entry.getValue().getBytes(UTF_8)));
-        }
-        writer.close();
-    }
-
-    private static void flushWriter(FileSinkOperator.RecordWriter writer)
-            throws IOException, ReflectiveOperationException
-    {
-        Field field = OrcOutputFormat.class.getClassLoader()
-                .loadClass(OrcOutputFormat.class.getName() + "$OrcRecordWriter")
-                .getDeclaredField("writer");
-        field.setAccessible(true);
-        ((Writer) field.get(writer)).writeIntermediateFooter();
-    }
-
-    private static void createSequentialFile(File file, int count)
-            throws IOException, SerDeException
-    {
-        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(file, ORC_12, CompressionKind.NONE, BIGINT);
-
-        Serializer serde = new OrcSerde();
-        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", BIGINT);
-        Object row = objectInspector.create();
-        StructField field = objectInspector.getAllStructFieldRefs().get(0);
-
-        for (int i = 0; i < count; i++) {
-            objectInspector.setStructFieldData(row, field, (long) i);
-            Writable record = serde.serialize(row, objectInspector);
-            writer.write(record);
-        }
-
-        writer.close(false);
-    }
-
-    private static void createGrowingSequentialFile(File file, int count, int step, int initialLength)
-            throws IOException, SerDeException
-    {
-        FileSinkOperator.RecordWriter writer = createOrcRecordWriter(file, ORC_12, CompressionKind.NONE, VARCHAR);
-
-        Serializer serde = new OrcSerde();
-        SettableStructObjectInspector objectInspector = createSettableStructObjectInspector("test", VARCHAR);
-        Object row = objectInspector.create();
-        StructField field = objectInspector.getAllStructFieldRefs().get(0);
-
-        StringBuilder builder = new StringBuilder();
-        builder.append("0".repeat(Math.max(0, initialLength)));
-        String seedString = builder.toString();
-
-        // gradually grow the length of a cell
-        int previousLength = initialLength;
-        for (int i = 0; i < count; i++) {
-            if ((i / step + 1) * initialLength > previousLength) {
-                previousLength = (i / step + 1) * initialLength;
-                builder.append(seedString);
-            }
-            objectInspector.setStructFieldData(row, field, builder.toString());
-            Writable record = serde.serialize(row, objectInspector);
-            writer.write(record);
-        }
-
-        writer.close(false);
     }
 }

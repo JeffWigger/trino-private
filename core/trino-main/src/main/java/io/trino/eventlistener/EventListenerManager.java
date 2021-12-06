@@ -60,6 +60,16 @@ public class EventListenerManager
         this.configFiles = ImmutableList.copyOf(config.getEventListenerFiles());
     }
 
+    private static Map<String, String> loadEventListenerProperties(File configFile)
+    {
+        try {
+            return new HashMap<>(loadPropertiesFrom(configFile.getPath()));
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException("Failed to read configuration file: " + configFile, e);
+        }
+    }
+
     public void addEventListenerFactory(EventListenerFactory eventListenerFactory)
     {
         requireNonNull(eventListenerFactory, "eventListenerFactory is null");
@@ -119,16 +129,6 @@ public class EventListenerManager
 
         log.info("-- Loaded event listener %s --", configFile);
         return eventListener;
-    }
-
-    private static Map<String, String> loadEventListenerProperties(File configFile)
-    {
-        try {
-            return new HashMap<>(loadPropertiesFrom(configFile.getPath()));
-        }
-        catch (IOException e) {
-            throw new UncheckedIOException("Failed to read configuration file: " + configFile, e);
-        }
     }
 
     public void queryCompleted(QueryCompletedEvent queryCompletedEvent)

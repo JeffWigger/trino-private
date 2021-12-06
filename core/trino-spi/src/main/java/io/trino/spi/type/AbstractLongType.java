@@ -43,6 +43,48 @@ public abstract class AbstractLongType
         super(signature, long.class);
     }
 
+    public static long hash(long value)
+    {
+        // xxHash64 mix
+        return rotateLeft(value * 0xC2B2AE3D27D4EB4FL, 31) * 0x9E3779B185EBCA87L;
+    }
+
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long left, long right)
+    {
+        return left == right;
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long value)
+    {
+        return hash(value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long value)
+    {
+        return XxHash64.hash(value);
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Long.compare(left, right);
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return left < right;
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return left <= right;
+    }
+
     @Override
     public final int getFixedSize()
     {
@@ -121,47 +163,5 @@ public abstract class AbstractLongType
     public final BlockBuilder createFixedSizeBlockBuilder(int positionCount)
     {
         return new LongArrayBlockBuilder(null, positionCount);
-    }
-
-    public static long hash(long value)
-    {
-        // xxHash64 mix
-        return rotateLeft(value * 0xC2B2AE3D27D4EB4FL, 31) * 0x9E3779B185EBCA87L;
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
-    {
-        return left == right;
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long value)
-    {
-        return hash(value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long value)
-    {
-        return XxHash64.hash(value);
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Long.compare(left, right);
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return left < right;
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return left <= right;
     }
 }

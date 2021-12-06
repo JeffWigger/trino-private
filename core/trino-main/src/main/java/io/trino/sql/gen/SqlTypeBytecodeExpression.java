@@ -31,6 +31,17 @@ import static java.util.Objects.requireNonNull;
 public class SqlTypeBytecodeExpression
         extends BytecodeExpression
 {
+    private final Type type;
+    private final Binding binding;
+    private final Method bootstrapMethod;
+    private SqlTypeBytecodeExpression(Type type, Binding binding, Method bootstrapMethod)
+    {
+        super(type(Type.class));
+        this.type = requireNonNull(type, "type is null");
+        this.binding = requireNonNull(binding, "binding is null");
+        this.bootstrapMethod = requireNonNull(bootstrapMethod, "bootstrapMethod is null");
+    }
+
     public static SqlTypeBytecodeExpression constantType(CallSiteBinder callSiteBinder, Type type)
     {
         requireNonNull(callSiteBinder, "callSiteBinder is null");
@@ -48,18 +59,6 @@ public class SqlTypeBytecodeExpression
             name = type.getBaseName();
         }
         return name.replaceAll("\\W+", "_");
-    }
-
-    private final Type type;
-    private final Binding binding;
-    private final Method bootstrapMethod;
-
-    private SqlTypeBytecodeExpression(Type type, Binding binding, Method bootstrapMethod)
-    {
-        super(type(Type.class));
-        this.type = requireNonNull(type, "type is null");
-        this.binding = requireNonNull(binding, "binding is null");
-        this.bootstrapMethod = requireNonNull(bootstrapMethod, "bootstrapMethod is null");
     }
 
     @Override

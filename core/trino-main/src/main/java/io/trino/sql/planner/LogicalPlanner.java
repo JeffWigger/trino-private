@@ -131,14 +131,7 @@ import static java.util.Objects.requireNonNull;
 public class LogicalPlanner
 {
     private static final Logger LOG = Logger.get(LogicalPlanner.class);
-
-    public enum Stage
-    {
-        CREATED, OPTIMIZED, OPTIMIZED_AND_VALIDATED
-    }
-
     private final PlanNodeIdAllocator idAllocator;
-
     private final Session session;
     private final List<PlanOptimizer> planOptimizers;
     private final PlanSanityChecker planSanityChecker;
@@ -151,7 +144,6 @@ public class LogicalPlanner
     private final StatsCalculator statsCalculator;
     private final CostCalculator costCalculator;
     private final WarningCollector warningCollector;
-
     public LogicalPlanner(
             Session session,
             List<PlanOptimizer> planOptimizers,
@@ -190,6 +182,34 @@ public class LogicalPlanner
         this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
         this.costCalculator = requireNonNull(costCalculator, "costCalculator is null");
         this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
+    }
+
+    private static Map<NodeRef<LambdaArgumentDeclaration>, Symbol> buildLambdaDeclarationToSymbolMap(Analysis analysis, SymbolAllocator symbolAllocator)
+    {
+        Map<Key, Symbol> allocations = new HashMap<>();
+        Map<NodeRef<LambdaArgumentDeclaration>, Symbol> result = new LinkedHashMap<>();
+
+        for (Entry<NodeRef<Expression>, Type> entry : analysis.getTypes().entrySet()) {
+            if (!(entry.getKey().getNode() instanceof LambdaArgumentDeclaration)) {
+                continue;
+            }
+
+            LambdaArgumentDeclaration argument = (LambdaArgumentDeclaration) entry.getKey().getNode();
+            Key key = new Key(argument, entry.getValue());
+
+            // Allocate the same symbol for all lambda argument names with a given type. This is needed to be able to
+            // properly identify multiple instances of syntactically equal lambda expressions during planning as expressions
+            // get rewritten via TranslationMap
+            Symbol symbol = allocations.get(key);
+            if (symbol == null) {
+                symbol = symbolAllocator.newSymbol(argument, entry.getValue());
+                allocations.put(key, symbol);
+            }
+
+            result.put(NodeRef.of(argument), symbol);
+        }
+
+        return result;
     }
 
     public Plan plan(Analysis analysis)
@@ -722,32 +742,9 @@ public class LogicalPlanner
                 .process(query, null);
     }
 
-    private static Map<NodeRef<LambdaArgumentDeclaration>, Symbol> buildLambdaDeclarationToSymbolMap(Analysis analysis, SymbolAllocator symbolAllocator)
+    public enum Stage
     {
-        Map<Key, Symbol> allocations = new HashMap<>();
-        Map<NodeRef<LambdaArgumentDeclaration>, Symbol> result = new LinkedHashMap<>();
-
-        for (Entry<NodeRef<Expression>, Type> entry : analysis.getTypes().entrySet()) {
-            if (!(entry.getKey().getNode() instanceof LambdaArgumentDeclaration)) {
-                continue;
-            }
-
-            LambdaArgumentDeclaration argument = (LambdaArgumentDeclaration) entry.getKey().getNode();
-            Key key = new Key(argument, entry.getValue());
-
-            // Allocate the same symbol for all lambda argument names with a given type. This is needed to be able to
-            // properly identify multiple instances of syntactically equal lambda expressions during planning as expressions
-            // get rewritten via TranslationMap
-            Symbol symbol = allocations.get(key);
-            if (symbol == null) {
-                symbol = symbolAllocator.newSymbol(argument, entry.getValue());
-                allocations.put(key, symbol);
-            }
-
-            result.put(NodeRef.of(argument), symbol);
-        }
-
-        return result;
+        CREATED, OPTIMIZED, OPTIMIZED_AND_VALIDATED
     }
 
     private static class Key

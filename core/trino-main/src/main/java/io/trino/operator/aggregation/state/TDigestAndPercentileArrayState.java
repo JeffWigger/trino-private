@@ -27,9 +27,9 @@ public interface TDigestAndPercentileArrayState
 
     void setDigest(TDigest digest);
 
-    void setPercentiles(List<Double> percentiles);
-
     List<Double> getPercentiles();
+
+    void setPercentiles(List<Double> percentiles);
 
     void addMemoryUsage(int value);
 }

@@ -38,6 +38,20 @@ public class FunctionBinding
         this.longVariables = ImmutableSortedMap.copyOf(requireNonNull(longVariables, "longVariables is null"), CASE_INSENSITIVE_ORDER);
     }
 
+    private static <T> T getValue(Map<String, T> map, String variableName)
+    {
+        checkState(variableName != null, "variableName is null");
+        T value = map.get(variableName);
+        checkState(value != null, "value for variable '%s' is null", variableName);
+        return value;
+    }
+
+    private static boolean containsValue(Map<String, ?> map, String variableName)
+    {
+        checkState(variableName != null, "variableName is null");
+        return map.containsKey(variableName);
+    }
+
     public FunctionId getFunctionId()
     {
         return functionId;
@@ -71,20 +85,6 @@ public class FunctionBinding
     public boolean containsLongVariable(String variableName)
     {
         return containsValue(longVariables, variableName);
-    }
-
-    private static <T> T getValue(Map<String, T> map, String variableName)
-    {
-        checkState(variableName != null, "variableName is null");
-        T value = map.get(variableName);
-        checkState(value != null, "value for variable '%s' is null", variableName);
-        return value;
-    }
-
-    private static boolean containsValue(Map<String, ?> map, String variableName)
-    {
-        checkState(variableName != null, "variableName is null");
-        return map.containsKey(variableName);
     }
 
     @Override

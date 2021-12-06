@@ -175,6 +175,20 @@ public final class ChoicesScalarFunctionImplementation
             score = computeScore(invocationConvention);
         }
 
+        private static int computeScore(InvocationConvention callingConvention)
+        {
+            int score = 0;
+            for (InvocationArgumentConvention argument : callingConvention.getArgumentConventions()) {
+                if (argument == NULL_FLAG) {
+                    score += 1;
+                }
+                else if (argument == BLOCK_POSITION) {
+                    score += 1000;
+                }
+            }
+            return score;
+        }
+
         public MethodHandle getMethodHandle()
         {
             return methodHandle;
@@ -197,20 +211,6 @@ public final class ChoicesScalarFunctionImplementation
 
         public int getScore()
         {
-            return score;
-        }
-
-        private static int computeScore(InvocationConvention callingConvention)
-        {
-            int score = 0;
-            for (InvocationArgumentConvention argument : callingConvention.getArgumentConventions()) {
-                if (argument == NULL_FLAG) {
-                    score += 1;
-                }
-                else if (argument == BLOCK_POSITION) {
-                    score += 1000;
-                }
-            }
             return score;
         }
     }

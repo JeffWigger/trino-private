@@ -103,6 +103,48 @@ public class MapColumnReader
                 fieldMapperFactory);
     }
 
+    private static Block[] createKeyValueBlock(int positionCount, Block keys, Block values, int[] lengths)
+    {
+        if (!hasNull(keys)) {
+            return new Block[] {keys, values};
+        }
+
+        //
+        // Map entries with a null key are skipped in the Hive ORC reader, so skip them here also
+        //
+
+        IntArrayList nonNullPositions = new IntArrayList(keys.getPositionCount());
+
+        int position = 0;
+        for (int mapIndex = 0; mapIndex < positionCount; mapIndex++) {
+            int length = lengths[mapIndex];
+            for (int entryIndex = 0; entryIndex < length; entryIndex++) {
+                if (keys.isNull(position)) {
+                    // key is null, so remove this entry from the map
+                    lengths[mapIndex]--;
+                }
+                else {
+                    nonNullPositions.add(position);
+                }
+                position++;
+            }
+        }
+
+        Block newKeys = keys.copyPositions(nonNullPositions.elements(), 0, nonNullPositions.size());
+        Block newValues = values.copyPositions(nonNullPositions.elements(), 0, nonNullPositions.size());
+        return new Block[] {newKeys, newValues};
+    }
+
+    private static boolean hasNull(Block keys)
+    {
+        for (int position = 0; position < keys.getPositionCount(); position++) {
+            if (keys.isNull(position)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public void prepareNextRead(int batchSize)
     {
@@ -184,48 +226,6 @@ public class MapColumnReader
         nextBatchSize = 0;
 
         return type.createBlockFromKeyValue(Optional.ofNullable(nullVector), offsetVector, keyValueBlock[0], keyValueBlock[1]);
-    }
-
-    private static Block[] createKeyValueBlock(int positionCount, Block keys, Block values, int[] lengths)
-    {
-        if (!hasNull(keys)) {
-            return new Block[] {keys, values};
-        }
-
-        //
-        // Map entries with a null key are skipped in the Hive ORC reader, so skip them here also
-        //
-
-        IntArrayList nonNullPositions = new IntArrayList(keys.getPositionCount());
-
-        int position = 0;
-        for (int mapIndex = 0; mapIndex < positionCount; mapIndex++) {
-            int length = lengths[mapIndex];
-            for (int entryIndex = 0; entryIndex < length; entryIndex++) {
-                if (keys.isNull(position)) {
-                    // key is null, so remove this entry from the map
-                    lengths[mapIndex]--;
-                }
-                else {
-                    nonNullPositions.add(position);
-                }
-                position++;
-            }
-        }
-
-        Block newKeys = keys.copyPositions(nonNullPositions.elements(), 0, nonNullPositions.size());
-        Block newValues = values.copyPositions(nonNullPositions.elements(), 0, nonNullPositions.size());
-        return new Block[] {newKeys, newValues};
-    }
-
-    private static boolean hasNull(Block keys)
-    {
-        for (int position = 0; position < keys.getPositionCount(); position++) {
-            if (keys.isNull(position)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void openRowGroup()

@@ -94,22 +94,6 @@ public abstract class AbstractMinMaxByNAggregationFunction
         this.typeToComparison = requireNonNull(typeToComparison, "typeToComparison is null");
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V");
-        return ImmutableList.of(new MinMaxByNStateSerializer(typeToComparison.apply(keyType), keyType, valueType).getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V");
-        return generateAggregation(valueType, keyType);
-    }
-
     public static void input(BlockPositionComparison comparison, Type valueType, Type keyType, MinMaxByNState state, Block value, Block key, int blockIndex, long n)
     {
         TypedKeyValueHeap heap = state.getTypedKeyValueHeap();
@@ -165,6 +149,22 @@ public abstract class AbstractMinMaxByNAggregationFunction
             elementType.appendTo(reversedBlockBuilder, i, arrayBlockBuilder);
         }
         out.closeEntry();
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V");
+        return ImmutableList.of(new MinMaxByNStateSerializer(typeToComparison.apply(keyType), keyType, valueType).getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V");
+        return generateAggregation(valueType, keyType);
     }
 
     protected InternalAggregationFunction generateAggregation(Type valueType, Type keyType)

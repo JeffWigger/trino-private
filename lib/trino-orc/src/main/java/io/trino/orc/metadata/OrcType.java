@@ -53,35 +53,6 @@ import static java.util.Objects.requireNonNull;
 
 public class OrcType
 {
-    public enum OrcTypeKind
-    {
-        BOOLEAN,
-
-        BYTE,
-        SHORT,
-        INT,
-        LONG,
-        DECIMAL,
-
-        FLOAT,
-        DOUBLE,
-
-        STRING,
-        VARCHAR,
-        CHAR,
-
-        BINARY,
-
-        DATE,
-        TIMESTAMP,
-        TIMESTAMP_INSTANT,
-
-        LIST,
-        MAP,
-        STRUCT,
-        UNION,
-    }
-
     private final OrcTypeKind orcTypeKind;
     private final List<OrcColumnId> fieldTypeIndexes;
     private final List<String> fieldNames;
@@ -89,7 +60,6 @@ public class OrcType
     private final Optional<Integer> precision;
     private final Optional<Integer> scale;
     private final Map<String, String> attributes;
-
     private OrcType(OrcTypeKind orcTypeKind)
     {
         this(orcTypeKind, ImmutableList.of(), ImmutableList.of(), Optional.empty(), Optional.empty(), Optional.empty(), ImmutableMap.of());
@@ -125,66 +95,6 @@ public class OrcType
         this.precision = requireNonNull(precision, "precision is null");
         this.scale = requireNonNull(scale, "scale cannot be null");
         this.attributes = ImmutableMap.copyOf(requireNonNull(attributes, "attributes is null"));
-    }
-
-    public OrcTypeKind getOrcTypeKind()
-    {
-        return orcTypeKind;
-    }
-
-    public int getFieldCount()
-    {
-        return fieldTypeIndexes.size();
-    }
-
-    public OrcColumnId getFieldTypeIndex(int field)
-    {
-        return fieldTypeIndexes.get(field);
-    }
-
-    public List<OrcColumnId> getFieldTypeIndexes()
-    {
-        return fieldTypeIndexes;
-    }
-
-    public String getFieldName(int field)
-    {
-        return fieldNames.get(field);
-    }
-
-    public List<String> getFieldNames()
-    {
-        return fieldNames;
-    }
-
-    public Optional<Integer> getLength()
-    {
-        return length;
-    }
-
-    public Optional<Integer> getPrecision()
-    {
-        return precision;
-    }
-
-    public Optional<Integer> getScale()
-    {
-        return scale;
-    }
-
-    public Map<String, String> getAttributes()
-    {
-        return attributes;
-    }
-
-    @Override
-    public String toString()
-    {
-        return toStringHelper(this)
-                .add("orcTypeKind", orcTypeKind)
-                .add("fieldTypeIndexes", fieldTypeIndexes)
-                .add("fieldNames", fieldNames)
-                .toString();
     }
 
     private static List<OrcType> toOrcType(int nextFieldTypeIndex, Type type)
@@ -307,5 +217,94 @@ public class OrcType
         fieldTypesList.forEach(orcTypes::addAll);
 
         return orcTypes.build();
+    }
+
+    public OrcTypeKind getOrcTypeKind()
+    {
+        return orcTypeKind;
+    }
+
+    public int getFieldCount()
+    {
+        return fieldTypeIndexes.size();
+    }
+
+    public OrcColumnId getFieldTypeIndex(int field)
+    {
+        return fieldTypeIndexes.get(field);
+    }
+
+    public List<OrcColumnId> getFieldTypeIndexes()
+    {
+        return fieldTypeIndexes;
+    }
+
+    public String getFieldName(int field)
+    {
+        return fieldNames.get(field);
+    }
+
+    public List<String> getFieldNames()
+    {
+        return fieldNames;
+    }
+
+    public Optional<Integer> getLength()
+    {
+        return length;
+    }
+
+    public Optional<Integer> getPrecision()
+    {
+        return precision;
+    }
+
+    public Optional<Integer> getScale()
+    {
+        return scale;
+    }
+
+    public Map<String, String> getAttributes()
+    {
+        return attributes;
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("orcTypeKind", orcTypeKind)
+                .add("fieldTypeIndexes", fieldTypeIndexes)
+                .add("fieldNames", fieldNames)
+                .toString();
+    }
+
+    public enum OrcTypeKind
+    {
+        BOOLEAN,
+
+        BYTE,
+        SHORT,
+        INT,
+        LONG,
+        DECIMAL,
+
+        FLOAT,
+        DOUBLE,
+
+        STRING,
+        VARCHAR,
+        CHAR,
+
+        BINARY,
+
+        DATE,
+        TIMESTAMP,
+        TIMESTAMP_INSTANT,
+
+        LIST,
+        MAP,
+        STRUCT,
+        UNION,
     }
 }

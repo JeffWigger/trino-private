@@ -179,99 +179,8 @@ import static org.testng.Assert.assertTrue;
 @SuppressWarnings("StaticPseudoFunctionalStyleMethod")
 public class RcFileTester
 {
-    static {
-        HadoopNative.requireHadoopNative();
-    }
-
-    private static final Metadata METADATA = createTestMetadataManager();
     public static final DateTimeZone HIVE_STORAGE_TIME_ZONE = DateTimeZone.forID("America/Bahia_Banderas");
-
-    public enum Format
-    {
-        BINARY {
-            @Override
-            public Serializer createSerializer()
-            {
-                return new LazyBinaryColumnarSerDe();
-            }
-
-            @Override
-            public RcFileEncoding getVectorEncoding()
-            {
-                return new BinaryRcFileEncoding(HIVE_STORAGE_TIME_ZONE);
-            }
-        },
-
-        TEXT {
-            @Override
-            public Serializer createSerializer()
-            {
-                try {
-                    ColumnarSerDe columnarSerDe = new ColumnarSerDe();
-                    Properties tableProperties = new Properties();
-                    tableProperties.setProperty("columns", "test");
-                    tableProperties.setProperty("columns.types", "string");
-                    columnarSerDe.initialize(new JobConf(false), tableProperties);
-                    return columnarSerDe;
-                }
-                catch (SerDeException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-
-            @Override
-            public RcFileEncoding getVectorEncoding()
-            {
-                return new TextRcFileEncoding();
-            }
-        };
-
-        public abstract Serializer createSerializer();
-
-        public abstract RcFileEncoding getVectorEncoding();
-    }
-
-    public enum Compression
-    {
-        BZIP2 {
-            @Override
-            Optional<String> getCodecName()
-            {
-                return Optional.of(BZip2Codec.class.getName());
-            }
-        },
-        ZLIB {
-            @Override
-            Optional<String> getCodecName()
-            {
-                return Optional.of(GzipCodec.class.getName());
-            }
-        },
-        SNAPPY {
-            @Override
-            Optional<String> getCodecName()
-            {
-                return Optional.of(SnappyCodec.class.getName());
-            }
-        },
-        LZ4 {
-            @Override
-            Optional<String> getCodecName()
-            {
-                return Optional.of(Lz4Codec.class.getName());
-            }
-        },
-        NONE {
-            @Override
-            Optional<String> getCodecName()
-            {
-                return Optional.empty();
-            }
-        };
-
-        abstract Optional<String> getCodecName();
-    }
-
+    private static final Metadata METADATA = createTestMetadataManager();
     private boolean structTestsEnabled;
     private boolean mapTestsEnabled;
     private boolean listTestsEnabled;
@@ -307,128 +216,6 @@ public class RcFileTester
         // We assume that the compression algorithms generally work
         rcFileTester.compressions = ImmutableSet.of(NONE, LZ4, ZLIB, BZIP2);
         return rcFileTester;
-    }
-
-    public void testRoundTrip(Type type, Iterable<?> writeValues, Format... skipFormats)
-            throws Exception
-    {
-        ImmutableSet<Format> skipFormatsSet = ImmutableSet.copyOf(skipFormats);
-
-        // just the values
-        testRoundTripType(type, writeValues, skipFormatsSet);
-
-        // all nulls
-        assertRoundTrip(type, transform(writeValues, constant(null)), skipFormatsSet);
-
-        // values wrapped in struct
-        if (structTestsEnabled) {
-            testStructRoundTrip(type, writeValues, skipFormatsSet);
-        }
-
-        // values wrapped in a struct wrapped in a struct
-        if (complexStructuralTestsEnabled) {
-            Iterable<Object> simpleStructs = transform(insertNullEvery(5, writeValues), RcFileTester::toHiveStruct);
-            testRoundTripType(
-                    RowType.from(ImmutableList.of(RowType.field("field", createRowType(type)))),
-                    transform(simpleStructs, Collections::singletonList),
-                    skipFormatsSet);
-        }
-
-        // values wrapped in map
-        if (mapTestsEnabled) {
-            testMapRoundTrip(type, writeValues, skipFormatsSet);
-        }
-
-        // values wrapped in list
-        if (listTestsEnabled) {
-            testListRoundTrip(type, writeValues, skipFormatsSet);
-        }
-
-        // values wrapped in a list wrapped in a list
-        if (complexStructuralTestsEnabled) {
-            testListRoundTrip(
-                    createListType(type),
-                    transform(writeValues, RcFileTester::toHiveList),
-                    skipFormatsSet);
-        }
-    }
-
-    private void testStructRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
-            throws Exception
-    {
-        // values in simple struct and mix in some null values
-        testRoundTripType(
-                createRowType(type),
-                transform(insertNullEvery(5, writeValues), RcFileTester::toHiveStruct),
-                skipFormats);
-    }
-
-    private void testMapRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
-            throws Exception
-    {
-        // json does not support null keys, so we just write the first value
-        Object nullKeyWrite = Iterables.getFirst(writeValues, null);
-
-        // values in simple map and mix in some null values
-        testRoundTripType(
-                createMapType(type),
-                transform(insertNullEvery(5, writeValues), value -> toHiveMap(nullKeyWrite, value)),
-                skipFormats);
-    }
-
-    private void testListRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
-            throws Exception
-    {
-        // values in simple list and mix in some null values
-        testRoundTripType(
-                createListType(type),
-                transform(insertNullEvery(5, writeValues), RcFileTester::toHiveList),
-                skipFormats);
-    }
-
-    private void testRoundTripType(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
-            throws Exception
-    {
-        // mix in some nulls
-        assertRoundTrip(type, insertNullEvery(5, writeValues), skipFormats);
-    }
-
-    private void assertRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
-            throws Exception
-    {
-        List<?> finalValues = Lists.newArrayList(writeValues);
-
-        Set<Format> formats = new LinkedHashSet<>(this.formats);
-        formats.removeAll(skipFormats);
-
-        for (Format format : formats) {
-            for (Compression compression : compressions) {
-                // write old, read new
-                try (TempFile tempFile = new TempFile()) {
-                    writeRcFileColumnOld(tempFile.getFile(), format, compression, type, finalValues.iterator());
-                    assertFileContentsNew(type, tempFile, format, finalValues, false, ImmutableMap.of());
-                }
-
-                // write new, read old and new
-                try (TempFile tempFile = new TempFile()) {
-                    Map<String, String> metadata = ImmutableMap.of(String.valueOf(ThreadLocalRandom.current().nextLong()), String.valueOf(ThreadLocalRandom.current().nextLong()));
-                    writeRcFileColumnNew(tempFile.getFile(), format, compression, type, finalValues.iterator(), metadata);
-
-                    assertFileContentsOld(type, tempFile, format, finalValues);
-
-                    Map<String, String> expectedMetadata = ImmutableMap.<String, String>builder()
-                            .putAll(metadata)
-                            .put(PRESTO_RCFILE_WRITER_VERSION_METADATA_KEY, PRESTO_RCFILE_WRITER_VERSION)
-                            .build();
-
-                    assertFileContentsNew(type, tempFile, format, finalValues, false, expectedMetadata);
-
-                    if (readLastBatchOnlyEnabled) {
-                        assertFileContentsNew(type, tempFile, format, finalValues, true, expectedMetadata);
-                    }
-                }
-            }
-        }
     }
 
     private static void assertFileContentsNew(
@@ -1090,32 +877,6 @@ public class RcFileTester
         return orderTableProperties;
     }
 
-    private static class TempFile
-            implements Closeable
-    {
-        private final File tempDir;
-        private final File file;
-
-        private TempFile()
-        {
-            tempDir = createTempDir();
-            file = new File(tempDir, "data.rcfile");
-        }
-
-        public File getFile()
-        {
-            return file;
-        }
-
-        @Override
-        public void close()
-                throws IOException
-        {
-            // hadoop creates crc files that must be deleted also, so just delete the whole directory
-            deleteRecursively(tempDir.toPath(), ALLOW_INSECURE);
-        }
-    }
-
     private static <T> Iterable<T> insertNullEvery(int n, Iterable<T> iterable)
     {
         return () -> new AbstractIterator<>()
@@ -1186,5 +947,243 @@ public class RcFileTester
     private static Object toHiveList(Object input)
     {
         return nCopies(4, input);
+    }
+
+    public void testRoundTrip(Type type, Iterable<?> writeValues, Format... skipFormats)
+            throws Exception
+    {
+        ImmutableSet<Format> skipFormatsSet = ImmutableSet.copyOf(skipFormats);
+
+        // just the values
+        testRoundTripType(type, writeValues, skipFormatsSet);
+
+        // all nulls
+        assertRoundTrip(type, transform(writeValues, constant(null)), skipFormatsSet);
+
+        // values wrapped in struct
+        if (structTestsEnabled) {
+            testStructRoundTrip(type, writeValues, skipFormatsSet);
+        }
+
+        // values wrapped in a struct wrapped in a struct
+        if (complexStructuralTestsEnabled) {
+            Iterable<Object> simpleStructs = transform(insertNullEvery(5, writeValues), RcFileTester::toHiveStruct);
+            testRoundTripType(
+                    RowType.from(ImmutableList.of(RowType.field("field", createRowType(type)))),
+                    transform(simpleStructs, Collections::singletonList),
+                    skipFormatsSet);
+        }
+
+        // values wrapped in map
+        if (mapTestsEnabled) {
+            testMapRoundTrip(type, writeValues, skipFormatsSet);
+        }
+
+        // values wrapped in list
+        if (listTestsEnabled) {
+            testListRoundTrip(type, writeValues, skipFormatsSet);
+        }
+
+        // values wrapped in a list wrapped in a list
+        if (complexStructuralTestsEnabled) {
+            testListRoundTrip(
+                    createListType(type),
+                    transform(writeValues, RcFileTester::toHiveList),
+                    skipFormatsSet);
+        }
+    }
+
+    private void testStructRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
+            throws Exception
+    {
+        // values in simple struct and mix in some null values
+        testRoundTripType(
+                createRowType(type),
+                transform(insertNullEvery(5, writeValues), RcFileTester::toHiveStruct),
+                skipFormats);
+    }
+
+    private void testMapRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
+            throws Exception
+    {
+        // json does not support null keys, so we just write the first value
+        Object nullKeyWrite = Iterables.getFirst(writeValues, null);
+
+        // values in simple map and mix in some null values
+        testRoundTripType(
+                createMapType(type),
+                transform(insertNullEvery(5, writeValues), value -> toHiveMap(nullKeyWrite, value)),
+                skipFormats);
+    }
+
+    private void testListRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
+            throws Exception
+    {
+        // values in simple list and mix in some null values
+        testRoundTripType(
+                createListType(type),
+                transform(insertNullEvery(5, writeValues), RcFileTester::toHiveList),
+                skipFormats);
+    }
+
+    private void testRoundTripType(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
+            throws Exception
+    {
+        // mix in some nulls
+        assertRoundTrip(type, insertNullEvery(5, writeValues), skipFormats);
+    }
+
+    private void assertRoundTrip(Type type, Iterable<?> writeValues, Set<Format> skipFormats)
+            throws Exception
+    {
+        List<?> finalValues = Lists.newArrayList(writeValues);
+
+        Set<Format> formats = new LinkedHashSet<>(this.formats);
+        formats.removeAll(skipFormats);
+
+        for (Format format : formats) {
+            for (Compression compression : compressions) {
+                // write old, read new
+                try (TempFile tempFile = new TempFile()) {
+                    writeRcFileColumnOld(tempFile.getFile(), format, compression, type, finalValues.iterator());
+                    assertFileContentsNew(type, tempFile, format, finalValues, false, ImmutableMap.of());
+                }
+
+                // write new, read old and new
+                try (TempFile tempFile = new TempFile()) {
+                    Map<String, String> metadata = ImmutableMap.of(String.valueOf(ThreadLocalRandom.current().nextLong()), String.valueOf(ThreadLocalRandom.current().nextLong()));
+                    writeRcFileColumnNew(tempFile.getFile(), format, compression, type, finalValues.iterator(), metadata);
+
+                    assertFileContentsOld(type, tempFile, format, finalValues);
+
+                    Map<String, String> expectedMetadata = ImmutableMap.<String, String>builder()
+                            .putAll(metadata)
+                            .put(PRESTO_RCFILE_WRITER_VERSION_METADATA_KEY, PRESTO_RCFILE_WRITER_VERSION)
+                            .build();
+
+                    assertFileContentsNew(type, tempFile, format, finalValues, false, expectedMetadata);
+
+                    if (readLastBatchOnlyEnabled) {
+                        assertFileContentsNew(type, tempFile, format, finalValues, true, expectedMetadata);
+                    }
+                }
+            }
+        }
+    }
+
+    public enum Format
+    {
+        BINARY {
+            @Override
+            public Serializer createSerializer()
+            {
+                return new LazyBinaryColumnarSerDe();
+            }
+
+            @Override
+            public RcFileEncoding getVectorEncoding()
+            {
+                return new BinaryRcFileEncoding(HIVE_STORAGE_TIME_ZONE);
+            }
+        },
+
+        TEXT {
+            @Override
+            public Serializer createSerializer()
+            {
+                try {
+                    ColumnarSerDe columnarSerDe = new ColumnarSerDe();
+                    Properties tableProperties = new Properties();
+                    tableProperties.setProperty("columns", "test");
+                    tableProperties.setProperty("columns.types", "string");
+                    columnarSerDe.initialize(new JobConf(false), tableProperties);
+                    return columnarSerDe;
+                }
+                catch (SerDeException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            @Override
+            public RcFileEncoding getVectorEncoding()
+            {
+                return new TextRcFileEncoding();
+            }
+        };
+
+        public abstract Serializer createSerializer();
+
+        public abstract RcFileEncoding getVectorEncoding();
+    }
+
+    public enum Compression
+    {
+        BZIP2 {
+            @Override
+            Optional<String> getCodecName()
+            {
+                return Optional.of(BZip2Codec.class.getName());
+            }
+        },
+        ZLIB {
+            @Override
+            Optional<String> getCodecName()
+            {
+                return Optional.of(GzipCodec.class.getName());
+            }
+        },
+        SNAPPY {
+            @Override
+            Optional<String> getCodecName()
+            {
+                return Optional.of(SnappyCodec.class.getName());
+            }
+        },
+        LZ4 {
+            @Override
+            Optional<String> getCodecName()
+            {
+                return Optional.of(Lz4Codec.class.getName());
+            }
+        },
+        NONE {
+            @Override
+            Optional<String> getCodecName()
+            {
+                return Optional.empty();
+            }
+        };
+
+        abstract Optional<String> getCodecName();
+    }
+
+    private static class TempFile
+            implements Closeable
+    {
+        private final File tempDir;
+        private final File file;
+
+        private TempFile()
+        {
+            tempDir = createTempDir();
+            file = new File(tempDir, "data.rcfile");
+        }
+
+        public File getFile()
+        {
+            return file;
+        }
+
+        @Override
+        public void close()
+                throws IOException
+        {
+            // hadoop creates crc files that must be deleted also, so just delete the whole directory
+            deleteRecursively(tempDir.toPath(), ALLOW_INSECURE);
+        }
+    }
+
+    static {
+        HadoopNative.requireHadoopNative();
     }
 }

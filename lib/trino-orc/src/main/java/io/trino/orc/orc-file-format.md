@@ -64,7 +64,5 @@ A stripe is decoded as follows:
 Stream
 ======
 
-Streams contain a sequence of all values for the stripe.  Since a stripe typically contains
-hundreds of thousands of values in a compressed stream, the offset of every Nth value is
-recorded in the index_stream along with the minimum and maximum value of the stream.  These
-N rows logically form a RowGroup, and using the statistics RowGroups can be skipped.
+Streams contain a sequence of all values for the stripe. Since a stripe typically contains hundreds of thousands of values in a compressed stream, the offset of every Nth value is
+recorded in the index_stream along with the minimum and maximum value of the stream. These N rows logically form a RowGroup, and using the statistics RowGroups can be skipped.

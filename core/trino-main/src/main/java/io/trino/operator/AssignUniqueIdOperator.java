@@ -38,10 +38,25 @@ public class AssignUniqueIdOperator
 {
     private static final long ROW_IDS_PER_REQUEST = 1L << 20L;
     private static final long MAX_ROW_ID = 1L << 40L;
+    private final WorkProcessor<Page> pages;
+
+    private AssignUniqueIdOperator(ProcessorContext context, WorkProcessor<Page> sourcePages, AtomicLong rowIdPool)
+    {
+        pages = sourcePages
+                .transform(new AssignUniqueId(
+                        context.getTaskId(),
+                        rowIdPool));
+    }
 
     public static OperatorFactory createOperatorFactory(int operatorId, PlanNodeId planNodeId)
     {
         return createAdapterOperatorFactory(new Factory(operatorId, planNodeId));
+    }
+
+    @Override
+    public WorkProcessor<Page> getOutputPages()
+    {
+        return pages;
     }
 
     private static class Factory
@@ -49,8 +64,8 @@ public class AssignUniqueIdOperator
     {
         private final int operatorId;
         private final PlanNodeId planNodeId;
-        private boolean closed;
         private final AtomicLong valuePool = new AtomicLong();
+        private boolean closed;
 
         private Factory(int operatorId, PlanNodeId planNodeId)
         {
@@ -94,22 +109,6 @@ public class AssignUniqueIdOperator
         {
             return new Factory(operatorId, planNodeId);
         }
-    }
-
-    private final WorkProcessor<Page> pages;
-
-    private AssignUniqueIdOperator(ProcessorContext context, WorkProcessor<Page> sourcePages, AtomicLong rowIdPool)
-    {
-        pages = sourcePages
-                .transform(new AssignUniqueId(
-                        context.getTaskId(),
-                        rowIdPool));
-    }
-
-    @Override
-    public WorkProcessor<Page> getOutputPages()
-    {
-        return pages;
     }
 
     private static class AssignUniqueId

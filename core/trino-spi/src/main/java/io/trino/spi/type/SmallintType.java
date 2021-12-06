@@ -40,13 +40,48 @@ public final class SmallintType
         extends AbstractType
         implements FixedWidthType
 {
-    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(SmallintType.class, lookup(), long.class);
-
     public static final SmallintType SMALLINT = new SmallintType();
+    private static final TypeOperatorDeclaration TYPE_OPERATOR_DECLARATION = extractOperatorDeclaration(SmallintType.class, lookup(), long.class);
 
     private SmallintType()
     {
         super(new TypeSignature(StandardTypes.SMALLINT), long.class);
+    }
+
+    @ScalarOperator(EQUAL)
+    private static boolean equalOperator(long left, long right)
+    {
+        return left == right;
+    }
+
+    @ScalarOperator(HASH_CODE)
+    private static long hashCodeOperator(long value)
+    {
+        return AbstractLongType.hash((short) value);
+    }
+
+    @ScalarOperator(XX_HASH_64)
+    private static long xxHash64Operator(long value)
+    {
+        return XxHash64.hash((short) value);
+    }
+
+    @ScalarOperator(COMPARISON)
+    private static long comparisonOperator(long left, long right)
+    {
+        return Short.compare((short) left, (short) right);
+    }
+
+    @ScalarOperator(LESS_THAN)
+    private static boolean lessThanOperator(long left, long right)
+    {
+        return ((short) left) < ((short) right);
+    }
+
+    @ScalarOperator(LESS_THAN_OR_EQUAL)
+    private static boolean lessThanOrEqualOperator(long left, long right)
+    {
+        return ((short) left) <= ((short) right);
     }
 
     @Override
@@ -157,41 +192,5 @@ public final class SmallintType
     public int hashCode()
     {
         return getClass().hashCode();
-    }
-
-    @ScalarOperator(EQUAL)
-    private static boolean equalOperator(long left, long right)
-    {
-        return left == right;
-    }
-
-    @ScalarOperator(HASH_CODE)
-    private static long hashCodeOperator(long value)
-    {
-        return AbstractLongType.hash((short) value);
-    }
-
-    @ScalarOperator(XX_HASH_64)
-    private static long xxHash64Operator(long value)
-    {
-        return XxHash64.hash((short) value);
-    }
-
-    @ScalarOperator(COMPARISON)
-    private static long comparisonOperator(long left, long right)
-    {
-        return Short.compare((short) left, (short) right);
-    }
-
-    @ScalarOperator(LESS_THAN)
-    private static boolean lessThanOperator(long left, long right)
-    {
-        return ((short) left) < ((short) right);
-    }
-
-    @ScalarOperator(LESS_THAN_OR_EQUAL)
-    private static boolean lessThanOrEqualOperator(long left, long right)
-    {
-        return ((short) left) <= ((short) right);
     }
 }

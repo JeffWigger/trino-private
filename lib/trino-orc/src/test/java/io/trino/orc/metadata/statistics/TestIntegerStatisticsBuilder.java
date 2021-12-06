@@ -41,6 +41,34 @@ public class TestIntegerStatisticsBuilder
         super(INTEGER, () -> new IntegerStatisticsBuilder(new NoOpBloomFilterBuilder()), IntegerStatisticsBuilder::addValue);
     }
 
+    private static ColumnStatistics singleValueIntegerStatistics(long value)
+    {
+        IntegerStatisticsBuilder statisticsBuilder = new IntegerStatisticsBuilder(new NoOpBloomFilterBuilder());
+        statisticsBuilder.addValue(value);
+        return statisticsBuilder.buildColumnStatistics();
+    }
+
+    private static void assertMergedIntegerStatistics(List<ColumnStatistics> statisticsList, int expectedNumberOfValues, Long expectedSum)
+    {
+        assertIntegerStatistics(mergeColumnStatistics(statisticsList), expectedNumberOfValues, expectedSum);
+
+        assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, 0, 10)), expectedNumberOfValues + 10);
+        assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size(), 10)), expectedNumberOfValues + 10);
+        assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size() / 2, 10)), expectedNumberOfValues + 10);
+    }
+
+    private static void assertIntegerStatistics(ColumnStatistics columnStatistics, int expectedNumberOfValues, Long expectedSum)
+    {
+        if (expectedNumberOfValues > 0) {
+            assertEquals(columnStatistics.getNumberOfValues(), expectedNumberOfValues);
+            assertEquals(columnStatistics.getIntegerStatistics().getSum(), expectedSum);
+        }
+        else {
+            assertNull(columnStatistics.getIntegerStatistics());
+            assertEquals(columnStatistics.getNumberOfValues(), 0);
+        }
+    }
+
     @Test
     public void testMinMaxValues()
     {
@@ -148,34 +176,6 @@ public class TestIntegerStatisticsBuilder
 
         statisticsList.add(singleValueIntegerStatistics(1));
         assertMergedIntegerStatistics(statisticsList, 2, null);
-    }
-
-    private static ColumnStatistics singleValueIntegerStatistics(long value)
-    {
-        IntegerStatisticsBuilder statisticsBuilder = new IntegerStatisticsBuilder(new NoOpBloomFilterBuilder());
-        statisticsBuilder.addValue(value);
-        return statisticsBuilder.buildColumnStatistics();
-    }
-
-    private static void assertMergedIntegerStatistics(List<ColumnStatistics> statisticsList, int expectedNumberOfValues, Long expectedSum)
-    {
-        assertIntegerStatistics(mergeColumnStatistics(statisticsList), expectedNumberOfValues, expectedSum);
-
-        assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, 0, 10)), expectedNumberOfValues + 10);
-        assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size(), 10)), expectedNumberOfValues + 10);
-        assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size() / 2, 10)), expectedNumberOfValues + 10);
-    }
-
-    private static void assertIntegerStatistics(ColumnStatistics columnStatistics, int expectedNumberOfValues, Long expectedSum)
-    {
-        if (expectedNumberOfValues > 0) {
-            assertEquals(columnStatistics.getNumberOfValues(), expectedNumberOfValues);
-            assertEquals(columnStatistics.getIntegerStatistics().getSum(), expectedSum);
-        }
-        else {
-            assertNull(columnStatistics.getIntegerStatistics());
-            assertEquals(columnStatistics.getNumberOfValues(), 0);
-        }
     }
 
     @Test

@@ -39,69 +39,9 @@ import static java.util.Objects.requireNonNull;
 public class LocalMergeSourceOperator
         implements Operator
 {
-    public static class LocalMergeSourceOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final LocalExchangeFactory localExchangeFactory;
-        private final List<Type> types;
-        private final OrderingCompiler orderingCompiler;
-        private final List<Integer> sortChannels;
-        private final List<SortOrder> orderings;
-        private boolean closed;
-
-        public LocalMergeSourceOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                LocalExchangeFactory localExchangeFactory,
-                List<Type> types,
-                OrderingCompiler orderingCompiler,
-                List<Integer> sortChannels,
-                List<SortOrder> orderings)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.localExchangeFactory = requireNonNull(localExchangeFactory, "localExchangeFactory is null");
-            this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
-            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
-            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels, "sortChannels is null"));
-            this.orderings = ImmutableList.copyOf(requireNonNull(orderings, "orderings is null"));
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-
-            LocalExchange localExchange = localExchangeFactory.getLocalExchange(driverContext.getLifespan());
-
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LocalMergeSourceOperator.class.getSimpleName());
-            PageWithPositionComparator comparator = orderingCompiler.compilePageWithPositionComparator(types, sortChannels, orderings);
-            List<LocalExchangeSource> sources = IntStream.range(0, localExchange.getBufferCount())
-                    .boxed()
-                    .map(index -> localExchange.getNextSource())
-                    .collect(toImmutableList());
-            return new LocalMergeSourceOperator(operatorContext, sources, types, comparator);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            throw new UnsupportedOperationException("Source operator factories cannot be duplicated");
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final List<LocalExchangeSource> sources;
     private final WorkProcessor<Page> mergedPages;
-
     public LocalMergeSourceOperator(OperatorContext operatorContext, List<LocalExchangeSource> sources, List<Type> types, PageWithPositionComparator comparator)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -173,5 +113,64 @@ public class LocalMergeSourceOperator
     public void close()
     {
         sources.forEach(LocalExchangeSource::close);
+    }
+
+    public static class LocalMergeSourceOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final LocalExchangeFactory localExchangeFactory;
+        private final List<Type> types;
+        private final OrderingCompiler orderingCompiler;
+        private final List<Integer> sortChannels;
+        private final List<SortOrder> orderings;
+        private boolean closed;
+
+        public LocalMergeSourceOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                LocalExchangeFactory localExchangeFactory,
+                List<Type> types,
+                OrderingCompiler orderingCompiler,
+                List<Integer> sortChannels,
+                List<SortOrder> orderings)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.localExchangeFactory = requireNonNull(localExchangeFactory, "localExchangeFactory is null");
+            this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
+            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
+            this.sortChannels = ImmutableList.copyOf(requireNonNull(sortChannels, "sortChannels is null"));
+            this.orderings = ImmutableList.copyOf(requireNonNull(orderings, "orderings is null"));
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+
+            LocalExchange localExchange = localExchangeFactory.getLocalExchange(driverContext.getLifespan());
+
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LocalMergeSourceOperator.class.getSimpleName());
+            PageWithPositionComparator comparator = orderingCompiler.compilePageWithPositionComparator(types, sortChannels, orderings);
+            List<LocalExchangeSource> sources = IntStream.range(0, localExchange.getBufferCount())
+                    .boxed()
+                    .map(index -> localExchange.getNextSource())
+                    .collect(toImmutableList());
+            return new LocalMergeSourceOperator(operatorContext, sources, types, comparator);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            throw new UnsupportedOperationException("Source operator factories cannot be duplicated");
+        }
     }
 }

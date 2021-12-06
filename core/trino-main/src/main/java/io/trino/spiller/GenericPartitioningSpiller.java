@@ -59,9 +59,8 @@ public class GenericPartitioningSpiller
 
     private final List<PageBuilder> pageBuilders;
     private final List<Optional<SingleStreamSpiller>> spillers;
-
-    private boolean readingStarted;
     private final Set<Integer> spilledPartitions = new HashSet<>();
+    private boolean readingStarted;
 
     public GenericPartitioningSpiller(
             List<Type> types,
@@ -89,6 +88,11 @@ public class GenericPartitioningSpiller
             spillers.add(Optional.empty());
         }
         this.pageBuilders = pageBuilders.build();
+    }
+
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override
@@ -168,11 +172,6 @@ public class GenericPartitioningSpiller
         }
 
         return asVoid(Futures.allAsList(futures.build()));
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 
     private synchronized ListenableFuture<Void> flush(int partition)

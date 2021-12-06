@@ -135,11 +135,6 @@ public class TestingAccessControlManager
         this(transactionManager, eventListenerManager, new AccessControlConfig());
     }
 
-    public void loadSystemAccessControl(String name, Map<String, String> properties)
-    {
-        setSystemAccessControl(name, properties);
-    }
-
     public static TestingPrivilege privilege(String entityName, TestingPrivilegeType type)
     {
         return new TestingPrivilege(Optional.empty(), entityName, type);
@@ -148,6 +143,11 @@ public class TestingAccessControlManager
     public static TestingPrivilege privilege(String actorName, String entityName, TestingPrivilegeType type)
     {
         return new TestingPrivilege(Optional.of(actorName), entityName, type);
+    }
+
+    public void loadSystemAccessControl(String name, Map<String, String> properties)
+    {
+        setSystemAccessControl(name, properties);
     }
 
     public void deny(TestingPrivilege... deniedPrivileges)

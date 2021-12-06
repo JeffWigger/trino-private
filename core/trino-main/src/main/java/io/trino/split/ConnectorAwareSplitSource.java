@@ -54,9 +54,10 @@ public class ConnectorAwareSplitSource
         return Futures.transform(nextBatch, splitBatch -> {
             ImmutableList.Builder<Split> result = ImmutableList.builder();
             for (ConnectorSplit connectorSplit : splitBatch.getSplits()) {
-                if (connectorSplit.getIsDeltaSplit()){
+                if (connectorSplit.getIsDeltaSplit()) {
                     result.add(new DeltaSplit(catalogName, connectorSplit, lifespan));
-                }else {
+                }
+                else {
                     result.add(new Split(catalogName, connectorSplit, lifespan));
                 }
             }

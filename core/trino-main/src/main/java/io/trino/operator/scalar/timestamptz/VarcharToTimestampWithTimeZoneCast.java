@@ -100,14 +100,14 @@ public final class VarcharToTimestampWithTimeZoneCast
 
         ZoneId zone = zoneId.apply(timezone);
         long epochSecond = ZonedDateTime.of(
-                Integer.parseInt(year),
-                Integer.parseInt(month),
-                Integer.parseInt(day),
-                hour == null ? 0 : Integer.parseInt(hour),
-                minute == null ? 0 : Integer.parseInt(minute),
-                second == null ? 0 : Integer.parseInt(second),
-                0,
-                zone)
+                        Integer.parseInt(year),
+                        Integer.parseInt(month),
+                        Integer.parseInt(day),
+                        hour == null ? 0 : Integer.parseInt(hour),
+                        minute == null ? 0 : Integer.parseInt(minute),
+                        second == null ? 0 : Integer.parseInt(second),
+                        0,
+                        zone)
                 .toEpochSecond();
 
         int actualPrecision = 0;
@@ -145,14 +145,14 @@ public final class VarcharToTimestampWithTimeZoneCast
 
         ZoneId zone = zoneId.apply(timezone);
         long epochSecond = ZonedDateTime.of(
-                Integer.parseInt(year),
-                Integer.parseInt(month),
-                Integer.parseInt(day),
-                hour == null ? 0 : Integer.parseInt(hour),
-                minute == null ? 0 : Integer.parseInt(minute),
-                second == null ? 0 : Integer.parseInt(second),
-                0,
-                zone)
+                        Integer.parseInt(year),
+                        Integer.parseInt(month),
+                        Integer.parseInt(day),
+                        hour == null ? 0 : Integer.parseInt(hour),
+                        minute == null ? 0 : Integer.parseInt(minute),
+                        second == null ? 0 : Integer.parseInt(second),
+                        0,
+                        zone)
                 .toEpochSecond();
 
         int actualPrecision = 0;

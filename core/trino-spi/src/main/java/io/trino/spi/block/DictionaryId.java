@@ -26,16 +26,16 @@ public class DictionaryId
     private final long leastSignificantBits;
     private final long sequenceId;
 
-    public static DictionaryId randomDictionaryId()
-    {
-        return new DictionaryId(nodeId.getMostSignificantBits(), nodeId.getLeastSignificantBits(), sequenceGenerator.getAndIncrement());
-    }
-
     public DictionaryId(long mostSignificantBits, long leastSignificantBits, long sequenceId)
     {
         this.mostSignificantBits = mostSignificantBits;
         this.leastSignificantBits = leastSignificantBits;
         this.sequenceId = sequenceId;
+    }
+
+    public static DictionaryId randomDictionaryId()
+    {
+        return new DictionaryId(nodeId.getMostSignificantBits(), nodeId.getLeastSignificantBits(), sequenceGenerator.getAndIncrement());
     }
 
     public long getMostSignificantBits()

@@ -68,6 +68,12 @@ public final class ApplyFunction
                 SCALAR));
     }
 
+    @UsedByGeneratedCode
+    public static Object apply(Object input, UnaryFunctionInterface function)
+    {
+        return function.apply(input);
+    }
+
     @Override
     protected ScalarFunctionImplementation specialize(FunctionBinding functionBinding)
     {
@@ -83,11 +89,5 @@ public final class ApplyFunction
                                 .changeReturnType(Primitives.wrap(returnType.getJavaType()))
                                 .changeParameterType(0, Primitives.wrap(argumentType.getJavaType()))),
                 Optional.empty());
-    }
-
-    @UsedByGeneratedCode
-    public static Object apply(Object input, UnaryFunctionInterface function)
-    {
-        return function.apply(input);
     }
 }

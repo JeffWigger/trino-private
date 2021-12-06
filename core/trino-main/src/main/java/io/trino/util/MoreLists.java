@@ -28,6 +28,8 @@ import static java.util.Objects.requireNonNull;
 
 public final class MoreLists
 {
+    private MoreLists() {}
+
     public static <T> List<List<T>> listOfListsCopy(List<List<T>> lists)
     {
         return requireNonNull(lists, "lists is null").stream()
@@ -61,6 +63,4 @@ public final class MoreLists
                 .mapToObj(function)
                 .collect(toImmutableList());
     }
-
-    private MoreLists() {}
 }

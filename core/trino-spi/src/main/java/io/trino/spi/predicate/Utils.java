@@ -26,12 +26,12 @@ import static java.lang.String.format;
 
 public final class Utils
 {
-    private Utils() {}
-
     // Tuple domain accesses equal and hash code operators from static contexts which
     // are too numerous to inject a type operator cache. Instead, we uses a static cache
     // just for this use case.
     static final TypeOperators TUPLE_DOMAIN_TYPE_OPERATORS = new TypeOperators();
+
+    private Utils() {}
 
     public static Block nativeValueToBlock(Type type, @Nullable Object object)
     {

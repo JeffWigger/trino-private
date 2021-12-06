@@ -32,31 +32,6 @@ import static org.testng.Assert.assertEquals;
 
 public class TestLongDecode
 {
-    @Test
-    public void testVInt()
-            throws Exception
-    {
-        Slice slice = Slices.allocate(100);
-        SliceOutput output = slice.getOutput();
-
-        assertVIntRoundTrip(output, 0);
-        assertVIntRoundTrip(output, 1);
-        assertVIntRoundTrip(output, -1);
-        assertVIntRoundTrip(output, Integer.MAX_VALUE);
-        assertVIntRoundTrip(output, Integer.MAX_VALUE + 1L);
-        assertVIntRoundTrip(output, Integer.MAX_VALUE - 1L);
-        assertVIntRoundTrip(output, Integer.MIN_VALUE);
-        assertVIntRoundTrip(output, Integer.MIN_VALUE + 1L);
-        assertVIntRoundTrip(output, Integer.MIN_VALUE - 1L);
-        assertVIntRoundTrip(output, Long.MAX_VALUE);
-        assertVIntRoundTrip(output, Long.MAX_VALUE - 1);
-        assertVIntRoundTrip(output, Long.MIN_VALUE + 1);
-
-        for (int value = -100_000; value < 100_000; value++) {
-            assertVIntRoundTrip(output, value);
-        }
-    }
-
     private static void assertVIntRoundTrip(SliceOutput output, long value)
             throws IOException
     {
@@ -100,9 +75,6 @@ public class TestLongDecode
         assertEquals(readValueNew, value);
     }
 
-    //
-    // The following was copied from package private org.apache.hadoop.hive.ql.io.orc.SerializationUtils
-
     private static void writeVulong(OutputStream output, long value)
             throws IOException
     {
@@ -117,6 +89,9 @@ public class TestLongDecode
             }
         }
     }
+
+    //
+    // The following was copied from package private org.apache.hadoop.hive.ql.io.orc.SerializationUtils
 
     private static void writeVslong(OutputStream output, long value)
             throws IOException
@@ -147,5 +122,30 @@ public class TestLongDecode
     {
         long result = readVulong(in);
         return (result >>> 1) ^ -(result & 1);
+    }
+
+    @Test
+    public void testVInt()
+            throws Exception
+    {
+        Slice slice = Slices.allocate(100);
+        SliceOutput output = slice.getOutput();
+
+        assertVIntRoundTrip(output, 0);
+        assertVIntRoundTrip(output, 1);
+        assertVIntRoundTrip(output, -1);
+        assertVIntRoundTrip(output, Integer.MAX_VALUE);
+        assertVIntRoundTrip(output, Integer.MAX_VALUE + 1L);
+        assertVIntRoundTrip(output, Integer.MAX_VALUE - 1L);
+        assertVIntRoundTrip(output, Integer.MIN_VALUE);
+        assertVIntRoundTrip(output, Integer.MIN_VALUE + 1L);
+        assertVIntRoundTrip(output, Integer.MIN_VALUE - 1L);
+        assertVIntRoundTrip(output, Long.MAX_VALUE);
+        assertVIntRoundTrip(output, Long.MAX_VALUE - 1);
+        assertVIntRoundTrip(output, Long.MIN_VALUE + 1);
+
+        for (int value = -100_000; value < 100_000; value++) {
+            assertVIntRoundTrip(output, value);
+        }
     }
 }

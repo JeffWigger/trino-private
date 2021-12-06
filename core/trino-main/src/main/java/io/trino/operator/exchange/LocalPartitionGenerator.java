@@ -35,6 +35,12 @@ public class LocalPartitionGenerator
         hashMask = partitionCount - 1;
     }
 
+    private static int processRawHash(long rawHash)
+    {
+        // mix the bits so we don't use the same hash used to distribute between stages
+        return (int) XxHash64.hash(Long.reverse(rawHash));
+    }
+
     @Override
     public int getPartitionCount()
     {
@@ -56,11 +62,5 @@ public class LocalPartitionGenerator
     public int getPartition(long rawHash)
     {
         return processRawHash(rawHash) & hashMask;
-    }
-
-    private static int processRawHash(long rawHash)
-    {
-        // mix the bits so we don't use the same hash used to distribute between stages
-        return (int) XxHash64.hash(Long.reverse(rawHash));
     }
 }

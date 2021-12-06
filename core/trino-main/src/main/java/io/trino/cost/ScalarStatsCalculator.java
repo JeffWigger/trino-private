@@ -73,6 +73,14 @@ public class ScalarStatsCalculator
         this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
     }
 
+    private static SymbolStatsEstimate nullStatsEstimate()
+    {
+        return SymbolStatsEstimate.builder()
+                .setDistinctValuesCount(0)
+                .setNullsFraction(1)
+                .build();
+    }
+
     public SymbolStatsEstimate calculate(Expression scalarExpression, PlanNodeStatsEstimate inputStatistics, Session session, TypeProvider types)
     {
         return new Visitor(inputStatistics, session, types).process(scalarExpression);
@@ -339,13 +347,5 @@ public class ScalarStatsCalculator
                         .build();
             }
         }
-    }
-
-    private static SymbolStatsEstimate nullStatsEstimate()
-    {
-        return SymbolStatsEstimate.builder()
-                .setDistinctValuesCount(0)
-                .setNullsFraction(1)
-                .build();
     }
 }

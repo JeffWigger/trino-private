@@ -45,6 +45,152 @@ import static org.testng.Assert.assertNull;
 
 public class TestOrcMetadataReader
 {
+    private static final Slice STRING_APPLE = utf8Slice("apple");
+    private static final Slice STRING_OESTERREICH = utf8Slice("\u00D6sterreich");
+    private static final Slice STRING_DULIOE_DULIOE = utf8Slice("Duli\u00F6 duli\u00F6");
+    private static final Slice STRING_FAITH_HOPE_LOVE = utf8Slice("\u4FE1\u5FF5,\u7231,\u5E0C\u671B");
+    private static final Slice STRING_NAIVE = utf8Slice("na\u00EFve");
+    private static final Slice STRING_OO = utf8Slice("\uD801\uDC2Dend");
+    // length increase when cast to lower case, and ends with invalid character
+    private static final Slice INVALID_SEQUENCE_TO_LOWER_EXPANDS = wrappedBuffer((byte) 0xC8, (byte) 0xBA, (byte) 0xFF);
+    private static final Slice INVALID_UTF8_1 = wrappedBuffer(new byte[] {-127});
+    private static final Slice INVALID_UTF8_2 = wrappedBuffer(new byte[] {50, -127, 52, 50});
+    private static final byte CONTINUATION_BYTE = (byte) 0b1011_1111;
+    private static final Slice EM_SPACE_SURROUNDED_BY_CONTINUATION_BYTE =
+            wrappedBuffer(CONTINUATION_BYTE, (byte) 0xE2, (byte) 0x80, (byte) 0x83, CONTINUATION_BYTE);
+    private static final List<Slice> INVALID_UTF8_SEQUENCES = ImmutableList.<Slice>builder()
+            .add(INVALID_SEQUENCE_TO_LOWER_EXPANDS)
+            .add(INVALID_UTF8_1)
+            .add(INVALID_UTF8_2)
+            .add(EM_SPACE_SURROUNDED_BY_CONTINUATION_BYTE)
+            .build();
+    private static final List<Slice> VALID_UTF8_SEQUENCES = ImmutableList.<Slice>builder()
+            .add(STRING_OO)
+            .add(EMPTY_SLICE)
+            .add(STRING_APPLE)
+            .add(STRING_OESTERREICH)
+            .add(STRING_DULIOE_DULIOE)
+            .add(STRING_FAITH_HOPE_LOVE)
+            .add(STRING_NAIVE)
+            .add(STRING_OO)
+            .build();
+    private static final List<Slice> ALL_UTF8_SEQUENCES = ImmutableList.<Slice>builder()
+            .addAll(VALID_UTF8_SEQUENCES)
+            .addAll(INVALID_UTF8_SEQUENCES)
+            .build();
+    private static final int REPLACEMENT_CHARACTER_CODE_POINT = 0xFFFD;
+    private static final List<Integer> TEST_CODE_POINTS = ImmutableList.<Integer>builder()
+            .add(0)
+            .add((int) 'a')
+            .add(0xC0)
+            .add(0xC1)
+            .add(0xEF)
+            .add(0xFE)
+            .add(0xFF)
+            .add(REPLACEMENT_CHARACTER_CODE_POINT - 1)
+            .add(REPLACEMENT_CHARACTER_CODE_POINT)
+            .add(0xFFFE)
+            .add(0xFFFF)
+            .add(0x10405)
+            .build();
+
+    private static void testStringStatisticsTruncation(Slice testValue, HiveWriterVersion version)
+    {
+        assertEquals(
+                OrcMetadataReader.toStringStatistics(
+                        version,
+                        OrcProto.StringStatistics.newBuilder()
+                                .setMinimumBytes(ByteString.copyFrom(testValue.getBytes()))
+                                .setMaximumBytes(ByteString.copyFrom(testValue.getBytes()))
+                                .setSum(79)
+                                .build(),
+                        true),
+                createExpectedStringStatistics(version, testValue, testValue, 79));
+        assertEquals(
+                OrcMetadataReader.toStringStatistics(
+                        version,
+                        OrcProto.StringStatistics.newBuilder()
+                                .setMinimumBytes(ByteString.copyFrom(testValue.getBytes()))
+                                .setSum(79)
+                                .build(),
+                        true),
+                createExpectedStringStatistics(version, testValue, null, 79));
+        assertEquals(
+                OrcMetadataReader.toStringStatistics(
+                        version,
+                        OrcProto.StringStatistics.newBuilder()
+                                .setMaximumBytes(ByteString.copyFrom(testValue.getBytes()))
+                                .setSum(79)
+                                .build(),
+                        true),
+                createExpectedStringStatistics(version, null, testValue, 79));
+    }
+
+    private static StringStatistics createExpectedStringStatistics(HiveWriterVersion version, Slice min, Slice max, int sum)
+    {
+        return new StringStatistics(
+                minStringTruncateToValidRange(min, version),
+                maxStringTruncateToValidRange(max, version),
+                sum);
+    }
+
+    private static void testMinStringTruncateAtFirstReplacementCharacter(Slice prefix, Slice suffix)
+    {
+        for (int testCodePoint : TEST_CODE_POINTS) {
+            Slice codePoint = codePointToUtf8(testCodePoint);
+
+            Slice value = concatSlice(prefix, codePoint, suffix);
+            assertEquals(minStringTruncateToValidRange(value, ORC_HIVE_8732), value);
+
+            // For ORIGINAL, skip prefixes that truncate
+            if (prefix.equals(minStringTruncateToValidRange(prefix, ORIGINAL))) {
+                if (testCodePoint == REPLACEMENT_CHARACTER_CODE_POINT || testCodePoint >= MIN_SUPPLEMENTARY_CODE_POINT) {
+                    // truncate at test code point
+                    assertEquals(minStringTruncateToValidRange(value, ORIGINAL), prefix);
+                }
+                else {
+                    // truncate in suffix (if at all)
+                    assertEquals(minStringTruncateToValidRange(value, ORIGINAL), concatSlice(prefix, codePoint, minStringTruncateToValidRange(suffix, ORIGINAL)));
+                }
+            }
+        }
+    }
+
+    private static void testMaxStringTruncateAtFirstReplacementCharacter(Slice prefix, Slice suffix)
+    {
+        for (int testCodePoint : TEST_CODE_POINTS) {
+            Slice codePoint = codePointToUtf8(testCodePoint);
+
+            Slice value = concatSlice(prefix, codePoint, suffix);
+            assertEquals(maxStringTruncateToValidRange(value, ORC_HIVE_8732), value);
+
+            // For ORIGINAL, skip prefixes that truncate
+            if (prefix.equals(maxStringTruncateToValidRange(prefix, ORIGINAL))) {
+                if (testCodePoint == REPLACEMENT_CHARACTER_CODE_POINT || testCodePoint >= MIN_SUPPLEMENTARY_CODE_POINT) {
+                    // truncate at test code point
+                    assertEquals(maxStringTruncateToValidRange(value, ORIGINAL), concatSlice(prefix, wrappedBuffer((byte) 0xFF)));
+                }
+                else {
+                    // truncate in suffix (if at all)
+                    assertEquals(maxStringTruncateToValidRange(value, ORIGINAL), concatSlice(prefix, codePoint, maxStringTruncateToValidRange(suffix, ORIGINAL)));
+                }
+            }
+        }
+    }
+
+    private static Slice concatSlice(Slice... slices)
+    {
+        int totalLength = Arrays.stream(slices)
+                .mapToInt(Slice::length)
+                .sum();
+        Slice value = Slices.allocate(totalLength);
+        SliceOutput output = value.getOutput();
+        for (Slice slice : slices) {
+            output.writeBytes(slice);
+        }
+        return value;
+    }
+
     @Test
     public void testGetMinSlice()
     {
@@ -117,60 +263,6 @@ public class TestOrcMetadataReader
             }
         }
     }
-
-    private static final Slice STRING_APPLE = utf8Slice("apple");
-    private static final Slice STRING_OESTERREICH = utf8Slice("\u00D6sterreich");
-    private static final Slice STRING_DULIOE_DULIOE = utf8Slice("Duli\u00F6 duli\u00F6");
-    private static final Slice STRING_FAITH_HOPE_LOVE = utf8Slice("\u4FE1\u5FF5,\u7231,\u5E0C\u671B");
-    private static final Slice STRING_NAIVE = utf8Slice("na\u00EFve");
-    private static final Slice STRING_OO = utf8Slice("\uD801\uDC2Dend");
-
-    // length increase when cast to lower case, and ends with invalid character
-    private static final Slice INVALID_SEQUENCE_TO_LOWER_EXPANDS = wrappedBuffer((byte) 0xC8, (byte) 0xBA, (byte) 0xFF);
-    private static final Slice INVALID_UTF8_1 = wrappedBuffer(new byte[] {-127});
-    private static final Slice INVALID_UTF8_2 = wrappedBuffer(new byte[] {50, -127, 52, 50});
-    private static final byte CONTINUATION_BYTE = (byte) 0b1011_1111;
-    private static final Slice EM_SPACE_SURROUNDED_BY_CONTINUATION_BYTE =
-            wrappedBuffer(CONTINUATION_BYTE, (byte) 0xE2, (byte) 0x80, (byte) 0x83, CONTINUATION_BYTE);
-
-    private static final List<Slice> VALID_UTF8_SEQUENCES = ImmutableList.<Slice>builder()
-            .add(STRING_OO)
-            .add(EMPTY_SLICE)
-            .add(STRING_APPLE)
-            .add(STRING_OESTERREICH)
-            .add(STRING_DULIOE_DULIOE)
-            .add(STRING_FAITH_HOPE_LOVE)
-            .add(STRING_NAIVE)
-            .add(STRING_OO)
-            .build();
-
-    private static final List<Slice> INVALID_UTF8_SEQUENCES = ImmutableList.<Slice>builder()
-            .add(INVALID_SEQUENCE_TO_LOWER_EXPANDS)
-            .add(INVALID_UTF8_1)
-            .add(INVALID_UTF8_2)
-            .add(EM_SPACE_SURROUNDED_BY_CONTINUATION_BYTE)
-            .build();
-
-    private static final List<Slice> ALL_UTF8_SEQUENCES = ImmutableList.<Slice>builder()
-            .addAll(VALID_UTF8_SEQUENCES)
-            .addAll(INVALID_UTF8_SEQUENCES)
-            .build();
-
-    private static final int REPLACEMENT_CHARACTER_CODE_POINT = 0xFFFD;
-    private static final List<Integer> TEST_CODE_POINTS = ImmutableList.<Integer>builder()
-            .add(0)
-            .add((int) 'a')
-            .add(0xC0)
-            .add(0xC1)
-            .add(0xEF)
-            .add(0xFE)
-            .add(0xFF)
-            .add(REPLACEMENT_CHARACTER_CODE_POINT - 1)
-            .add(REPLACEMENT_CHARACTER_CODE_POINT)
-            .add(0xFFFE)
-            .add(0xFFFF)
-            .add(0x10405)
-            .build();
 
     @Test
     public void testToStringStatistics()
@@ -248,74 +340,12 @@ public class TestOrcMetadataReader
         }
     }
 
-    private static void testStringStatisticsTruncation(Slice testValue, HiveWriterVersion version)
-    {
-        assertEquals(
-                OrcMetadataReader.toStringStatistics(
-                        version,
-                        OrcProto.StringStatistics.newBuilder()
-                                .setMinimumBytes(ByteString.copyFrom(testValue.getBytes()))
-                                .setMaximumBytes(ByteString.copyFrom(testValue.getBytes()))
-                                .setSum(79)
-                                .build(),
-                        true),
-                createExpectedStringStatistics(version, testValue, testValue, 79));
-        assertEquals(
-                OrcMetadataReader.toStringStatistics(
-                        version,
-                        OrcProto.StringStatistics.newBuilder()
-                                .setMinimumBytes(ByteString.copyFrom(testValue.getBytes()))
-                                .setSum(79)
-                                .build(),
-                        true),
-                createExpectedStringStatistics(version, testValue, null, 79));
-        assertEquals(
-                OrcMetadataReader.toStringStatistics(
-                        version,
-                        OrcProto.StringStatistics.newBuilder()
-                                .setMaximumBytes(ByteString.copyFrom(testValue.getBytes()))
-                                .setSum(79)
-                                .build(),
-                        true),
-                createExpectedStringStatistics(version, null, testValue, 79));
-    }
-
-    private static StringStatistics createExpectedStringStatistics(HiveWriterVersion version, Slice min, Slice max, int sum)
-    {
-        return new StringStatistics(
-                minStringTruncateToValidRange(min, version),
-                maxStringTruncateToValidRange(max, version),
-                sum);
-    }
-
     @Test
     public void testMinStringTruncateAtFirstReplacementCharacter()
     {
         for (Slice prefix : VALID_UTF8_SEQUENCES) {
             for (Slice suffix : VALID_UTF8_SEQUENCES) {
                 testMinStringTruncateAtFirstReplacementCharacter(prefix, suffix);
-            }
-        }
-    }
-
-    private static void testMinStringTruncateAtFirstReplacementCharacter(Slice prefix, Slice suffix)
-    {
-        for (int testCodePoint : TEST_CODE_POINTS) {
-            Slice codePoint = codePointToUtf8(testCodePoint);
-
-            Slice value = concatSlice(prefix, codePoint, suffix);
-            assertEquals(minStringTruncateToValidRange(value, ORC_HIVE_8732), value);
-
-            // For ORIGINAL, skip prefixes that truncate
-            if (prefix.equals(minStringTruncateToValidRange(prefix, ORIGINAL))) {
-                if (testCodePoint == REPLACEMENT_CHARACTER_CODE_POINT || testCodePoint >= MIN_SUPPLEMENTARY_CODE_POINT) {
-                    // truncate at test code point
-                    assertEquals(minStringTruncateToValidRange(value, ORIGINAL), prefix);
-                }
-                else {
-                    // truncate in suffix (if at all)
-                    assertEquals(minStringTruncateToValidRange(value, ORIGINAL), concatSlice(prefix, codePoint, minStringTruncateToValidRange(suffix, ORIGINAL)));
-                }
             }
         }
     }
@@ -328,40 +358,5 @@ public class TestOrcMetadataReader
                 testMaxStringTruncateAtFirstReplacementCharacter(prefix, suffix);
             }
         }
-    }
-
-    private static void testMaxStringTruncateAtFirstReplacementCharacter(Slice prefix, Slice suffix)
-    {
-        for (int testCodePoint : TEST_CODE_POINTS) {
-            Slice codePoint = codePointToUtf8(testCodePoint);
-
-            Slice value = concatSlice(prefix, codePoint, suffix);
-            assertEquals(maxStringTruncateToValidRange(value, ORC_HIVE_8732), value);
-
-            // For ORIGINAL, skip prefixes that truncate
-            if (prefix.equals(maxStringTruncateToValidRange(prefix, ORIGINAL))) {
-                if (testCodePoint == REPLACEMENT_CHARACTER_CODE_POINT || testCodePoint >= MIN_SUPPLEMENTARY_CODE_POINT) {
-                    // truncate at test code point
-                    assertEquals(maxStringTruncateToValidRange(value, ORIGINAL), concatSlice(prefix, wrappedBuffer((byte) 0xFF)));
-                }
-                else {
-                    // truncate in suffix (if at all)
-                    assertEquals(maxStringTruncateToValidRange(value, ORIGINAL), concatSlice(prefix, codePoint, maxStringTruncateToValidRange(suffix, ORIGINAL)));
-                }
-            }
-        }
-    }
-
-    private static Slice concatSlice(Slice... slices)
-    {
-        int totalLength = Arrays.stream(slices)
-                .mapToInt(Slice::length)
-                .sum();
-        Slice value = Slices.allocate(totalLength);
-        SliceOutput output = value.getOutput();
-        for (Slice slice : slices) {
-            output.writeBytes(slice);
-        }
-        return value;
     }
 }

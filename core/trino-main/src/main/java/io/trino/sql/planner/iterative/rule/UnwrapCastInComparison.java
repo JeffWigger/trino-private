@@ -150,6 +150,60 @@ public class UnwrapCastInComparison
         return expression;
     }
 
+    /**
+     * Replace time zone component of a {@link TimestampWithTimeZoneType} value with a given one, preserving point in time
+     * (equivalent to {@link java.time.ZonedDateTime#withZoneSameInstant}.
+     */
+    private static Object withTimeZone(TimestampWithTimeZoneType type, Object value, TimeZoneKey newZone)
+    {
+        if (type.isShort()) {
+            return packDateTimeWithZone(unpackMillisUtc((long) value), newZone);
+        }
+        LongTimestampWithTimeZone longTimestampWithTimeZone = (LongTimestampWithTimeZone) value;
+        return LongTimestampWithTimeZone.fromEpochMillisAndFraction(longTimestampWithTimeZone.getEpochMillis(), longTimestampWithTimeZone.getPicosOfMilli(), newZone);
+    }
+
+    private static TimeZoneKey getTimeZone(TimestampWithTimeZoneType type, Object value)
+    {
+        if (type.isShort()) {
+            return unpackZoneKey(((long) value));
+        }
+        return TimeZoneKey.getTimeZoneKey(((LongTimestampWithTimeZone) value).getTimeZoneKey());
+    }
+
+    @VisibleForTesting
+    static boolean isTimestampToTimestampWithTimeZoneInjectiveAt(ZoneId zone, Instant instant)
+    {
+        ZoneOffsetTransition transition = zone.getRules().previousTransition(instant.plusNanos(1));
+        if (transition != null) {
+            // DST change forward and the instant is ambiguous, being within the 'gap' area non-monotonic remapping
+            if (!transition.getDuration().isNegative() && !transition.getDateTimeAfter().minusNanos(1).atZone(zone).toInstant().isBefore(instant)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Instant getInstantWithTruncation(TimestampWithTimeZoneType type, Object value)
+    {
+        if (type.isShort()) {
+            return Instant.ofEpochMilli(unpackMillisUtc(((long) value)));
+        }
+        LongTimestampWithTimeZone longTimestampWithTimeZone = (LongTimestampWithTimeZone) value;
+        return Instant.ofEpochMilli(longTimestampWithTimeZone.getEpochMillis())
+                .plus(longTimestampWithTimeZone.getPicosOfMilli() / PICOSECONDS_PER_NANOSECOND, ChronoUnit.NANOS);
+    }
+
+    private static Expression falseIfNotNull(Expression argument)
+    {
+        return and(new IsNullPredicate(argument), new NullLiteral());
+    }
+
+    private static Expression trueIfNotNull(Expression argument)
+    {
+        return or(new IsNotNullPredicate(argument), new NullLiteral());
+    }
+
     private static class Visitor
             extends io.trino.sql.tree.ExpressionRewriter<Void>
     {
@@ -525,59 +579,5 @@ public class UnwrapCastInComparison
                 throw new TrinoException(GENERIC_INTERNAL_ERROR, throwable);
             }
         }
-    }
-
-    /**
-     * Replace time zone component of a {@link TimestampWithTimeZoneType} value with a given one, preserving point in time
-     * (equivalent to {@link java.time.ZonedDateTime#withZoneSameInstant}.
-     */
-    private static Object withTimeZone(TimestampWithTimeZoneType type, Object value, TimeZoneKey newZone)
-    {
-        if (type.isShort()) {
-            return packDateTimeWithZone(unpackMillisUtc((long) value), newZone);
-        }
-        LongTimestampWithTimeZone longTimestampWithTimeZone = (LongTimestampWithTimeZone) value;
-        return LongTimestampWithTimeZone.fromEpochMillisAndFraction(longTimestampWithTimeZone.getEpochMillis(), longTimestampWithTimeZone.getPicosOfMilli(), newZone);
-    }
-
-    private static TimeZoneKey getTimeZone(TimestampWithTimeZoneType type, Object value)
-    {
-        if (type.isShort()) {
-            return unpackZoneKey(((long) value));
-        }
-        return TimeZoneKey.getTimeZoneKey(((LongTimestampWithTimeZone) value).getTimeZoneKey());
-    }
-
-    @VisibleForTesting
-    static boolean isTimestampToTimestampWithTimeZoneInjectiveAt(ZoneId zone, Instant instant)
-    {
-        ZoneOffsetTransition transition = zone.getRules().previousTransition(instant.plusNanos(1));
-        if (transition != null) {
-            // DST change forward and the instant is ambiguous, being within the 'gap' area non-monotonic remapping
-            if (!transition.getDuration().isNegative() && !transition.getDateTimeAfter().minusNanos(1).atZone(zone).toInstant().isBefore(instant)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static Instant getInstantWithTruncation(TimestampWithTimeZoneType type, Object value)
-    {
-        if (type.isShort()) {
-            return Instant.ofEpochMilli(unpackMillisUtc(((long) value)));
-        }
-        LongTimestampWithTimeZone longTimestampWithTimeZone = (LongTimestampWithTimeZone) value;
-        return Instant.ofEpochMilli(longTimestampWithTimeZone.getEpochMillis())
-                .plus(longTimestampWithTimeZone.getPicosOfMilli() / PICOSECONDS_PER_NANOSECOND, ChronoUnit.NANOS);
-    }
-
-    private static Expression falseIfNotNull(Expression argument)
-    {
-        return and(new IsNullPredicate(argument), new NullLiteral());
-    }
-
-    private static Expression trueIfNotNull(Expression argument)
-    {
-        return or(new IsNotNullPredicate(argument), new NullLiteral());
     }
 }

@@ -69,6 +69,16 @@ public class StageExecutionDescriptor
         return new StageExecutionDescriptor(DYNAMIC_LIFESPAN_SCHEDULE_GROUPED_EXECUTION, ImmutableSet.copyOf(capableScanNodes));
     }
 
+    @JsonCreator
+    public static StageExecutionDescriptor jsonCreator(
+            @JsonProperty("strategy") StageExecutionStrategy strategy,
+            @JsonProperty("groupedExecutionScanNodes") Set<PlanNodeId> groupedExecutionCapableScanNodes)
+    {
+        return new StageExecutionDescriptor(
+                requireNonNull(strategy, "strategy is null"),
+                ImmutableSet.copyOf(requireNonNull(groupedExecutionCapableScanNodes, "groupedExecutionCapableScanNodes is null")));
+    }
+
     @JsonProperty("strategy")
     public StageExecutionStrategy getStageExecutionStrategy()
     {
@@ -88,16 +98,6 @@ public class StageExecutionDescriptor
     public boolean isScanGroupedExecution(PlanNodeId scanNodeId)
     {
         return groupedExecutionScanNodes.contains(scanNodeId);
-    }
-
-    @JsonCreator
-    public static StageExecutionDescriptor jsonCreator(
-            @JsonProperty("strategy") StageExecutionStrategy strategy,
-            @JsonProperty("groupedExecutionScanNodes") Set<PlanNodeId> groupedExecutionCapableScanNodes)
-    {
-        return new StageExecutionDescriptor(
-                requireNonNull(strategy, "strategy is null"),
-                ImmutableSet.copyOf(requireNonNull(groupedExecutionCapableScanNodes, "groupedExecutionCapableScanNodes is null")));
     }
 
     @JsonProperty("groupedExecutionScanNodes")

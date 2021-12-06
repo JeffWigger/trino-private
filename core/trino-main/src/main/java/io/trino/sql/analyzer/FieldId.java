@@ -21,6 +21,16 @@ import static java.util.Objects.requireNonNull;
 
 public final class FieldId
 {
+    private final RelationId relationId;
+    private final int fieldIndex;
+    public FieldId(RelationId relationId, int fieldIndex)
+    {
+        this.relationId = requireNonNull(relationId, "relationId is null");
+
+        checkArgument(fieldIndex >= 0, "fieldIndex must be non-negative, got: %s", fieldIndex);
+        this.fieldIndex = fieldIndex;
+    }
+
     public static FieldId from(ResolvedField field)
     {
         requireNonNull(field, "field is null");
@@ -28,17 +38,6 @@ public final class FieldId
         Scope sourceScope = field.getScope();
         RelationType relationType = sourceScope.getRelationType();
         return new FieldId(sourceScope.getRelationId(), relationType.indexOf(field.getField()));
-    }
-
-    private final RelationId relationId;
-    private final int fieldIndex;
-
-    public FieldId(RelationId relationId, int fieldIndex)
-    {
-        this.relationId = requireNonNull(relationId, "relationId is null");
-
-        checkArgument(fieldIndex >= 0, "fieldIndex must be non-negative, got: %s", fieldIndex);
-        this.fieldIndex = fieldIndex;
     }
 
     public RelationId getRelationId()

@@ -78,31 +78,6 @@ import static java.lang.String.format;
 
 public final class GraphvizPrinter
 {
-    private enum NodeType
-    {
-        EXCHANGE,
-        AGGREGATE,
-        FILTER,
-        PROJECT,
-        TOPN,
-        OUTPUT,
-        LIMIT,
-        TABLESCAN,
-        VALUES,
-        JOIN,
-        SINK,
-        WINDOW,
-        UNION,
-        SORT,
-        SAMPLE,
-        MARK_DISTINCT,
-        TABLE_WRITER,
-        TABLE_FINISH,
-        INDEX_SOURCE,
-        UNNEST,
-        ANALYZE_FINISH,
-    }
-
     private static final Map<NodeType, String> NODE_COLORS = immutableEnumMap(ImmutableMap.<NodeType, String>builder()
             .put(NodeType.EXCHANGE, "gold")
             .put(NodeType.AGGREGATE, "chartreuse3")
@@ -126,10 +101,6 @@ public final class GraphvizPrinter
             .put(NodeType.SAMPLE, "goldenrod4")
             .put(NodeType.ANALYZE_FINISH, "plum")
             .build());
-
-    static {
-        checkState(NODE_COLORS.size() == NodeType.values().length);
-    }
 
     private GraphvizPrinter() {}
 
@@ -199,6 +170,31 @@ public final class GraphvizPrinter
                 .append('\n');
     }
 
+    private enum NodeType
+    {
+        EXCHANGE,
+        AGGREGATE,
+        FILTER,
+        PROJECT,
+        TOPN,
+        OUTPUT,
+        LIMIT,
+        TABLESCAN,
+        VALUES,
+        JOIN,
+        SINK,
+        WINDOW,
+        UNION,
+        SORT,
+        SAMPLE,
+        MARK_DISTINCT,
+        TABLE_WRITER,
+        TABLE_FINISH,
+        INDEX_SOURCE,
+        UNNEST,
+        ANALYZE_FINISH,
+    }
+
     private static class NodePrinter
             extends PlanVisitor<Void, Void>
     {
@@ -210,6 +206,37 @@ public final class GraphvizPrinter
         {
             this.output = output;
             this.idGenerator = idGenerator;
+        }
+
+        private static String getColumns(OutputNode node)
+        {
+            Iterator<String> columnNames = node.getColumnNames().iterator();
+            String columns = "";
+            int nameWidth = 0;
+            while (columnNames.hasNext()) {
+                String columnName = columnNames.next();
+                columns += columnName;
+                nameWidth += columnName.length();
+                if (columnNames.hasNext()) {
+                    columns += ", ";
+                }
+                if (nameWidth >= MAX_NAME_WIDTH) {
+                    columns += "\\n";
+                    nameWidth = 0;
+                }
+            }
+            return columns;
+        }
+
+        /**
+         * Escape characters that are special to graphviz.
+         */
+        private static String escapeSpecialCharacters(String label)
+        {
+            return label
+                    .replace("<", "\\<")
+                    .replace(">", "\\>")
+                    .replace("\"", "\\\"");
         }
 
         @Override
@@ -268,10 +295,10 @@ public final class GraphvizPrinter
         public Void visitWindow(WindowNode node, Void context)
         {
             printNode(node, "Window", format("partition by = %s|order by = %s",
-                    Joiner.on(", ").join(node.getPartitionBy()),
-                    node.getOrderingScheme()
-                            .map(orderingScheme -> Joiner.on(", ").join(orderingScheme.getOrderBy()))
-                            .orElse("")),
+                            Joiner.on(", ").join(node.getPartitionBy()),
+                            node.getOrderingScheme()
+                                    .map(orderingScheme -> Joiner.on(", ").join(orderingScheme.getOrderBy()))
+                                    .orElse("")),
                     NODE_COLORS.get(NodeType.WINDOW));
             return node.getSource().accept(this, context);
         }
@@ -280,10 +307,10 @@ public final class GraphvizPrinter
         public Void visitPatternRecognition(PatternRecognitionNode node, Void context)
         {
             printNode(node, "PatternRecognition", format("partition by = %s|order by = %s",
-                    Joiner.on(", ").join(node.getPartitionBy()),
-                    node.getOrderingScheme()
-                            .map(orderingScheme -> Joiner.on(", ").join(orderingScheme.getOrderBy()))
-                            .orElse("")),
+                            Joiner.on(", ").join(node.getPartitionBy()),
+                            node.getOrderingScheme()
+                                    .map(orderingScheme -> Joiner.on(", ").join(orderingScheme.getOrderBy()))
+                                    .orElse("")),
                     NODE_COLORS.get(NodeType.WINDOW));
             return node.getSource().accept(this, context);
         }
@@ -611,37 +638,6 @@ public final class GraphvizPrinter
                         .append('\n');
             }
         }
-
-        private static String getColumns(OutputNode node)
-        {
-            Iterator<String> columnNames = node.getColumnNames().iterator();
-            String columns = "";
-            int nameWidth = 0;
-            while (columnNames.hasNext()) {
-                String columnName = columnNames.next();
-                columns += columnName;
-                nameWidth += columnName.length();
-                if (columnNames.hasNext()) {
-                    columns += ", ";
-                }
-                if (nameWidth >= MAX_NAME_WIDTH) {
-                    columns += "\\n";
-                    nameWidth = 0;
-                }
-            }
-            return columns;
-        }
-
-        /**
-         * Escape characters that are special to graphviz.
-         */
-        private static String escapeSpecialCharacters(String label)
-        {
-            return label
-                    .replace("<", "\\<")
-                    .replace(">", "\\>")
-                    .replace("\"", "\\\"");
-        }
     }
 
     private static class EdgePrinter
@@ -718,5 +714,9 @@ public final class GraphvizPrinter
             }
             return ("plannode_" + nodeId);
         }
+    }
+
+    static {
+        checkState(NODE_COLORS.size() == NodeType.values().length);
     }
 }

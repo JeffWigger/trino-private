@@ -43,6 +43,11 @@ public class PageBufferInfo
         this.pagesAdded = pagesAdded;
     }
 
+    public static PageBufferInfo empty()
+    {
+        return new PageBufferInfo(0, 0, 0, 0, 0);
+    }
+
     @JsonProperty
     public int getPartition()
     {
@@ -106,10 +111,5 @@ public class PageBufferInfo
                 .add("rowsAdded", rowsAdded)
                 .add("pagesAdded", pagesAdded)
                 .toString();
-    }
-
-    public static PageBufferInfo empty()
-    {
-        return new PageBufferInfo(0, 0, 0, 0, 0);
     }
 }

@@ -49,6 +49,11 @@ public class PasswordAuthenticator
         this.alternateHeaderName = protocolConfig.getAlternateHeaderName();
     }
 
+    private static AuthenticationException needAuthentication(String message)
+    {
+        return new AuthenticationException(message, BasicAuthCredentials.AUTHENTICATE_HEADER);
+    }
+
     @Override
     public Identity authenticate(ContainerRequestContext request)
             throws AuthenticationException
@@ -105,10 +110,5 @@ public class PasswordAuthenticator
         if (basicAuthCredentials.getUser().equals(headers.getFirst(userHeader))) {
             headers.putSingle(userHeader, authenticatedUser);
         }
-    }
-
-    private static AuthenticationException needAuthentication(String message)
-    {
-        return new AuthenticationException(message, BasicAuthCredentials.AUTHENTICATE_HEADER);
     }
 }

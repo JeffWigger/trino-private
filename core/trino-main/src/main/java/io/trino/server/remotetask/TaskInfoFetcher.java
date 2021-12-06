@@ -114,6 +114,11 @@ public class TaskInfoFetcher
         this.stats = requireNonNull(stats, "stats is null");
     }
 
+    private static boolean isDone(TaskInfo taskInfo)
+    {
+        return taskInfo.getTaskStatus().getState().isDone();
+    }
+
     public TaskInfo getTaskInfo()
     {
         return taskInfo.get();
@@ -281,10 +286,5 @@ public class TaskInfoFetcher
     private void updateStats(long currentRequestStartNanos)
     {
         stats.infoRoundTripMillis(nanosSince(currentRequestStartNanos).toMillis());
-    }
-
-    private static boolean isDone(TaskInfo taskInfo)
-    {
-        return taskInfo.getTaskStatus().getState().isDone();
     }
 }

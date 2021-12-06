@@ -318,11 +318,11 @@ public interface Block
         return Collections.emptyList();
     }
 
-
     /**
-     *  Turns it into an updatable block
+     * Turns it into an updatable block
      */
-    default UpdatableBlock makeUpdatable(){
+    default UpdatableBlock makeUpdatable()
+    {
         throw new UnsupportedOperationException(getClass().getName());
     }
 }

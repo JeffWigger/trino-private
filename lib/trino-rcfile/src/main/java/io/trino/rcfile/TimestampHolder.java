@@ -42,6 +42,19 @@ public final class TimestampHolder
         this.nanosOfSecond = toIntExact(picosOfSecond / PICOSECONDS_PER_NANOSECOND);
     }
 
+    public static BiFunction<Block, Integer, TimestampHolder> getFactory(TimestampType type)
+    {
+        if (type.isShort()) {
+            return (block, position) -> new TimestampHolder(type.getLong(block, position), 0);
+        }
+        else {
+            return (block, position) -> {
+                LongTimestamp longTimestamp = (LongTimestamp) type.getObject(block, position);
+                return new TimestampHolder(longTimestamp.getEpochMicros(), longTimestamp.getPicosOfMicro());
+            };
+        }
+    }
+
     public long getSeconds()
     {
         return seconds;
@@ -55,18 +68,5 @@ public final class TimestampHolder
     public LocalDateTime toLocalDateTime()
     {
         return LocalDateTime.ofEpochSecond(seconds, nanosOfSecond, ZoneOffset.UTC);
-    }
-
-    public static BiFunction<Block, Integer, TimestampHolder> getFactory(TimestampType type)
-    {
-        if (type.isShort()) {
-            return (block, position) -> new TimestampHolder(type.getLong(block, position), 0);
-        }
-        else {
-            return (block, position) -> {
-                LongTimestamp longTimestamp = (LongTimestamp) type.getObject(block, position);
-                return new TimestampHolder(longTimestamp.getEpochMicros(), longTimestamp.getPicosOfMicro());
-            };
-        }
     }
 }

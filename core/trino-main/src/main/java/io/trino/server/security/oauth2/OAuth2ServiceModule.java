@@ -37,6 +37,14 @@ import static io.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
 public class OAuth2ServiceModule
         extends AbstractConfigurationAwareModule
 {
+    @Provides
+    @Singleton
+    @ForJwk
+    public static URI createJwkAddress(OAuth2Config config)
+    {
+        return URI.create(config.getJwksUrl());
+    }
+
     @Override
     protected void setup(Binder binder)
     {
@@ -66,14 +74,6 @@ public class OAuth2ServiceModule
         binder.bind(HttpClient.class).annotatedWith(ForJwk.class).to(Key.get(HttpClient.class, ForOAuth2.class));
         binder.bind(JwkService.class).in(Scopes.SINGLETON);
         binder.bind(SigningKeyResolver.class).annotatedWith(ForOAuth2.class).to(JwkSigningKeyResolver.class).in(Scopes.SINGLETON);
-    }
-
-    @Provides
-    @Singleton
-    @ForJwk
-    public static URI createJwkAddress(OAuth2Config config)
-    {
-        return URI.create(config.getJwksUrl());
     }
 
     @Override

@@ -47,15 +47,6 @@ public final class BigintApproximateMostFrequent
 {
     private BigintApproximateMostFrequent() {}
 
-    @AccumulatorStateMetadata(stateSerializerClass = LongApproximateMostFrequentStateSerializer.class, stateFactoryClass = LongApproximateMostFrequentStateFactory.class)
-    public interface State
-            extends AccumulatorState
-    {
-        ApproximateMostFrequentHistogram<Long> get();
-
-        void set(ApproximateMostFrequentHistogram<Long> value);
-    }
-
     @InputFunction
     public static void input(@AggregationState State state, @SqlType(BIGINT) long buckets, @SqlType(BIGINT) long value, @SqlType(BIGINT) long capacity)
     {
@@ -101,5 +92,14 @@ public final class BigintApproximateMostFrequent
             });
             out.closeEntry();
         }
+    }
+
+    @AccumulatorStateMetadata(stateSerializerClass = LongApproximateMostFrequentStateSerializer.class, stateFactoryClass = LongApproximateMostFrequentStateFactory.class)
+    public interface State
+            extends AccumulatorState
+    {
+        ApproximateMostFrequentHistogram<Long> get();
+
+        void set(ApproximateMostFrequentHistogram<Long> value);
     }
 }

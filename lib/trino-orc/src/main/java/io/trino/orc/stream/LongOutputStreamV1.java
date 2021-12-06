@@ -63,6 +63,11 @@ public class LongOutputStreamV1
         this.signed = signed;
     }
 
+    private static boolean isValidDelta(long delta)
+    {
+        return delta >= MIN_DELTA && delta <= MAX_DELTA;
+    }
+
     @Override
     public void writeLong(long value)
     {
@@ -117,11 +122,6 @@ public class LongOutputStreamV1
         }
 
         lastValue = value;
-    }
-
-    private static boolean isValidDelta(long delta)
-    {
-        return delta >= MIN_DELTA && delta <= MAX_DELTA;
     }
 
     private void flushSequence()

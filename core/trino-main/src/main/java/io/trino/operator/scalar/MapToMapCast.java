@@ -93,99 +93,6 @@ public final class MapToMapCast
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
-    @Override
-    public FunctionDependencyDeclaration getFunctionDependencies()
-    {
-        return FunctionDependencyDeclaration.builder()
-                .addCastSignature(new TypeSignature("FK"), new TypeSignature("TK"))
-                .addCastSignature(new TypeSignature("FV"), new TypeSignature("TV"))
-                .build();
-    }
-
-    @Override
-    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
-    {
-        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
-        Type fromKeyType = functionBinding.getTypeVariable("FK");
-        Type fromValueType = functionBinding.getTypeVariable("FV");
-        Type toKeyType = functionBinding.getTypeVariable("TK");
-        Type toValueType = functionBinding.getTypeVariable("TV");
-        Type toMapType = functionBinding.getBoundSignature().getReturnType();
-
-        MethodHandle keyProcessor = buildProcessor(functionDependencies, fromKeyType, toKeyType, true);
-        MethodHandle valueProcessor = buildProcessor(functionDependencies, fromValueType, toValueType, false);
-        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(toKeyType);
-        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(toKeyType);
-        MethodHandle target = MethodHandles.insertArguments(METHOD_HANDLE, 0, keyProcessor, valueProcessor, toMapType, keyEqual, keyHashCode);
-        return new ChoicesScalarFunctionImplementation(functionBinding, NULLABLE_RETURN, ImmutableList.of(NEVER_NULL), target);
-    }
-
-    /**
-     * The signature of the returned MethodHandle is (Block fromMap, int position, ConnectorSession session, BlockBuilder mapBlockBuilder)void.
-     * The processor will get the value from fromMap, cast it and write to toBlock.
-     */
-    private MethodHandle buildProcessor(FunctionDependencies functionDependencies, Type fromType, Type toType, boolean isKey)
-    {
-        // Get block position cast, with optional connector session
-        FunctionMetadata functionMetadata = functionDependencies.getCastMetadata(fromType, toType);
-        InvocationConvention invocationConvention = new InvocationConvention(ImmutableList.of(BLOCK_POSITION), functionMetadata.isNullable() ? NULLABLE_RETURN : FAIL_ON_NULL, true, false);
-        MethodHandle cast = functionDependencies.getCastInvoker(fromType, toType, invocationConvention).getMethodHandle();
-        // Normalize cast to have connector session as first argument
-        if (cast.type().parameterArray()[0] != ConnectorSession.class) {
-            cast = MethodHandles.dropArguments(cast, 0, ConnectorSession.class);
-        }
-        // Change cast signature to (Block.class, int.class, ConnectorSession.class):T
-        cast = permuteArguments(cast, methodType(cast.type().returnType(), Block.class, int.class, ConnectorSession.class), 2, 0, 1);
-
-        // If the key cast function is nullable, check the result is not null
-        if (isKey && functionMetadata.isNullable()) {
-            cast = compose(nullChecker(cast.type().returnType()), cast);
-        }
-
-        // get write method with signature: (T, BlockBuilder.class):void
-        MethodHandle writer = nativeValueWriter(toType);
-        writer = permuteArguments(writer, methodType(void.class, writer.type().parameterArray()[1], BlockBuilder.class), 1, 0);
-
-        // ensure cast returns type expected by the writer
-        cast = cast.asType(methodType(writer.type().parameterType(0), cast.type().parameterArray()));
-
-        return compose(writer, cast);
-    }
-
-    /**
-     * Returns a null checker MethodHandle that only returns the value when it is not null.
-     * <p>
-     * The signature of the returned MethodHandle could be one of the following depending on javaType:
-     * <ul>
-     * <li>(Long value)long
-     * <li>(Double value)double
-     * <li>(Boolean value)boolean
-     * <li>(Slice value)Slice
-     * <li>(Block value)Block
-     * </ul>
-     */
-    private MethodHandle nullChecker(Class<?> javaType)
-    {
-        if (javaType == Long.class) {
-            return CHECK_LONG_IS_NOT_NULL;
-        }
-        else if (javaType == Double.class) {
-            return CHECK_DOUBLE_IS_NOT_NULL;
-        }
-        else if (javaType == Boolean.class) {
-            return CHECK_BOOLEAN_IS_NOT_NULL;
-        }
-        else if (javaType == Slice.class) {
-            return CHECK_SLICE_IS_NOT_NULL;
-        }
-        else if (javaType == Block.class) {
-            return CHECK_BLOCK_IS_NOT_NULL;
-        }
-        else {
-            throw new IllegalArgumentException("Unknown java type " + javaType);
-        }
-    }
-
     @UsedByGeneratedCode
     public static long checkLongIsNotNull(Long value)
     {
@@ -281,5 +188,98 @@ public final class MapToMapCast
 
         mapBlockBuilder.closeEntry();
         return (Block) toMapType.getObject(mapBlockBuilder, mapBlockBuilder.getPositionCount() - 1);
+    }
+
+    @Override
+    public FunctionDependencyDeclaration getFunctionDependencies()
+    {
+        return FunctionDependencyDeclaration.builder()
+                .addCastSignature(new TypeSignature("FK"), new TypeSignature("TK"))
+                .addCastSignature(new TypeSignature("FV"), new TypeSignature("TV"))
+                .build();
+    }
+
+    @Override
+    public ScalarFunctionImplementation specialize(FunctionBinding functionBinding, FunctionDependencies functionDependencies)
+    {
+        checkArgument(functionBinding.getArity() == 1, "Expected arity to be 1");
+        Type fromKeyType = functionBinding.getTypeVariable("FK");
+        Type fromValueType = functionBinding.getTypeVariable("FV");
+        Type toKeyType = functionBinding.getTypeVariable("TK");
+        Type toValueType = functionBinding.getTypeVariable("TV");
+        Type toMapType = functionBinding.getBoundSignature().getReturnType();
+
+        MethodHandle keyProcessor = buildProcessor(functionDependencies, fromKeyType, toKeyType, true);
+        MethodHandle valueProcessor = buildProcessor(functionDependencies, fromValueType, toValueType, false);
+        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(toKeyType);
+        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(toKeyType);
+        MethodHandle target = MethodHandles.insertArguments(METHOD_HANDLE, 0, keyProcessor, valueProcessor, toMapType, keyEqual, keyHashCode);
+        return new ChoicesScalarFunctionImplementation(functionBinding, NULLABLE_RETURN, ImmutableList.of(NEVER_NULL), target);
+    }
+
+    /**
+     * The signature of the returned MethodHandle is (Block fromMap, int position, ConnectorSession session, BlockBuilder mapBlockBuilder)void.
+     * The processor will get the value from fromMap, cast it and write to toBlock.
+     */
+    private MethodHandle buildProcessor(FunctionDependencies functionDependencies, Type fromType, Type toType, boolean isKey)
+    {
+        // Get block position cast, with optional connector session
+        FunctionMetadata functionMetadata = functionDependencies.getCastMetadata(fromType, toType);
+        InvocationConvention invocationConvention = new InvocationConvention(ImmutableList.of(BLOCK_POSITION), functionMetadata.isNullable() ? NULLABLE_RETURN : FAIL_ON_NULL, true, false);
+        MethodHandle cast = functionDependencies.getCastInvoker(fromType, toType, invocationConvention).getMethodHandle();
+        // Normalize cast to have connector session as first argument
+        if (cast.type().parameterArray()[0] != ConnectorSession.class) {
+            cast = MethodHandles.dropArguments(cast, 0, ConnectorSession.class);
+        }
+        // Change cast signature to (Block.class, int.class, ConnectorSession.class):T
+        cast = permuteArguments(cast, methodType(cast.type().returnType(), Block.class, int.class, ConnectorSession.class), 2, 0, 1);
+
+        // If the key cast function is nullable, check the result is not null
+        if (isKey && functionMetadata.isNullable()) {
+            cast = compose(nullChecker(cast.type().returnType()), cast);
+        }
+
+        // get write method with signature: (T, BlockBuilder.class):void
+        MethodHandle writer = nativeValueWriter(toType);
+        writer = permuteArguments(writer, methodType(void.class, writer.type().parameterArray()[1], BlockBuilder.class), 1, 0);
+
+        // ensure cast returns type expected by the writer
+        cast = cast.asType(methodType(writer.type().parameterType(0), cast.type().parameterArray()));
+
+        return compose(writer, cast);
+    }
+
+    /**
+     * Returns a null checker MethodHandle that only returns the value when it is not null.
+     * <p>
+     * The signature of the returned MethodHandle could be one of the following depending on javaType:
+     * <ul>
+     * <li>(Long value)long
+     * <li>(Double value)double
+     * <li>(Boolean value)boolean
+     * <li>(Slice value)Slice
+     * <li>(Block value)Block
+     * </ul>
+     */
+    private MethodHandle nullChecker(Class<?> javaType)
+    {
+        if (javaType == Long.class) {
+            return CHECK_LONG_IS_NOT_NULL;
+        }
+        else if (javaType == Double.class) {
+            return CHECK_DOUBLE_IS_NOT_NULL;
+        }
+        else if (javaType == Boolean.class) {
+            return CHECK_BOOLEAN_IS_NOT_NULL;
+        }
+        else if (javaType == Slice.class) {
+            return CHECK_SLICE_IS_NOT_NULL;
+        }
+        else if (javaType == Block.class) {
+            return CHECK_BLOCK_IS_NOT_NULL;
+        }
+        else {
+            throw new IllegalArgumentException("Unknown java type " + javaType);
+        }
     }
 }

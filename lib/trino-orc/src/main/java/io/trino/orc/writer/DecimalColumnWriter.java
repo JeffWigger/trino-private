@@ -90,6 +90,19 @@ public class DecimalColumnWriter
         }
     }
 
+    private static List<Integer> createDecimalColumnPositionList(
+            boolean compressed,
+            DecimalStreamCheckpoint dataCheckpoint,
+            LongStreamCheckpoint scaleCheckpoint,
+            Optional<BooleanStreamCheckpoint> presentCheckpoint)
+    {
+        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
+        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
+        positionList.addAll(dataCheckpoint.toPositionList(compressed));
+        positionList.addAll(scaleCheckpoint.toPositionList(compressed));
+        return positionList.build();
+    }
+
     @Override
     public Map<OrcColumnId, ColumnEncoding> getColumnEncodings()
     {
@@ -206,19 +219,6 @@ public class DecimalColumnWriter
     public List<StreamDataOutput> getBloomFilters(CompressedMetadataWriter metadataWriter)
     {
         return ImmutableList.of();
-    }
-
-    private static List<Integer> createDecimalColumnPositionList(
-            boolean compressed,
-            DecimalStreamCheckpoint dataCheckpoint,
-            LongStreamCheckpoint scaleCheckpoint,
-            Optional<BooleanStreamCheckpoint> presentCheckpoint)
-    {
-        ImmutableList.Builder<Integer> positionList = ImmutableList.builder();
-        presentCheckpoint.ifPresent(booleanStreamCheckpoint -> positionList.addAll(booleanStreamCheckpoint.toPositionList(compressed)));
-        positionList.addAll(dataCheckpoint.toPositionList(compressed));
-        positionList.addAll(scaleCheckpoint.toPositionList(compressed));
-        return positionList.build();
     }
 
     @Override

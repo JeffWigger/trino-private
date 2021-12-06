@@ -35,6 +35,64 @@ public class TestBlockRetainedSizeBreakdown
 {
     private static final int EXPECTED_ENTRIES = 100;
 
+    private static void checkRetainedSize(Block block, boolean getRegionCreateNewObjects)
+    {
+        AtomicLong objectSize = new AtomicLong();
+        Object2LongOpenCustomHashMap<Object> trackedObjects = new Object2LongOpenCustomHashMap<>(new ObjectStrategy());
+
+        BiConsumer<Object, Long> consumer = (object, size) -> {
+            objectSize.addAndGet(size);
+            trackedObjects.addTo(object, 1);
+        };
+
+        block.retainedBytesForEachPart(consumer);
+        assertEquals(objectSize.get(), block.getRetainedSizeInBytes());
+
+        Block copyBlock = block.getRegion(0, block.getPositionCount() / 2);
+        copyBlock.retainedBytesForEachPart(consumer);
+        assertEquals(objectSize.get(), block.getRetainedSizeInBytes() + copyBlock.getRetainedSizeInBytes());
+
+        assertEquals(trackedObjects.getLong(block), 1);
+        assertEquals(trackedObjects.getLong(copyBlock), 1);
+        trackedObjects.remove(block);
+        trackedObjects.remove(copyBlock);
+        for (long value : trackedObjects.values()) {
+            assertEquals(value, getRegionCreateNewObjects ? 1 : 2);
+        }
+    }
+
+    private static void writeEntries(int expectedEntries, BlockBuilder blockBuilder, Type type)
+    {
+        for (int i = 0; i < expectedEntries; i++) {
+            writeNativeValue(type, blockBuilder, castIntegerToObject(i, type));
+        }
+    }
+
+    private static Object castIntegerToObject(int value, Type type)
+    {
+        if (type == INTEGER || type == TINYINT || type == BIGINT) {
+            return (long) value;
+        }
+        if (type == VARCHAR) {
+            return String.valueOf(value);
+        }
+        if (type == DOUBLE) {
+            return (double) value;
+        }
+        throw new UnsupportedOperationException();
+    }
+
+    private static Block createVariableWidthBlock(int entries)
+    {
+        int[] offsets = new int[entries + 1];
+        DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(entries);
+        for (int i = 0; i < entries; i++) {
+            dynamicSliceOutput.writeByte(i);
+            offsets[i + 1] = dynamicSliceOutput.size();
+        }
+        return new VariableWidthBlock(entries, dynamicSliceOutput.slice(), offsets, Optional.empty());
+    }
+
     @Test
     public void testArrayBlock()
     {
@@ -133,63 +191,5 @@ public class TestBlockRetainedSizeBreakdown
         {
             return left == right;
         }
-    }
-
-    private static void checkRetainedSize(Block block, boolean getRegionCreateNewObjects)
-    {
-        AtomicLong objectSize = new AtomicLong();
-        Object2LongOpenCustomHashMap<Object> trackedObjects = new Object2LongOpenCustomHashMap<>(new ObjectStrategy());
-
-        BiConsumer<Object, Long> consumer = (object, size) -> {
-            objectSize.addAndGet(size);
-            trackedObjects.addTo(object, 1);
-        };
-
-        block.retainedBytesForEachPart(consumer);
-        assertEquals(objectSize.get(), block.getRetainedSizeInBytes());
-
-        Block copyBlock = block.getRegion(0, block.getPositionCount() / 2);
-        copyBlock.retainedBytesForEachPart(consumer);
-        assertEquals(objectSize.get(), block.getRetainedSizeInBytes() + copyBlock.getRetainedSizeInBytes());
-
-        assertEquals(trackedObjects.getLong(block), 1);
-        assertEquals(trackedObjects.getLong(copyBlock), 1);
-        trackedObjects.remove(block);
-        trackedObjects.remove(copyBlock);
-        for (long value : trackedObjects.values()) {
-            assertEquals(value, getRegionCreateNewObjects ? 1 : 2);
-        }
-    }
-
-    private static void writeEntries(int expectedEntries, BlockBuilder blockBuilder, Type type)
-    {
-        for (int i = 0; i < expectedEntries; i++) {
-            writeNativeValue(type, blockBuilder, castIntegerToObject(i, type));
-        }
-    }
-
-    private static Object castIntegerToObject(int value, Type type)
-    {
-        if (type == INTEGER || type == TINYINT || type == BIGINT) {
-            return (long) value;
-        }
-        if (type == VARCHAR) {
-            return String.valueOf(value);
-        }
-        if (type == DOUBLE) {
-            return (double) value;
-        }
-        throw new UnsupportedOperationException();
-    }
-
-    private static Block createVariableWidthBlock(int entries)
-    {
-        int[] offsets = new int[entries + 1];
-        DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(entries);
-        for (int i = 0; i < entries; i++) {
-            dynamicSliceOutput.writeByte(i);
-            offsets[i + 1] = dynamicSliceOutput.size();
-        }
-        return new VariableWidthBlock(entries, dynamicSliceOutput.slice(), offsets, Optional.empty());
     }
 }

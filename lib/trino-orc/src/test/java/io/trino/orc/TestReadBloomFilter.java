@@ -54,31 +54,6 @@ import static org.testng.Assert.assertNull;
 
 public class TestReadBloomFilter
 {
-    @Test
-    public void test()
-            throws Exception
-    {
-        testType(TINYINT, ImmutableList.of(1L, 50L, 100L), 50L, 77L);
-        testType(SMALLINT, ImmutableList.of(1L, 5000L, 10_000L), 5000L, 7777L);
-        testType(INTEGER, ImmutableList.of(1L, 500_000L, 1_000_000L), 500_000L, 777_777L);
-        testType(BIGINT, ImmutableList.of(1L, 500_000L, 1_000_000L), 500_000L, 777_777L);
-
-        testType(DATE, ImmutableList.of(new SqlDate(1), new SqlDate(5_000), new SqlDate(10_000)), 5_000L, 7_777L);
-        testType(TIMESTAMP_MILLIS,
-                ImmutableList.of(SqlTimestamp.fromMillis(3, 1), SqlTimestamp.fromMillis(3, 500_000L), SqlTimestamp.fromMillis(3, 1_000_000L)),
-                500_000L,
-                777_777L);
-
-        testType(REAL, ImmutableList.of(1.11f, 500_000.56f, 1_000_000.99f), (long) floatToIntBits(500_000.56f), (long) floatToIntBits(777_777.77f));
-        testType(DOUBLE, ImmutableList.of(1.11, 500_000.55, 1_000_000.99), 500_000.55, 777_777.77);
-
-        testType(VARCHAR, ImmutableList.of("a", "o", "z"), utf8Slice("o"), utf8Slice("w"));
-        testType(VARBINARY,
-                ImmutableList.of(new SqlVarbinary("a".getBytes(UTF_8)), new SqlVarbinary("o".getBytes(UTF_8)), new SqlVarbinary("z".getBytes(UTF_8))),
-                utf8Slice("o"),
-                utf8Slice("w"));
-    }
-
     private static <T> void testType(Type type, List<T> uniqueValues, T inBloomFilter, T notInBloomFilter)
             throws Exception
     {
@@ -141,5 +116,30 @@ public class TestReadBloomFilter
                 newSimpleAggregatedMemoryContext(),
                 initialBatchSize,
                 RuntimeException::new);
+    }
+
+    @Test
+    public void test()
+            throws Exception
+    {
+        testType(TINYINT, ImmutableList.of(1L, 50L, 100L), 50L, 77L);
+        testType(SMALLINT, ImmutableList.of(1L, 5000L, 10_000L), 5000L, 7777L);
+        testType(INTEGER, ImmutableList.of(1L, 500_000L, 1_000_000L), 500_000L, 777_777L);
+        testType(BIGINT, ImmutableList.of(1L, 500_000L, 1_000_000L), 500_000L, 777_777L);
+
+        testType(DATE, ImmutableList.of(new SqlDate(1), new SqlDate(5_000), new SqlDate(10_000)), 5_000L, 7_777L);
+        testType(TIMESTAMP_MILLIS,
+                ImmutableList.of(SqlTimestamp.fromMillis(3, 1), SqlTimestamp.fromMillis(3, 500_000L), SqlTimestamp.fromMillis(3, 1_000_000L)),
+                500_000L,
+                777_777L);
+
+        testType(REAL, ImmutableList.of(1.11f, 500_000.56f, 1_000_000.99f), (long) floatToIntBits(500_000.56f), (long) floatToIntBits(777_777.77f));
+        testType(DOUBLE, ImmutableList.of(1.11, 500_000.55, 1_000_000.99), 500_000.55, 777_777.77);
+
+        testType(VARCHAR, ImmutableList.of("a", "o", "z"), utf8Slice("o"), utf8Slice("w"));
+        testType(VARBINARY,
+                ImmutableList.of(new SqlVarbinary("a".getBytes(UTF_8)), new SqlVarbinary("o".getBytes(UTF_8)), new SqlVarbinary("z".getBytes(UTF_8))),
+                utf8Slice("o"),
+                utf8Slice("w"));
     }
 }

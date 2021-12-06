@@ -31,17 +31,17 @@ import java.util.Set;
 public class TestingEventListenerManager
         extends EventListenerManager
 {
-    public static TestingEventListenerManager emptyEventListenerManager()
-    {
-        return new TestingEventListenerManager(new EventListenerConfig());
-    }
-
     private final Set<EventListener> configuredEventListeners = Collections.synchronizedSet(new HashSet<>());
 
     @Inject
     public TestingEventListenerManager(EventListenerConfig config)
     {
         super(config);
+    }
+
+    public static TestingEventListenerManager emptyEventListenerManager()
+    {
+        return new TestingEventListenerManager(new EventListenerConfig());
     }
 
     @Override

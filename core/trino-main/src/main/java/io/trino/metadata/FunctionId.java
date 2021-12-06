@@ -35,6 +35,11 @@ public class FunctionId
         this.id = id;
     }
 
+    public static FunctionId toFunctionId(Signature signature)
+    {
+        return new FunctionId(signature.toString().toLowerCase(Locale.US));
+    }
+
     @Override
     public boolean equals(Object o)
     {
@@ -59,10 +64,5 @@ public class FunctionId
     public String toString()
     {
         return id;
-    }
-
-    public static FunctionId toFunctionId(Signature signature)
-    {
-        return new FunctionId(signature.toString().toLowerCase(Locale.US));
     }
 }

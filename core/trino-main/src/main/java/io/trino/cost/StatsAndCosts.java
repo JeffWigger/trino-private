@@ -34,11 +34,6 @@ public class StatsAndCosts
     private final Map<PlanNodeId, PlanNodeStatsEstimate> stats;
     private final Map<PlanNodeId, PlanCostEstimate> costs;
 
-    public static StatsAndCosts empty()
-    {
-        return EMPTY;
-    }
-
     @JsonCreator
     public StatsAndCosts(
             @JsonProperty("stats") Map<PlanNodeId, PlanNodeStatsEstimate> stats,
@@ -48,33 +43,9 @@ public class StatsAndCosts
         this.costs = ImmutableMap.copyOf(requireNonNull(costs, "costs is null"));
     }
 
-    @JsonProperty
-    public Map<PlanNodeId, PlanNodeStatsEstimate> getStats()
+    public static StatsAndCosts empty()
     {
-        return stats;
-    }
-
-    @JsonProperty
-    public Map<PlanNodeId, PlanCostEstimate> getCosts()
-    {
-        return costs;
-    }
-
-    public StatsAndCosts getForSubplan(PlanNode root)
-    {
-        Iterable<PlanNode> planIterator = Traverser.forTree(PlanNode::getSources)
-                .depthFirstPreOrder(root);
-        ImmutableMap.Builder<PlanNodeId, PlanNodeStatsEstimate> filteredStats = ImmutableMap.builder();
-        ImmutableMap.Builder<PlanNodeId, PlanCostEstimate> filteredCosts = ImmutableMap.builder();
-        for (PlanNode node : planIterator) {
-            if (stats.containsKey(node.getId())) {
-                filteredStats.put(node.getId(), stats.get(node.getId()));
-            }
-            if (costs.containsKey(node.getId())) {
-                filteredCosts.put(node.getId(), costs.get(node.getId()));
-            }
-        }
-        return new StatsAndCosts(filteredStats.build(), filteredCosts.build());
+        return EMPTY;
     }
 
     public static StatsAndCosts create(PlanNode root, StatsProvider statsProvider, CostProvider costProvider)
@@ -111,5 +82,34 @@ public class StatsAndCosts
         for (StageInfo subStage : stage.getSubStages()) {
             reconstructStatsAndCosts(subStage, planNodeStats, planNodeCosts);
         }
+    }
+
+    @JsonProperty
+    public Map<PlanNodeId, PlanNodeStatsEstimate> getStats()
+    {
+        return stats;
+    }
+
+    @JsonProperty
+    public Map<PlanNodeId, PlanCostEstimate> getCosts()
+    {
+        return costs;
+    }
+
+    public StatsAndCosts getForSubplan(PlanNode root)
+    {
+        Iterable<PlanNode> planIterator = Traverser.forTree(PlanNode::getSources)
+                .depthFirstPreOrder(root);
+        ImmutableMap.Builder<PlanNodeId, PlanNodeStatsEstimate> filteredStats = ImmutableMap.builder();
+        ImmutableMap.Builder<PlanNodeId, PlanCostEstimate> filteredCosts = ImmutableMap.builder();
+        for (PlanNode node : planIterator) {
+            if (stats.containsKey(node.getId())) {
+                filteredStats.put(node.getId(), stats.get(node.getId()));
+            }
+            if (costs.containsKey(node.getId())) {
+                filteredCosts.put(node.getId(), costs.get(node.getId()));
+            }
+        }
+        return new StatsAndCosts(filteredStats.build(), filteredCosts.build());
     }
 }

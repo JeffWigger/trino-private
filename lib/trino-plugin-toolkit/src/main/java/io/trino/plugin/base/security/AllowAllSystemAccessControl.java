@@ -42,24 +42,6 @@ public class AllowAllSystemAccessControl
 
     public static final AllowAllSystemAccessControl INSTANCE = new AllowAllSystemAccessControl();
 
-    public static class Factory
-            implements SystemAccessControlFactory
-    {
-        @Override
-        public String getName()
-        {
-            return NAME;
-        }
-
-        @Override
-        public SystemAccessControl create(Map<String, String> config)
-        {
-            requireNonNull(config, "config is null");
-            checkArgument(config.isEmpty(), "This access controller does not support any configuration properties");
-            return INSTANCE;
-        }
-    }
-
     @Override
     public void checkCanImpersonateUser(SystemSecurityContext context, String userName)
     {
@@ -391,5 +373,23 @@ public class AllowAllSystemAccessControl
     public Optional<ViewExpression> getColumnMask(SystemSecurityContext context, CatalogSchemaTableName tableName, String columnName, Type type)
     {
         return Optional.empty();
+    }
+
+    public static class Factory
+            implements SystemAccessControlFactory
+    {
+        @Override
+        public String getName()
+        {
+            return NAME;
+        }
+
+        @Override
+        public SystemAccessControl create(Map<String, String> config)
+        {
+            requireNonNull(config, "config is null");
+            checkArgument(config.isEmpty(), "This access controller does not support any configuration properties");
+            return INSTANCE;
+        }
     }
 }

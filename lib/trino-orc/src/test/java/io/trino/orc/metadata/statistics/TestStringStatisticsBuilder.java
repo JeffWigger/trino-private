@@ -53,6 +53,44 @@ public class TestStringStatisticsBuilder
         super(STRING, () -> new StringStatisticsBuilder(Integer.MAX_VALUE, new NoOpBloomFilterBuilder()), StringStatisticsBuilder::addValue);
     }
 
+    private static void assertMinMaxValuesWithLimit(Slice expectedMin, Slice expectedMax, List<Slice> values, int limit)
+    {
+        checkArgument(values != null && !values.isEmpty());
+        StringStatisticsBuilder builder = new StringStatisticsBuilder(limit, new NoOpBloomFilterBuilder());
+        for (Slice value : values) {
+            builder.addValue(value);
+        }
+        assertMinMax(builder.buildColumnStatistics().getStringStatistics(), expectedMin, expectedMax);
+    }
+
+    private static void assertMinMax(StringStatistics actualStringStatistics, Slice expectedMin, Slice expectedMax)
+    {
+        if (expectedMax == null && expectedMin == null) {
+            assertNull(actualStringStatistics);
+            return;
+        }
+
+        assertNotNull(actualStringStatistics);
+        assertEquals(actualStringStatistics.getMin(), expectedMin);
+        assertEquals(actualStringStatistics.getMax(), expectedMax);
+    }
+
+    private static ColumnStatistics stringColumnStatistics(Slice minimum, Slice maximum)
+    {
+        return new ColumnStatistics(
+                100L,
+                100,
+                null,
+                null,
+                null,
+                minimum == null && maximum == null ? null : new StringStatistics(minimum, maximum, 100),
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
     @Test
     public void testMinMaxValues()
     {
@@ -265,44 +303,6 @@ public class TestStringStatisticsBuilder
         assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, 0, 10)), expectedNumberOfValues + 10);
         assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size(), 10)), expectedNumberOfValues + 10);
         assertNoColumnStatistics(mergeColumnStatistics(insertEmptyColumnStatisticsAt(statisticsList, statisticsList.size() / 2, 10)), expectedNumberOfValues + 10);
-    }
-
-    private static void assertMinMaxValuesWithLimit(Slice expectedMin, Slice expectedMax, List<Slice> values, int limit)
-    {
-        checkArgument(values != null && !values.isEmpty());
-        StringStatisticsBuilder builder = new StringStatisticsBuilder(limit, new NoOpBloomFilterBuilder());
-        for (Slice value : values) {
-            builder.addValue(value);
-        }
-        assertMinMax(builder.buildColumnStatistics().getStringStatistics(), expectedMin, expectedMax);
-    }
-
-    private static void assertMinMax(StringStatistics actualStringStatistics, Slice expectedMin, Slice expectedMax)
-    {
-        if (expectedMax == null && expectedMin == null) {
-            assertNull(actualStringStatistics);
-            return;
-        }
-
-        assertNotNull(actualStringStatistics);
-        assertEquals(actualStringStatistics.getMin(), expectedMin);
-        assertEquals(actualStringStatistics.getMax(), expectedMax);
-    }
-
-    private static ColumnStatistics stringColumnStatistics(Slice minimum, Slice maximum)
-    {
-        return new ColumnStatistics(
-                100L,
-                100,
-                null,
-                null,
-                null,
-                minimum == null && maximum == null ? null : new StringStatistics(minimum, maximum, 100),
-                null,
-                null,
-                null,
-                null,
-                null);
     }
 
     private void assertStringStatistics(ColumnStatistics columnStatistics, int expectedNumberOfValues, long expectedSum)

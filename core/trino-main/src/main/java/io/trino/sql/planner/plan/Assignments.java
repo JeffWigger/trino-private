@@ -45,6 +45,14 @@ import static java.util.Objects.requireNonNull;
 
 public class Assignments
 {
+    private final Map<Symbol, Expression> assignments;
+
+    @JsonCreator
+    public Assignments(@JsonProperty("assignments") Map<Symbol, Expression> assignments)
+    {
+        this.assignments = ImmutableMap.copyOf(requireNonNull(assignments, "assignments is null"));
+    }
+
     public static Builder builder()
     {
         return new Builder();
@@ -92,14 +100,6 @@ public class Assignments
         }
 
         return assignments.build();
-    }
-
-    private final Map<Symbol, Expression> assignments;
-
-    @JsonCreator
-    public Assignments(@JsonProperty("assignments") Map<Symbol, Expression> assignments)
-    {
-        this.assignments = ImmutableMap.copyOf(requireNonNull(assignments, "assignments is null"));
     }
 
     public List<Symbol> getOutputs()

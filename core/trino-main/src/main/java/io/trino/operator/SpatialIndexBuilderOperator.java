@@ -37,105 +37,9 @@ import static java.util.Objects.requireNonNull;
 public class SpatialIndexBuilderOperator
         implements Operator
 {
-    @FunctionalInterface
-    public interface SpatialPredicate
-    {
-        boolean apply(OGCGeometry probe, OGCGeometry build, OptionalDouble radius);
-    }
-
-    public static final class SpatialIndexBuilderOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final PagesSpatialIndexFactory pagesSpatialIndexFactory;
-        private final List<Integer> outputChannels;
-        private final int indexChannel;
-        private final Optional<Integer> radiusChannel;
-        private final Optional<Integer> partitionChannel;
-        private final SpatialPredicate spatialRelationshipTest;
-        private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
-        private final PagesIndex.Factory pagesIndexFactory;
-        private final Map<Integer, Rectangle> spatialPartitions = new HashMap<>();
-
-        private final int expectedPositions;
-
-        private boolean closed;
-
-        public SpatialIndexBuilderOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<Type> types,
-                List<Integer> outputChannels,
-                int indexChannel,
-                Optional<Integer> radiusChannel,
-                Optional<Integer> partitionChannel,
-                SpatialPredicate spatialRelationshipTest,
-                Optional<String> kdbTreeJson,
-                Optional<JoinFilterFunctionFactory> filterFunctionFactory,
-                int expectedPositions,
-                PagesIndex.Factory pagesIndexFactory)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
-
-            List<Type> outputTypes = outputChannels.stream()
-                    .map(types::get)
-                    .collect(toImmutableList());
-            pagesSpatialIndexFactory = new PagesSpatialIndexFactory(types, outputTypes);
-
-            this.indexChannel = indexChannel;
-            this.radiusChannel = radiusChannel;
-            this.partitionChannel = requireNonNull(partitionChannel, "partitionChannel is null");
-            this.spatialRelationshipTest = spatialRelationshipTest;
-            this.filterFunctionFactory = requireNonNull(filterFunctionFactory, "filterFunctionFactory is null");
-            this.pagesIndexFactory = pagesIndexFactory;
-            this.expectedPositions = expectedPositions;
-            kdbTreeJson.ifPresent(json -> this.spatialPartitions.putAll(KdbTreeUtils.fromJson(json).getLeaves()));
-        }
-
-        public PagesSpatialIndexFactory getPagesSpatialIndexFactory()
-        {
-            return pagesSpatialIndexFactory;
-        }
-
-        @Override
-        public SpatialIndexBuilderOperator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, SpatialIndexBuilderOperator.class.getSimpleName());
-            return new SpatialIndexBuilderOperator(
-                    operatorContext,
-                    pagesSpatialIndexFactory,
-                    outputChannels,
-                    indexChannel,
-                    radiusChannel,
-                    partitionChannel,
-                    spatialRelationshipTest,
-                    filterFunctionFactory,
-                    expectedPositions,
-                    pagesIndexFactory,
-                    spatialPartitions);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            throw new UnsupportedOperationException("Spatial index build cannot be duplicated");
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext localUserMemoryContext;
     private final PagesSpatialIndexFactory pagesSpatialIndexFactory;
-
     private final List<Integer> outputChannels;
     private final int indexChannel;
     private final Optional<Integer> radiusChannel;
@@ -143,10 +47,8 @@ public class SpatialIndexBuilderOperator
     private final SpatialPredicate spatialRelationshipTest;
     private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
     private final Map<Integer, Rectangle> partitions;
-
     private final PagesIndex index;
     private ListenableFuture<Void> indexNotNeeded;
-
     private boolean finishing;
     private boolean finished;
 
@@ -256,5 +158,100 @@ public class SpatialIndexBuilderOperator
     {
         index.clear();
         localUserMemoryContext.setBytes(index.getEstimatedSize().toBytes());
+    }
+
+    @FunctionalInterface
+    public interface SpatialPredicate
+    {
+        boolean apply(OGCGeometry probe, OGCGeometry build, OptionalDouble radius);
+    }
+
+    public static final class SpatialIndexBuilderOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final PagesSpatialIndexFactory pagesSpatialIndexFactory;
+        private final List<Integer> outputChannels;
+        private final int indexChannel;
+        private final Optional<Integer> radiusChannel;
+        private final Optional<Integer> partitionChannel;
+        private final SpatialPredicate spatialRelationshipTest;
+        private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
+        private final PagesIndex.Factory pagesIndexFactory;
+        private final Map<Integer, Rectangle> spatialPartitions = new HashMap<>();
+
+        private final int expectedPositions;
+
+        private boolean closed;
+
+        public SpatialIndexBuilderOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<Type> types,
+                List<Integer> outputChannels,
+                int indexChannel,
+                Optional<Integer> radiusChannel,
+                Optional<Integer> partitionChannel,
+                SpatialPredicate spatialRelationshipTest,
+                Optional<String> kdbTreeJson,
+                Optional<JoinFilterFunctionFactory> filterFunctionFactory,
+                int expectedPositions,
+                PagesIndex.Factory pagesIndexFactory)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.outputChannels = ImmutableList.copyOf(requireNonNull(outputChannels, "outputChannels is null"));
+
+            List<Type> outputTypes = outputChannels.stream()
+                    .map(types::get)
+                    .collect(toImmutableList());
+            pagesSpatialIndexFactory = new PagesSpatialIndexFactory(types, outputTypes);
+
+            this.indexChannel = indexChannel;
+            this.radiusChannel = radiusChannel;
+            this.partitionChannel = requireNonNull(partitionChannel, "partitionChannel is null");
+            this.spatialRelationshipTest = spatialRelationshipTest;
+            this.filterFunctionFactory = requireNonNull(filterFunctionFactory, "filterFunctionFactory is null");
+            this.pagesIndexFactory = pagesIndexFactory;
+            this.expectedPositions = expectedPositions;
+            kdbTreeJson.ifPresent(json -> this.spatialPartitions.putAll(KdbTreeUtils.fromJson(json).getLeaves()));
+        }
+
+        public PagesSpatialIndexFactory getPagesSpatialIndexFactory()
+        {
+            return pagesSpatialIndexFactory;
+        }
+
+        @Override
+        public SpatialIndexBuilderOperator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, SpatialIndexBuilderOperator.class.getSimpleName());
+            return new SpatialIndexBuilderOperator(
+                    operatorContext,
+                    pagesSpatialIndexFactory,
+                    outputChannels,
+                    indexChannel,
+                    radiusChannel,
+                    partitionChannel,
+                    spatialRelationshipTest,
+                    filterFunctionFactory,
+                    expectedPositions,
+                    pagesIndexFactory,
+                    spatialPartitions);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            throw new UnsupportedOperationException("Spatial index build cannot be duplicated");
+        }
     }
 }

@@ -38,6 +38,26 @@ import static org.testng.Assert.assertTrue;
 
 public class TestDictionaryCompressionOptimizer
 {
+    private static int megabytes(int size)
+    {
+        return toIntExact(DataSize.of(size, Unit.MEGABYTE).toBytes());
+    }
+
+    private static TestDictionaryColumn directColumn(int bytesPerEntry, double uniquePercentage)
+    {
+        return new TestDictionaryColumn(bytesPerEntry, uniquePercentage, OptionalInt.empty(), 1, 0);
+    }
+
+    private static TestDictionaryColumn dictionaryColumn(int bytesPerEntry, int maxDictionaryEntries)
+    {
+        return dictionaryColumn(bytesPerEntry, maxDictionaryEntries, 0.5);
+    }
+
+    private static TestDictionaryColumn dictionaryColumn(int bytesPerEntry, int maxDictionaryEntries, double uniquePercentage)
+    {
+        return new TestDictionaryColumn(bytesPerEntry, uniquePercentage, OptionalInt.of(maxDictionaryEntries), 1, 0);
+    }
+
     @Test
     public void testNoDictionariesBytesLimit()
     {
@@ -421,11 +441,6 @@ public class TestDictionaryCompressionOptimizer
         }
     }
 
-    private static int megabytes(int size)
-    {
-        return toIntExact(DataSize.of(size, Unit.MEGABYTE).toBytes());
-    }
-
     private static class DataSimulator
     {
         private final int stripeMaxBytes;
@@ -504,21 +519,6 @@ public class TestDictionaryCompressionOptimizer
         {
             return rowCount;
         }
-    }
-
-    private static TestDictionaryColumn directColumn(int bytesPerEntry, double uniquePercentage)
-    {
-        return new TestDictionaryColumn(bytesPerEntry, uniquePercentage, OptionalInt.empty(), 1, 0);
-    }
-
-    private static TestDictionaryColumn dictionaryColumn(int bytesPerEntry, int maxDictionaryEntries)
-    {
-        return dictionaryColumn(bytesPerEntry, maxDictionaryEntries, 0.5);
-    }
-
-    private static TestDictionaryColumn dictionaryColumn(int bytesPerEntry, int maxDictionaryEntries, double uniquePercentage)
-    {
-        return new TestDictionaryColumn(bytesPerEntry, uniquePercentage, OptionalInt.of(maxDictionaryEntries), 1, 0);
     }
 
     private static class TestDictionaryColumn

@@ -67,12 +67,10 @@ public class FileSingleStreamSpiller
     private final LocalMemoryContext memoryContext;
 
     private final ListeningExecutorService executor;
-
+    private final Runnable fileSystemErrorHandler;
     private boolean writable = true;
     private long spilledPagesInMemorySize;
     private ListenableFuture<Void> spillInProgress = immediateVoidFuture();
-
-    private final Runnable fileSystemErrorHandler;
 
     public FileSingleStreamSpiller(
             PagesSerde serde,
@@ -111,6 +109,30 @@ public class FileSingleStreamSpiller
             this.fileSystemErrorHandler.run();
             throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to create spill file", e);
         }
+    }
+
+    private static <T> Iterator<T> closeWhenExhausted(Iterator<T> iterator, Closeable resource)
+    {
+        requireNonNull(iterator, "iterator is null");
+        requireNonNull(resource, "resource is null");
+
+        return new AbstractIterator<>()
+        {
+            @Override
+            protected T computeNext()
+            {
+                if (iterator.hasNext()) {
+                    return iterator.next();
+                }
+                try {
+                    resource.close();
+                }
+                catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+                return endOfData();
+            }
+        };
     }
 
     @Override
@@ -195,29 +217,5 @@ public class FileSingleStreamSpiller
     private void checkNoSpillInProgress()
     {
         checkState(spillInProgress.isDone(), "spill in progress");
-    }
-
-    private static <T> Iterator<T> closeWhenExhausted(Iterator<T> iterator, Closeable resource)
-    {
-        requireNonNull(iterator, "iterator is null");
-        requireNonNull(resource, "resource is null");
-
-        return new AbstractIterator<>()
-        {
-            @Override
-            protected T computeNext()
-            {
-                if (iterator.hasNext()) {
-                    return iterator.next();
-                }
-                try {
-                    resource.close();
-                }
-                catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-                return endOfData();
-            }
-        };
     }
 }

@@ -24,6 +24,25 @@ import static com.google.common.collect.MoreCollectors.toOptional;
 public interface Lookup
 {
     /**
+     * A Lookup implementation that does not perform lookup. It satisfies contract
+     * by rejecting {@link GroupReference}-s.
+     */
+    static Lookup noLookup()
+    {
+        return node -> {
+            throw new UnsupportedOperationException();
+        };
+    }
+
+    static Lookup from(Function<GroupReference, Stream<PlanNode>> resolver)
+    {
+        return node -> {
+            checkArgument(node instanceof GroupReference, "Node '%s' is not a GroupReference", node.getClass().getSimpleName());
+            return resolver.apply((GroupReference) node);
+        };
+    }
+
+    /**
      * Resolves a node by materializing GroupReference nodes
      * representing symbolic references to other nodes. This method
      * is deprecated since is assumes group contains only one node.
@@ -47,23 +66,4 @@ public interface Lookup
      * @throws IllegalArgumentException if the node is not a GroupReference
      */
     Stream<PlanNode> resolveGroup(PlanNode node);
-
-    /**
-     * A Lookup implementation that does not perform lookup. It satisfies contract
-     * by rejecting {@link GroupReference}-s.
-     */
-    static Lookup noLookup()
-    {
-        return node -> {
-            throw new UnsupportedOperationException();
-        };
-    }
-
-    static Lookup from(Function<GroupReference, Stream<PlanNode>> resolver)
-    {
-        return node -> {
-            checkArgument(node instanceof GroupReference, "Node '%s' is not a GroupReference", node.getClass().getSimpleName());
-            return resolver.apply((GroupReference) node);
-        };
-    }
 }

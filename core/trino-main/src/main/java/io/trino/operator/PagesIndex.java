@@ -124,56 +124,6 @@ public class PagesIndex
         estimatedSize = calculateEstimatedSize();
     }
 
-    public interface Factory
-    {
-        PagesIndex newPagesIndex(List<Type> types, int expectedPositions);
-    }
-
-    public static class TestingFactory
-            implements Factory
-    {
-        public static final TypeOperators TYPE_OPERATORS = new TypeOperators();
-        private static final OrderingCompiler ORDERING_COMPILER = new OrderingCompiler(TYPE_OPERATORS);
-        private static final JoinCompiler JOIN_COMPILER = new JoinCompiler(TYPE_OPERATORS);
-        private static final BlockTypeOperators TYPE_OPERATOR_FACTORY = new BlockTypeOperators(TYPE_OPERATORS);
-        private final boolean eagerCompact;
-
-        public TestingFactory(boolean eagerCompact)
-        {
-            this.eagerCompact = eagerCompact;
-        }
-
-        @Override
-        public PagesIndex newPagesIndex(List<Type> types, int expectedPositions)
-        {
-            return new PagesIndex(ORDERING_COMPILER, JOIN_COMPILER, TYPE_OPERATOR_FACTORY, types, expectedPositions, eagerCompact);
-        }
-    }
-
-    public static class DefaultFactory
-            implements Factory
-    {
-        private final OrderingCompiler orderingCompiler;
-        private final JoinCompiler joinCompiler;
-        private final boolean eagerCompact;
-        private final BlockTypeOperators blockTypeOperators;
-
-        @Inject
-        public DefaultFactory(OrderingCompiler orderingCompiler, JoinCompiler joinCompiler, FeaturesConfig featuresConfig, BlockTypeOperators blockTypeOperators)
-        {
-            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
-            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
-            this.eagerCompact = requireNonNull(featuresConfig, "featuresConfig is null").isPagesIndexEagerCompactionEnabled();
-            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
-        }
-
-        @Override
-        public PagesIndex newPagesIndex(List<Type> types, int expectedPositions)
-        {
-            return new PagesIndex(orderingCompiler, joinCompiler, blockTypeOperators, types, expectedPositions, eagerCompact);
-        }
-    }
-
     public List<Type> getTypes()
     {
         return types;
@@ -580,13 +530,9 @@ public class PagesIndex
     {
         return new AbstractIterator<>()
         {
-            private int currentPosition;
             private final PageBuilder pageBuilder = new PageBuilder(types);
             private final int[] outputChannels = new int[types.size()];
-
-            {
-                Arrays.setAll(outputChannels, IntUnaryOperator.identity());
-            }
+            private int currentPosition;
 
             @Override
             public Page computeNext()
@@ -599,6 +545,60 @@ public class PagesIndex
                 pageBuilder.reset();
                 return page;
             }
+
+            {
+                Arrays.setAll(outputChannels, IntUnaryOperator.identity());
+            }
         };
+    }
+
+    public interface Factory
+    {
+        PagesIndex newPagesIndex(List<Type> types, int expectedPositions);
+    }
+
+    public static class TestingFactory
+            implements Factory
+    {
+        public static final TypeOperators TYPE_OPERATORS = new TypeOperators();
+        private static final OrderingCompiler ORDERING_COMPILER = new OrderingCompiler(TYPE_OPERATORS);
+        private static final JoinCompiler JOIN_COMPILER = new JoinCompiler(TYPE_OPERATORS);
+        private static final BlockTypeOperators TYPE_OPERATOR_FACTORY = new BlockTypeOperators(TYPE_OPERATORS);
+        private final boolean eagerCompact;
+
+        public TestingFactory(boolean eagerCompact)
+        {
+            this.eagerCompact = eagerCompact;
+        }
+
+        @Override
+        public PagesIndex newPagesIndex(List<Type> types, int expectedPositions)
+        {
+            return new PagesIndex(ORDERING_COMPILER, JOIN_COMPILER, TYPE_OPERATOR_FACTORY, types, expectedPositions, eagerCompact);
+        }
+    }
+
+    public static class DefaultFactory
+            implements Factory
+    {
+        private final OrderingCompiler orderingCompiler;
+        private final JoinCompiler joinCompiler;
+        private final boolean eagerCompact;
+        private final BlockTypeOperators blockTypeOperators;
+
+        @Inject
+        public DefaultFactory(OrderingCompiler orderingCompiler, JoinCompiler joinCompiler, FeaturesConfig featuresConfig, BlockTypeOperators blockTypeOperators)
+        {
+            this.orderingCompiler = requireNonNull(orderingCompiler, "orderingCompiler is null");
+            this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
+            this.eagerCompact = requireNonNull(featuresConfig, "featuresConfig is null").isPagesIndexEagerCompactionEnabled();
+            this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
+        }
+
+        @Override
+        public PagesIndex newPagesIndex(List<Type> types, int expectedPositions)
+        {
+            return new PagesIndex(orderingCompiler, joinCompiler, blockTypeOperators, types, expectedPositions, eagerCompact);
+        }
     }
 }

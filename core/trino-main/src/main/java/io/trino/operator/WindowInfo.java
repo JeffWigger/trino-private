@@ -30,18 +30,17 @@ public class WindowInfo
         implements Mergeable<WindowInfo>, OperatorInfo
 {
     private static final WindowInfo EMPTY_INFO = new WindowInfo(ImmutableList.of());
-
-    public static WindowInfo emptyInfo()
-    {
-        return EMPTY_INFO;
-    }
-
     private final List<DriverWindowInfo> windowInfos;
 
     @JsonCreator
     public WindowInfo(@JsonProperty("windowInfos") List<DriverWindowInfo> windowInfos)
     {
         this.windowInfos = ImmutableList.copyOf(windowInfos);
+    }
+
+    public static WindowInfo emptyInfo()
+    {
+        return EMPTY_INFO;
     }
 
     @JsonProperty

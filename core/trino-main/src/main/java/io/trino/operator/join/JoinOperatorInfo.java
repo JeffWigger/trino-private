@@ -34,17 +34,6 @@ public class JoinOperatorInfo
     private final long[] logHistogramOutput;
     private final Optional<Long> lookupSourcePositions;
 
-    public static JoinOperatorInfo createJoinOperatorInfo(JoinType joinType, long[] logHistogramCounters, Optional<Long> lookupSourcePositions)
-    {
-        long[] logHistogramProbes = new long[HISTOGRAM_BUCKETS];
-        long[] logHistogramOutput = new long[HISTOGRAM_BUCKETS];
-        for (int i = 0; i < HISTOGRAM_BUCKETS; i++) {
-            logHistogramProbes[i] = logHistogramCounters[2 * i];
-            logHistogramOutput[i] = logHistogramCounters[2 * i + 1];
-        }
-        return new JoinOperatorInfo(joinType, logHistogramProbes, logHistogramOutput, lookupSourcePositions);
-    }
-
     @JsonCreator
     public JoinOperatorInfo(
             @JsonProperty("joinType") JoinType joinType,
@@ -58,6 +47,17 @@ public class JoinOperatorInfo
         this.logHistogramProbes = logHistogramProbes;
         this.logHistogramOutput = logHistogramOutput;
         this.lookupSourcePositions = lookupSourcePositions;
+    }
+
+    public static JoinOperatorInfo createJoinOperatorInfo(JoinType joinType, long[] logHistogramCounters, Optional<Long> lookupSourcePositions)
+    {
+        long[] logHistogramProbes = new long[HISTOGRAM_BUCKETS];
+        long[] logHistogramOutput = new long[HISTOGRAM_BUCKETS];
+        for (int i = 0; i < HISTOGRAM_BUCKETS; i++) {
+            logHistogramProbes[i] = logHistogramCounters[2 * i];
+            logHistogramOutput[i] = logHistogramCounters[2 * i + 1];
+        }
+        return new JoinOperatorInfo(joinType, logHistogramProbes, logHistogramOutput, lookupSourcePositions);
     }
 
     @JsonProperty

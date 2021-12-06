@@ -22,33 +22,9 @@ import static java.util.Objects.requireNonNull;
 
 public final class JoinCondition
 {
-    public enum Operator
-    {
-        EQUAL("="),
-        NOT_EQUAL("<>"),
-        LESS_THAN("<"),
-        LESS_THAN_OR_EQUAL("<="),
-        GREATER_THAN(">"),
-        GREATER_THAN_OR_EQUAL(">="),
-        IS_DISTINCT_FROM("IS DISTINCT FROM");
-
-        private final String value;
-
-        Operator(String value)
-        {
-            this.value = value;
-        }
-
-        public String getValue()
-        {
-            return value;
-        }
-    }
-
     private final Operator operator;
     private final ConnectorExpression leftExpression;
     private final ConnectorExpression rightExpression;
-
     public JoinCondition(Operator operator, ConnectorExpression leftExpression, ConnectorExpression rightExpression)
     {
         this.operator = requireNonNull(operator, "operator is null");
@@ -96,5 +72,28 @@ public final class JoinCondition
     public String toString()
     {
         return format("%s %s %s", leftExpression, operator.getValue(), rightExpression);
+    }
+
+    public enum Operator
+    {
+        EQUAL("="),
+        NOT_EQUAL("<>"),
+        LESS_THAN("<"),
+        LESS_THAN_OR_EQUAL("<="),
+        GREATER_THAN(">"),
+        GREATER_THAN_OR_EQUAL(">="),
+        IS_DISTINCT_FROM("IS DISTINCT FROM");
+
+        private final String value;
+
+        Operator(String value)
+        {
+            this.value = value;
+        }
+
+        public String getValue()
+        {
+            return value;
+        }
     }
 }

@@ -35,29 +35,20 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 public class PrioritizedSplitRunner
         implements Comparable<PrioritizedSplitRunner>
 {
-    private static final AtomicLong NEXT_WORKER_ID = new AtomicLong();
-
-    private static final Logger log = Logger.get(PrioritizedSplitRunner.class);
-
     // each time we run a split, run it for this length before returning to the pool
     public static final Duration SPLIT_RUN_QUANTA = new Duration(1, TimeUnit.SECONDS);
-
+    private static final AtomicLong NEXT_WORKER_ID = new AtomicLong();
+    private static final Logger log = Logger.get(PrioritizedSplitRunner.class);
+    protected final AtomicReference<Priority> priority = new AtomicReference<>(new Priority(0, 0));
+    protected final AtomicLong lastRun = new AtomicLong();
     private final long createdNanos = System.nanoTime();
-
     private final TaskHandle taskHandle;
     private final int splitId;
     private final long workerId;
     private final SplitRunner split;
-
     private final Ticker ticker;
-
     private final SettableFuture<Void> finishedFuture = SettableFuture.create();
-
     private final AtomicBoolean destroyed = new AtomicBoolean();
-
-    protected final AtomicReference<Priority> priority = new AtomicReference<>(new Priority(0, 0));
-
-    protected final AtomicLong lastRun = new AtomicLong();
     private final AtomicLong lastReady = new AtomicLong();
     private final AtomicLong start = new AtomicLong();
 

@@ -98,6 +98,16 @@ public class ColumnMetadata
         this.nullable = nullable;
     }
 
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static Builder builderFrom(ColumnMetadata columnMetadata)
+    {
+        return new Builder(columnMetadata);
+    }
+
     public String getName()
     {
         return name;
@@ -186,16 +196,6 @@ public class ColumnMetadata
                 Objects.equals(this.comment, other.comment) &&
                 Objects.equals(this.extraInfo, other.extraInfo) &&
                 Objects.equals(this.hidden, other.hidden);
-    }
-
-    public static Builder builder()
-    {
-        return new Builder();
-    }
-
-    public static Builder builderFrom(ColumnMetadata columnMetadata)
-    {
-        return new Builder(columnMetadata);
     }
 
     public static class Builder

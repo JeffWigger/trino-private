@@ -37,9 +37,8 @@ public class IntArrayBlockBuilder
 
     @Nullable
     private final BlockBuilderStatus blockBuilderStatus;
-    private boolean initialized;
     private final int initialEntryCount;
-
+    private boolean initialized;
     private int positionCount;
     private boolean hasNullValue;
     private boolean hasNonNullValue;

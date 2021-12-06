@@ -35,23 +35,6 @@ public class SampleNode
     private final double sampleRatio;
     private final Type sampleType;
 
-    public enum Type
-    {
-        BERNOULLI,
-        SYSTEM;
-
-        public static Type fromType(SampledRelation.Type sampleType)
-        {
-            switch (sampleType) {
-                case BERNOULLI:
-                    return Type.BERNOULLI;
-                case SYSTEM:
-                    return Type.SYSTEM;
-            }
-            throw new UnsupportedOperationException("Unsupported sample type: " + sampleType);
-        }
-    }
-
     @JsonCreator
     public SampleNode(
             @JsonProperty("id") PlanNodeId id,
@@ -109,5 +92,22 @@ public class SampleNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         return new SampleNode(getId(), Iterables.getOnlyElement(newChildren), sampleRatio, sampleType);
+    }
+
+    public enum Type
+    {
+        BERNOULLI,
+        SYSTEM;
+
+        public static Type fromType(SampledRelation.Type sampleType)
+        {
+            switch (sampleType) {
+                case BERNOULLI:
+                    return Type.BERNOULLI;
+                case SYSTEM:
+                    return Type.SYSTEM;
+            }
+            throw new UnsupportedOperationException("Unsupported sample type: " + sampleType);
+        }
     }
 }

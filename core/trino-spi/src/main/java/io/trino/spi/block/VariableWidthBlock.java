@@ -105,8 +105,6 @@ public class VariableWidthBlock
         int[] newOffsets = compactOffsets(offsets, arrayOffset, positionCount);
         Slice newSlice = compactSlice(slice, offsets[arrayOffset], newOffsets[positionCount]);
         return new UpdatableVariableWidthBlock(null, positionCount, valueIsNull, new VariableSliceOutput(newSlice, newSlice.length()), newOffsets);
-
-
     }
 
     @Override

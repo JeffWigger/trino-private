@@ -61,6 +61,16 @@ public class ConnectorIdentity
         this.extraCredentials = Map.copyOf(requireNonNull(extraCredentials, "extraCredentials is null"));
     }
 
+    public static ConnectorIdentity ofUser(String user)
+    {
+        return new Builder(user).build();
+    }
+
+    public static Builder forUser(String user)
+    {
+        return new Builder(user);
+    }
+
     public String getUser()
     {
         return user;
@@ -112,16 +122,6 @@ public class ConnectorIdentity
         sb.append(", extraCredentials=").append(extraCredentials.keySet());
         sb.append('}');
         return sb.toString();
-    }
-
-    public static ConnectorIdentity ofUser(String user)
-    {
-        return new Builder(user).build();
-    }
-
-    public static Builder forUser(String user)
-    {
-        return new Builder(user);
     }
 
     public static class Builder

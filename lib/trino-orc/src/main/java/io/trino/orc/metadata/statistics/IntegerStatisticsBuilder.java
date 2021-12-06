@@ -23,16 +23,32 @@ import static java.util.Objects.requireNonNull;
 public class IntegerStatisticsBuilder
         implements LongValueStatisticsBuilder
 {
+    private final BloomFilterBuilder bloomFilterBuilder;
     private long nonNullValueCount;
     private long minimum = Long.MAX_VALUE;
     private long maximum = Long.MIN_VALUE;
     private long sum;
     private boolean overflow;
-    private final BloomFilterBuilder bloomFilterBuilder;
 
     public IntegerStatisticsBuilder(BloomFilterBuilder bloomFilterBuilder)
     {
         this.bloomFilterBuilder = requireNonNull(bloomFilterBuilder, "bloomFilterBuilder is null");
+    }
+
+    public static Optional<IntegerStatistics> mergeIntegerStatistics(List<ColumnStatistics> stats)
+    {
+        IntegerStatisticsBuilder integerStatisticsBuilder = new IntegerStatisticsBuilder(new NoOpBloomFilterBuilder());
+        for (ColumnStatistics columnStatistics : stats) {
+            IntegerStatistics partialStatistics = columnStatistics.getIntegerStatistics();
+            if (columnStatistics.getNumberOfValues() > 0) {
+                if (partialStatistics == null) {
+                    // there are non null values but no statistics, so we cannot say anything about the data
+                    return Optional.empty();
+                }
+                integerStatisticsBuilder.addIntegerStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
+            }
+        }
+        return integerStatisticsBuilder.buildIntegerStatistics();
     }
 
     @Override
@@ -104,21 +120,5 @@ public class IntegerStatisticsBuilder
                 null,
                 null,
                 bloomFilterBuilder.buildBloomFilter());
-    }
-
-    public static Optional<IntegerStatistics> mergeIntegerStatistics(List<ColumnStatistics> stats)
-    {
-        IntegerStatisticsBuilder integerStatisticsBuilder = new IntegerStatisticsBuilder(new NoOpBloomFilterBuilder());
-        for (ColumnStatistics columnStatistics : stats) {
-            IntegerStatistics partialStatistics = columnStatistics.getIntegerStatistics();
-            if (columnStatistics.getNumberOfValues() > 0) {
-                if (partialStatistics == null) {
-                    // there are non null values but no statistics, so we cannot say anything about the data
-                    return Optional.empty();
-                }
-                integerStatisticsBuilder.addIntegerStatistics(columnStatistics.getNumberOfValues(), partialStatistics);
-            }
-        }
-        return integerStatisticsBuilder.buildIntegerStatistics();
     }
 }

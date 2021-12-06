@@ -60,11 +60,10 @@ import static io.trino.util.Reflection.methodHandle;
 public class DecimalSumAggregation
         extends SqlAggregationFunction
 {
+    public static final DecimalSumAggregation DECIMAL_SUM_AGGREGATION = new DecimalSumAggregation();
     // Constant references for short/long decimal types for use in operations that only manipulate unscaled values
     private static final DecimalType LONG_DECIMAL_TYPE = DecimalType.createDecimalType(MAX_PRECISION, 0);
     private static final DecimalType SHORT_DECIMAL_TYPE = DecimalType.createDecimalType(MAX_SHORT_PRECISION, 0);
-
-    public static final DecimalSumAggregation DECIMAL_SUM_AGGREGATION = new DecimalSumAggregation();
     private static final String NAME = "sum";
     private static final MethodHandle SHORT_DECIMAL_INPUT_FUNCTION = methodHandle(DecimalSumAggregation.class, "inputShortDecimal", LongDecimalWithOverflowState.class, Block.class, int.class);
     private static final MethodHandle LONG_DECIMAL_INPUT_FUNCTION = methodHandle(DecimalSumAggregation.class, "inputLongDecimal", LongDecimalWithOverflowState.class, Block.class, int.class);
@@ -89,20 +88,6 @@ public class DecimalSumAggregation
                         AGGREGATE),
                 true,
                 false);
-    }
-
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        return ImmutableList.of(new LongDecimalWithOverflowAndLongStateSerializer().getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type inputType = getOnlyElement(functionBinding.getBoundSignature().getArgumentTypes());
-        Type outputType = functionBinding.getBoundSignature().getReturnType();
-        return generateAggregation(inputType, outputType);
     }
 
     private static InternalAggregationFunction generateAggregation(Type inputType, Type outputType)
@@ -194,5 +179,19 @@ public class DecimalSumAggregation
             throwIfOverflows(decimal);
             LONG_DECIMAL_TYPE.writeSlice(out, decimal);
         }
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        return ImmutableList.of(new LongDecimalWithOverflowAndLongStateSerializer().getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type inputType = getOnlyElement(functionBinding.getBoundSignature().getArgumentTypes());
+        Type outputType = functionBinding.getBoundSignature().getReturnType();
+        return generateAggregation(inputType, outputType);
     }
 }

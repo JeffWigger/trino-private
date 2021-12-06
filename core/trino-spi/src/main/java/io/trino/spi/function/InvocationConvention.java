@@ -26,11 +26,6 @@ public class InvocationConvention
     private final boolean supportsSession;
     private final boolean supportsInstanceFactory;
 
-    public static InvocationConvention simpleConvention(InvocationReturnConvention returnConvention, InvocationArgumentConvention... argumentConventions)
-    {
-        return new InvocationConvention(Arrays.asList(argumentConventions), returnConvention, false, false);
-    }
-
     public InvocationConvention(
             List<InvocationArgumentConvention> argumentConventionList,
             InvocationReturnConvention returnConvention,
@@ -41,6 +36,11 @@ public class InvocationConvention
         this.returnConvention = returnConvention;
         this.supportsSession = supportsSession;
         this.supportsInstanceFactory = supportsInstanceFactory;
+    }
+
+    public static InvocationConvention simpleConvention(InvocationReturnConvention returnConvention, InvocationArgumentConvention... argumentConventions)
+    {
+        return new InvocationConvention(Arrays.asList(argumentConventions), returnConvention, false, false);
     }
 
     public InvocationReturnConvention getReturnConvention()

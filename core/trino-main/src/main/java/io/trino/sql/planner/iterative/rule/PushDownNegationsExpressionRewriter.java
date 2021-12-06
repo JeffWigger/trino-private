@@ -43,12 +43,12 @@ import static java.util.Objects.requireNonNull;
 
 public final class PushDownNegationsExpressionRewriter
 {
+    private PushDownNegationsExpressionRewriter() {}
+
     public static Expression pushDownNegations(Metadata metadata, Expression expression, Map<NodeRef<Expression>, Type> expressionTypes)
     {
         return ExpressionTreeRewriter.rewriteWith(new Visitor(metadata, expressionTypes), expression);
     }
-
-    private PushDownNegationsExpressionRewriter() {}
 
     private static class Visitor
             extends ExpressionRewriter<Void>

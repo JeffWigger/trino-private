@@ -39,10 +39,9 @@ public class DriverFactory
     private final Optional<PlanNodeId> sourceId;
     private final OptionalInt driverInstances;
     private final PipelineExecutionStrategy pipelineExecutionStrategy;
-
-    private boolean closed;
     private final Set<Lifespan> encounteredLifespans = new HashSet<>();
     private final Set<Lifespan> closedLifespans = new HashSet<>();
+    private boolean closed;
 
     public DriverFactory(int pipelineId, boolean inputDriver, boolean outputDriver, List<OperatorFactory> operatorFactories, OptionalInt driverInstances, PipelineExecutionStrategy pipelineExecutionStrategy)
     {

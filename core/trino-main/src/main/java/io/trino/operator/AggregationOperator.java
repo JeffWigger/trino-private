@@ -36,62 +36,13 @@ import static java.util.Objects.requireNonNull;
 public class AggregationOperator
         implements Operator
 {
-    public static class AggregationOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final Step step;
-        private final List<AccumulatorFactory> accumulatorFactories;
-        private final boolean useSystemMemory;
-        private boolean closed;
-
-        public AggregationOperatorFactory(int operatorId, PlanNodeId planNodeId, Step step, List<AccumulatorFactory> accumulatorFactories, boolean useSystemMemory)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.step = step;
-            this.accumulatorFactories = ImmutableList.copyOf(accumulatorFactories);
-            this.useSystemMemory = useSystemMemory;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, AggregationOperator.class.getSimpleName());
-            return new AggregationOperator(operatorContext, step, accumulatorFactories, useSystemMemory);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            return new AggregationOperatorFactory(operatorId, planNodeId, step, accumulatorFactories, useSystemMemory);
-        }
-    }
-
-    private enum State
-    {
-        NEEDS_INPUT,
-        HAS_OUTPUT,
-        FINISHED
-    }
-
     private final OperatorContext operatorContext;
     private final LocalMemoryContext systemMemoryContext;
     private final LocalMemoryContext userMemoryContext;
     private final List<Aggregator> aggregates;
     private final boolean useSystemMemory;
     private AtomicInteger counter = new AtomicInteger(0);
-
     private State state = State.NEEDS_INPUT;
-
     public AggregationOperator(OperatorContext operatorContext, Step step, List<AccumulatorFactory> accumulatorFactories, boolean useSystemMemory)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
@@ -148,7 +99,7 @@ public class AggregationOperator
     {
         checkState(needsInput(), "Operator is already finishing");
         requireNonNull(page, "page is null");
-        System.out.println("AggregationOperator: "+counter.incrementAndGet());
+        System.out.println("AggregationOperator: " + counter.incrementAndGet());
 
         long memorySize = 0;
         for (Aggregator aggregate : aggregates) {
@@ -186,5 +137,52 @@ public class AggregationOperator
 
         state = State.FINISHED;
         return pageBuilder.build();
+    }
+
+    private enum State
+    {
+        NEEDS_INPUT,
+        HAS_OUTPUT,
+        FINISHED
+    }
+
+    public static class AggregationOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final Step step;
+        private final List<AccumulatorFactory> accumulatorFactories;
+        private final boolean useSystemMemory;
+        private boolean closed;
+
+        public AggregationOperatorFactory(int operatorId, PlanNodeId planNodeId, Step step, List<AccumulatorFactory> accumulatorFactories, boolean useSystemMemory)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.step = step;
+            this.accumulatorFactories = ImmutableList.copyOf(accumulatorFactories);
+            this.useSystemMemory = useSystemMemory;
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "Factory is already closed");
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, AggregationOperator.class.getSimpleName());
+            return new AggregationOperator(operatorContext, step, accumulatorFactories, useSystemMemory);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            return new AggregationOperatorFactory(operatorId, planNodeId, step, accumulatorFactories, useSystemMemory);
+        }
     }
 }

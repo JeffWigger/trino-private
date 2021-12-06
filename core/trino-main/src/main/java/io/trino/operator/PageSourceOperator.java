@@ -40,6 +40,11 @@ public class PageSourceOperator
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
     }
 
+    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
+    {
+        return Futures.transform(future, v -> null, directExecutor());
+    }
+
     @Override
     public OperatorContext getOperatorContext()
     {
@@ -68,11 +73,6 @@ public class PageSourceOperator
     {
         CompletableFuture<?> pageSourceBlocked = pageSource.isBlocked();
         return pageSourceBlocked.isDone() ? NOT_BLOCKED : asVoid(toListenableFuture(pageSourceBlocked));
-    }
-
-    private static <T> ListenableFuture<Void> asVoid(ListenableFuture<T> future)
-    {
-        return Futures.transform(future, v -> null, directExecutor());
     }
 
     @Override

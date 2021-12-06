@@ -67,12 +67,6 @@ public class SemiJoinNode
         checkArgument(filteringSource.getOutputSymbols().contains(filteringSourceJoinSymbol), "Filtering source does not contain filtering join symbol");
     }
 
-    public enum DistributionType
-    {
-        PARTITIONED,
-        REPLICATED
-    }
-
     @JsonProperty("source")
     public PlanNode getSource()
     {
@@ -178,5 +172,11 @@ public class SemiJoinNode
                 filteringSourceHashSymbol,
                 Optional.of(distributionType),
                 dynamicFilterId);
+    }
+
+    public enum DistributionType
+    {
+        PARTITIONED,
+        REPLICATED
     }
 }

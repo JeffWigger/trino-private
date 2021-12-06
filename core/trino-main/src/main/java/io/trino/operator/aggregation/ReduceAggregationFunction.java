@@ -93,6 +93,71 @@ public class ReduceAggregationFunction
                 false);
     }
 
+    private static List<ParameterMetadata> createInputParameterMetadata(Type inputType, Type stateType)
+    {
+        return ImmutableList.of(
+                new ParameterMetadata(STATE),
+                new ParameterMetadata(INPUT_CHANNEL, inputType),
+                new ParameterMetadata(INPUT_CHANNEL, stateType));
+    }
+
+    public static void input(NullableLongState state, Object value, long initialStateValue, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
+    {
+        if (state.isNull()) {
+            state.setNull(false);
+            state.setLong(initialStateValue);
+        }
+        state.setLong((long) inputFunction.apply(state.getLong(), value));
+    }
+
+    public static void input(NullableDoubleState state, Object value, double initialStateValue, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
+    {
+        if (state.isNull()) {
+            state.setNull(false);
+            state.setDouble(initialStateValue);
+        }
+        state.setDouble((double) inputFunction.apply(state.getDouble(), value));
+    }
+
+    public static void input(NullableBooleanState state, Object value, boolean initialStateValue, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
+    {
+        if (state.isNull()) {
+            state.setNull(false);
+            state.setBoolean(initialStateValue);
+        }
+        state.setBoolean((boolean) inputFunction.apply(state.getBoolean(), value));
+    }
+
+    public static void combine(NullableLongState state, NullableLongState otherState, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
+    {
+        if (state.isNull()) {
+            state.setNull(false);
+            state.setLong(otherState.getLong());
+            return;
+        }
+        state.setLong((long) combineFunction.apply(state.getLong(), otherState.getLong()));
+    }
+
+    public static void combine(NullableDoubleState state, NullableDoubleState otherState, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
+    {
+        if (state.isNull()) {
+            state.setNull(false);
+            state.setDouble(otherState.getDouble());
+            return;
+        }
+        state.setDouble((double) combineFunction.apply(state.getDouble(), otherState.getDouble()));
+    }
+
+    public static void combine(NullableBooleanState state, NullableBooleanState otherState, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
+    {
+        if (state.isNull()) {
+            state.setNull(false);
+            state.setBoolean(otherState.getBoolean());
+            return;
+        }
+        state.setBoolean((boolean) combineFunction.apply(state.getBoolean(), otherState.getBoolean()));
+    }
+
     @Override
     public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
     {
@@ -172,70 +237,5 @@ public class ReduceAggregationFunction
                 stateType,
                 factory,
                 ImmutableList.of(BinaryFunctionInterface.class, BinaryFunctionInterface.class));
-    }
-
-    private static List<ParameterMetadata> createInputParameterMetadata(Type inputType, Type stateType)
-    {
-        return ImmutableList.of(
-                new ParameterMetadata(STATE),
-                new ParameterMetadata(INPUT_CHANNEL, inputType),
-                new ParameterMetadata(INPUT_CHANNEL, stateType));
-    }
-
-    public static void input(NullableLongState state, Object value, long initialStateValue, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
-    {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setLong(initialStateValue);
-        }
-        state.setLong((long) inputFunction.apply(state.getLong(), value));
-    }
-
-    public static void input(NullableDoubleState state, Object value, double initialStateValue, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
-    {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setDouble(initialStateValue);
-        }
-        state.setDouble((double) inputFunction.apply(state.getDouble(), value));
-    }
-
-    public static void input(NullableBooleanState state, Object value, boolean initialStateValue, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
-    {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setBoolean(initialStateValue);
-        }
-        state.setBoolean((boolean) inputFunction.apply(state.getBoolean(), value));
-    }
-
-    public static void combine(NullableLongState state, NullableLongState otherState, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
-    {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setLong(otherState.getLong());
-            return;
-        }
-        state.setLong((long) combineFunction.apply(state.getLong(), otherState.getLong()));
-    }
-
-    public static void combine(NullableDoubleState state, NullableDoubleState otherState, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
-    {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setDouble(otherState.getDouble());
-            return;
-        }
-        state.setDouble((double) combineFunction.apply(state.getDouble(), otherState.getDouble()));
-    }
-
-    public static void combine(NullableBooleanState state, NullableBooleanState otherState, BinaryFunctionInterface inputFunction, BinaryFunctionInterface combineFunction)
-    {
-        if (state.isNull()) {
-            state.setNull(false);
-            state.setBoolean(otherState.getBoolean());
-            return;
-        }
-        state.setBoolean((boolean) combineFunction.apply(state.getBoolean(), otherState.getBoolean()));
     }
 }

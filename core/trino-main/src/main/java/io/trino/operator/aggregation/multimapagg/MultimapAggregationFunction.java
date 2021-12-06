@@ -110,50 +110,6 @@ public class MultimapAggregationFunction
         this.blockTypeOperators = requireNonNull(blockTypeOperators, "blockTypeOperators is null");
     }
 
-    @Override
-    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        Type valueType = functionBinding.getTypeVariable("V");
-        return ImmutableList.of(new MultimapAggregationStateSerializer(keyType, valueType).getSerializedType().getTypeSignature());
-    }
-
-    @Override
-    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
-    {
-        Type keyType = functionBinding.getTypeVariable("K");
-        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
-        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
-
-        Type valueType = functionBinding.getTypeVariable("V");
-        Type outputType = functionBinding.getBoundSignature().getReturnType();
-        return generateAggregation(keyType, keyEqual, keyHashCode, valueType, outputType);
-    }
-
-    private InternalAggregationFunction generateAggregation(Type keyType, BlockPositionEqual keyEqual, BlockPositionHashCode keyHashCode, Type valueType, Type outputType)
-    {
-        DynamicClassLoader classLoader = new DynamicClassLoader(MultimapAggregationFunction.class.getClassLoader());
-        List<Type> inputTypes = ImmutableList.of(keyType, valueType);
-        MultimapAggregationStateSerializer stateSerializer = new MultimapAggregationStateSerializer(keyType, valueType);
-        Type intermediateType = stateSerializer.getSerializedType();
-
-        AggregationMetadata metadata = new AggregationMetadata(
-                generateAggregationName(NAME, outputType.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
-                createInputParameterMetadata(keyType, valueType),
-                INPUT_FUNCTION,
-                Optional.empty(),
-                COMBINE_FUNCTION,
-                MethodHandles.insertArguments(OUTPUT_FUNCTION, 0, keyType, keyEqual, keyHashCode, valueType),
-                ImmutableList.of(new AccumulatorStateDescriptor(
-                        MultimapAggregationState.class,
-                        stateSerializer,
-                        new MultimapAggregationStateFactory(keyType, valueType))),
-                outputType);
-
-        GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
-        return new InternalAggregationFunction(NAME, inputTypes, ImmutableList.of(intermediateType), outputType, factory);
-    }
-
     private static List<ParameterMetadata> createInputParameterMetadata(Type keyType, Type valueType)
     {
         return ImmutableList.of(new ParameterMetadata(STATE),
@@ -204,5 +160,49 @@ public class MultimapAggregationFunction
             }
             out.closeEntry();
         }
+    }
+
+    @Override
+    public List<TypeSignature> getIntermediateTypes(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        Type valueType = functionBinding.getTypeVariable("V");
+        return ImmutableList.of(new MultimapAggregationStateSerializer(keyType, valueType).getSerializedType().getTypeSignature());
+    }
+
+    @Override
+    public InternalAggregationFunction specialize(FunctionBinding functionBinding)
+    {
+        Type keyType = functionBinding.getTypeVariable("K");
+        BlockPositionEqual keyEqual = blockTypeOperators.getEqualOperator(keyType);
+        BlockPositionHashCode keyHashCode = blockTypeOperators.getHashCodeOperator(keyType);
+
+        Type valueType = functionBinding.getTypeVariable("V");
+        Type outputType = functionBinding.getBoundSignature().getReturnType();
+        return generateAggregation(keyType, keyEqual, keyHashCode, valueType, outputType);
+    }
+
+    private InternalAggregationFunction generateAggregation(Type keyType, BlockPositionEqual keyEqual, BlockPositionHashCode keyHashCode, Type valueType, Type outputType)
+    {
+        DynamicClassLoader classLoader = new DynamicClassLoader(MultimapAggregationFunction.class.getClassLoader());
+        List<Type> inputTypes = ImmutableList.of(keyType, valueType);
+        MultimapAggregationStateSerializer stateSerializer = new MultimapAggregationStateSerializer(keyType, valueType);
+        Type intermediateType = stateSerializer.getSerializedType();
+
+        AggregationMetadata metadata = new AggregationMetadata(
+                generateAggregationName(NAME, outputType.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
+                createInputParameterMetadata(keyType, valueType),
+                INPUT_FUNCTION,
+                Optional.empty(),
+                COMBINE_FUNCTION,
+                MethodHandles.insertArguments(OUTPUT_FUNCTION, 0, keyType, keyEqual, keyHashCode, valueType),
+                ImmutableList.of(new AccumulatorStateDescriptor(
+                        MultimapAggregationState.class,
+                        stateSerializer,
+                        new MultimapAggregationStateFactory(keyType, valueType))),
+                outputType);
+
+        GenericAccumulatorFactoryBinder factory = AccumulatorCompiler.generateAccumulatorFactoryBinder(metadata, classLoader);
+        return new InternalAggregationFunction(NAME, inputTypes, ImmutableList.of(intermediateType), outputType, factory);
     }
 }

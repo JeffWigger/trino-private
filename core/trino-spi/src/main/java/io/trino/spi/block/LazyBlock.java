@@ -45,6 +45,14 @@ public class LazyBlock
         this.lazyData = new LazyData(positionCount, loader);
     }
 
+    public static void listenForLoads(Block block, Consumer<Block> listener)
+    {
+        requireNonNull(block, "block is null");
+        requireNonNull(listener, "listener is null");
+
+        LazyData.addListenersRecursive(block, singletonList(listener));
+    }
+
     @Override
     public int getPositionCount()
     {
@@ -282,14 +290,6 @@ public class LazyBlock
         return lazyData.getFullyLoadedBlock();
     }
 
-    public static void listenForLoads(Block block, Consumer<Block> listener)
-    {
-        requireNonNull(block, "block is null");
-        requireNonNull(listener, "listener is null");
-
-        LazyData.addListenersRecursive(block, singletonList(listener));
-    }
-
     private static class RegionLazyBlockLoader
             implements LazyBlockLoader
     {
@@ -348,6 +348,25 @@ public class LazyBlock
         {
             this.positionsCount = positionsCount;
             this.loader = requireNonNull(loader, "loader is null");
+        }
+
+        /**
+         * If block is unloaded, add the listeners; otherwise call this method on child blocks
+         */
+        @SuppressWarnings("AccessingNonPublicFieldOfAnotherObject")
+        private static void addListenersRecursive(Block block, List<Consumer<Block>> listeners)
+        {
+            if (block instanceof LazyBlock) {
+                LazyData lazyData = ((LazyBlock) block).lazyData;
+                if (!lazyData.isTopLevelBlockLoaded()) {
+                    lazyData.addListeners(listeners);
+                    return;
+                }
+            }
+
+            for (Block child : block.getChildren()) {
+                addListenersRecursive(child, listeners);
+            }
         }
 
         public boolean isFullyLoaded()
@@ -421,25 +440,6 @@ public class LazyBlock
                 if (!recursive) {
                     addListenersRecursive(block, listeners);
                 }
-            }
-        }
-
-        /**
-         * If block is unloaded, add the listeners; otherwise call this method on child blocks
-         */
-        @SuppressWarnings("AccessingNonPublicFieldOfAnotherObject")
-        private static void addListenersRecursive(Block block, List<Consumer<Block>> listeners)
-        {
-            if (block instanceof LazyBlock) {
-                LazyData lazyData = ((LazyBlock) block).lazyData;
-                if (!lazyData.isTopLevelBlockLoaded()) {
-                    lazyData.addListeners(listeners);
-                    return;
-                }
-            }
-
-            for (Block child : block.getChildren()) {
-                addListenersRecursive(child, listeners);
             }
         }
     }

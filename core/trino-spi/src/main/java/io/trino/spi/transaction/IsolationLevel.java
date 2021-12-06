@@ -25,6 +25,13 @@ public enum IsolationLevel
     READ_COMMITTED,
     READ_UNCOMMITTED;
 
+    public static void checkConnectorSupports(IsolationLevel supportedLevel, IsolationLevel requestedLevel)
+    {
+        if (!supportedLevel.meetsRequirementOf(requestedLevel)) {
+            throw new TrinoException(UNSUPPORTED_ISOLATION_LEVEL, format("Connector supported isolation level %s does not meet requested isolation level %s", supportedLevel, requestedLevel));
+        }
+    }
+
     public boolean meetsRequirementOf(IsolationLevel requirement)
     {
         switch (this) {
@@ -51,12 +58,5 @@ public enum IsolationLevel
     public String toString()
     {
         return name().replace('_', ' ');
-    }
-
-    public static void checkConnectorSupports(IsolationLevel supportedLevel, IsolationLevel requestedLevel)
-    {
-        if (!supportedLevel.meetsRequirementOf(requestedLevel)) {
-            throw new TrinoException(UNSUPPORTED_ISOLATION_LEVEL, format("Connector supported isolation level %s does not meet requested isolation level %s", supportedLevel, requestedLevel));
-        }
     }
 }

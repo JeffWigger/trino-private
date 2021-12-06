@@ -21,6 +21,11 @@ public class Capture<T>
 
     private final String description;
 
+    private Capture(String description)
+    {
+        this.description = description;
+    }
+
     public static <T> Capture<T> newCapture()
     {
         return newCapture("");
@@ -29,11 +34,6 @@ public class Capture<T>
     public static <T> Capture<T> newCapture(String description)
     {
         return new Capture<>(description + "@" + sequenceCounter.incrementAndGet());
-    }
-
-    private Capture(String description)
-    {
-        this.description = description;
     }
 
     public String description()

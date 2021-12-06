@@ -54,6 +54,11 @@ public class BooleanOutputStream
         this.byteOutputStream = byteOutputStream;
     }
 
+    private static int getLowBitMask(int bits)
+    {
+        return (0x1 << bits) - 1;
+    }
+
     public void writeBoolean(boolean value)
     {
         checkState(!closed);
@@ -184,10 +189,5 @@ public class BooleanOutputStream
         closed = false;
         byteOutputStream.reset();
         checkpointBitOffsets.clear();
-    }
-
-    private static int getLowBitMask(int bits)
-    {
-        return (0x1 << bits) - 1;
     }
 }

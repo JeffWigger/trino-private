@@ -38,87 +38,14 @@ import static java.util.Objects.requireNonNull;
 public class LookupOuterOperator
         implements Operator
 {
-    public static class LookupOuterOperatorFactory
-            implements OperatorFactory
-    {
-        private final int operatorId;
-        private final PlanNodeId planNodeId;
-        private final List<Type> probeOutputTypes;
-        private final List<Type> buildOutputTypes;
-        private final JoinBridgeManager<?> joinBridgeManager;
-
-        private final Set<Lifespan> createdLifespans = new HashSet<>();
-        private boolean closed;
-
-        public LookupOuterOperatorFactory(
-                int operatorId,
-                PlanNodeId planNodeId,
-                List<Type> probeOutputTypes,
-                List<Type> buildOutputTypes,
-                JoinBridgeManager<?> joinBridgeManager)
-        {
-            this.operatorId = operatorId;
-            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
-            this.probeOutputTypes = ImmutableList.copyOf(requireNonNull(probeOutputTypes, "probeOutputTypes is null"));
-            this.buildOutputTypes = ImmutableList.copyOf(requireNonNull(buildOutputTypes, "buildOutputTypes is null"));
-            this.joinBridgeManager = joinBridgeManager;
-        }
-
-        public int getOperatorId()
-        {
-            return operatorId;
-        }
-
-        @Override
-        public Operator createOperator(DriverContext driverContext)
-        {
-            checkState(!closed, "LookupOuterOperatorFactory is closed");
-            Lifespan lifespan = driverContext.getLifespan();
-            if (createdLifespans.contains(lifespan)) {
-                throw new IllegalStateException("Only one outer operator can be created per Lifespan");
-            }
-            createdLifespans.add(lifespan);
-
-            ListenableFuture<OuterPositionIterator> outerPositionsFuture = joinBridgeManager.getOuterPositionsFuture(lifespan);
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LookupOuterOperator.class.getSimpleName());
-            joinBridgeManager.outerOperatorCreated(lifespan);
-            return new LookupOuterOperator(operatorContext, outerPositionsFuture, probeOutputTypes, buildOutputTypes, () -> joinBridgeManager.outerOperatorClosed(lifespan));
-        }
-
-        @Override
-        public void noMoreOperators(Lifespan lifespan)
-        {
-            joinBridgeManager.outerOperatorFactoryClosed(lifespan);
-        }
-
-        @Override
-        public void noMoreOperators()
-        {
-            if (closed) {
-                return;
-            }
-            closed = true;
-        }
-
-        @Override
-        public OperatorFactory duplicate()
-        {
-            throw new UnsupportedOperationException("Source operator factories cannot be duplicated");
-        }
-    }
-
     private final OperatorContext operatorContext;
     private final ListenableFuture<OuterPositionIterator> outerPositionsFuture;
     private final ListenableFuture<Void> blockedFutureView;
-
     private final List<Type> probeOutputTypes;
     private final Runnable onClose;
-
     private final PageBuilder pageBuilder;
-
     private OuterPositionIterator outerPositions;
     private boolean closed;
-
     public LookupOuterOperator(
             OperatorContext operatorContext,
             ListenableFuture<OuterPositionIterator> outerPositionsFuture,
@@ -229,5 +156,74 @@ public class LookupOuterOperator
         closed = true;
         pageBuilder.reset();
         onClose.run();
+    }
+
+    public static class LookupOuterOperatorFactory
+            implements OperatorFactory
+    {
+        private final int operatorId;
+        private final PlanNodeId planNodeId;
+        private final List<Type> probeOutputTypes;
+        private final List<Type> buildOutputTypes;
+        private final JoinBridgeManager<?> joinBridgeManager;
+
+        private final Set<Lifespan> createdLifespans = new HashSet<>();
+        private boolean closed;
+
+        public LookupOuterOperatorFactory(
+                int operatorId,
+                PlanNodeId planNodeId,
+                List<Type> probeOutputTypes,
+                List<Type> buildOutputTypes,
+                JoinBridgeManager<?> joinBridgeManager)
+        {
+            this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
+            this.probeOutputTypes = ImmutableList.copyOf(requireNonNull(probeOutputTypes, "probeOutputTypes is null"));
+            this.buildOutputTypes = ImmutableList.copyOf(requireNonNull(buildOutputTypes, "buildOutputTypes is null"));
+            this.joinBridgeManager = joinBridgeManager;
+        }
+
+        public int getOperatorId()
+        {
+            return operatorId;
+        }
+
+        @Override
+        public Operator createOperator(DriverContext driverContext)
+        {
+            checkState(!closed, "LookupOuterOperatorFactory is closed");
+            Lifespan lifespan = driverContext.getLifespan();
+            if (createdLifespans.contains(lifespan)) {
+                throw new IllegalStateException("Only one outer operator can be created per Lifespan");
+            }
+            createdLifespans.add(lifespan);
+
+            ListenableFuture<OuterPositionIterator> outerPositionsFuture = joinBridgeManager.getOuterPositionsFuture(lifespan);
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, LookupOuterOperator.class.getSimpleName());
+            joinBridgeManager.outerOperatorCreated(lifespan);
+            return new LookupOuterOperator(operatorContext, outerPositionsFuture, probeOutputTypes, buildOutputTypes, () -> joinBridgeManager.outerOperatorClosed(lifespan));
+        }
+
+        @Override
+        public void noMoreOperators(Lifespan lifespan)
+        {
+            joinBridgeManager.outerOperatorFactoryClosed(lifespan);
+        }
+
+        @Override
+        public void noMoreOperators()
+        {
+            if (closed) {
+                return;
+            }
+            closed = true;
+        }
+
+        @Override
+        public OperatorFactory duplicate()
+        {
+            throw new UnsupportedOperationException("Source operator factories cannot be duplicated");
+        }
     }
 }

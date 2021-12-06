@@ -78,6 +78,111 @@ public class FailedDispatchQuery
                 basicQueryInfo.getQueryStats().getQueuedTime());
     }
 
+    private static QueryInfo immediateFailureQueryInfo(
+            Session session,
+            String query,
+            Optional<String> preparedQuery,
+            URI self,
+            Optional<ResourceGroupId> resourceGroupId,
+            Throwable throwable)
+    {
+        ExecutionFailureInfo failureCause = toFailure(throwable);
+        QueryInfo queryInfo = new QueryInfo(
+                session.getQueryId(),
+                session.toSessionRepresentation(),
+                QueryState.FAILED,
+                GENERAL_POOL,
+                false,
+                self,
+                ImmutableList.of(),
+                query,
+                preparedQuery,
+                immediateFailureQueryStats(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                ImmutableMap.of(),
+                ImmutableSet.of(),
+                ImmutableMap.of(),
+                ImmutableMap.of(),
+                ImmutableSet.of(),
+                Optional.empty(),
+                false,
+                null,
+                Optional.empty(),
+                failureCause,
+                failureCause.getErrorCode(),
+                ImmutableList.of(),
+                ImmutableSet.of(),
+                Optional.empty(),
+                ImmutableList.of(),
+                ImmutableList.of(),
+                true,
+                resourceGroupId,
+                Optional.empty());
+
+        return queryInfo;
+    }
+
+    private static QueryStats immediateFailureQueryStats()
+    {
+        DateTime now = DateTime.now();
+        return new QueryStats(
+                now,
+                now,
+                now,
+                now,
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                DataSize.ofBytes(0),
+                false,
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                new Duration(0, MILLISECONDS),
+                false,
+                ImmutableSet.of(),
+                DataSize.ofBytes(0),
+                0,
+                new Duration(0, MILLISECONDS),
+                DataSize.ofBytes(0),
+                0,
+                DataSize.ofBytes(0),
+                0,
+                DataSize.ofBytes(0),
+                0,
+                DataSize.ofBytes(0),
+                0,
+                DataSize.ofBytes(0),
+                ImmutableList.of(),
+                DynamicFiltersStats.EMPTY,
+                ImmutableList.of());
+    }
+
     @Override
     public BasicQueryInfo getBasicQueryInfo()
     {
@@ -199,110 +304,5 @@ public class FailedDispatchQuery
     public DataSize getUserMemoryReservation()
     {
         return DataSize.ofBytes(0);
-    }
-
-    private static QueryInfo immediateFailureQueryInfo(
-            Session session,
-            String query,
-            Optional<String> preparedQuery,
-            URI self,
-            Optional<ResourceGroupId> resourceGroupId,
-            Throwable throwable)
-    {
-        ExecutionFailureInfo failureCause = toFailure(throwable);
-        QueryInfo queryInfo = new QueryInfo(
-                session.getQueryId(),
-                session.toSessionRepresentation(),
-                QueryState.FAILED,
-                GENERAL_POOL,
-                false,
-                self,
-                ImmutableList.of(),
-                query,
-                preparedQuery,
-                immediateFailureQueryStats(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                ImmutableMap.of(),
-                ImmutableSet.of(),
-                ImmutableMap.of(),
-                ImmutableMap.of(),
-                ImmutableSet.of(),
-                Optional.empty(),
-                false,
-                null,
-                Optional.empty(),
-                failureCause,
-                failureCause.getErrorCode(),
-                ImmutableList.of(),
-                ImmutableSet.of(),
-                Optional.empty(),
-                ImmutableList.of(),
-                ImmutableList.of(),
-                true,
-                resourceGroupId,
-                Optional.empty());
-
-        return queryInfo;
-    }
-
-    private static QueryStats immediateFailureQueryStats()
-    {
-        DateTime now = DateTime.now();
-        return new QueryStats(
-                now,
-                now,
-                now,
-                now,
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                DataSize.ofBytes(0),
-                false,
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                new Duration(0, MILLISECONDS),
-                false,
-                ImmutableSet.of(),
-                DataSize.ofBytes(0),
-                0,
-                new Duration(0, MILLISECONDS),
-                DataSize.ofBytes(0),
-                0,
-                DataSize.ofBytes(0),
-                0,
-                DataSize.ofBytes(0),
-                0,
-                DataSize.ofBytes(0),
-                0,
-                DataSize.ofBytes(0),
-                ImmutableList.of(),
-                DynamicFiltersStats.EMPTY,
-                ImmutableList.of());
     }
 }

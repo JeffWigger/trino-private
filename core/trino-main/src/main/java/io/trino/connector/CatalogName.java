@@ -35,6 +35,22 @@ public final class CatalogName
         checkArgument(!catalogName.isEmpty(), "catalogName is empty");
     }
 
+    public static boolean isInternalSystemConnector(CatalogName catalogName)
+    {
+        return catalogName.getCatalogName().startsWith(SYSTEM_TABLES_CONNECTOR_PREFIX) ||
+                catalogName.getCatalogName().startsWith(INFORMATION_SCHEMA_CONNECTOR_PREFIX);
+    }
+
+    public static CatalogName createInformationSchemaCatalogName(CatalogName catalogName)
+    {
+        return new CatalogName(INFORMATION_SCHEMA_CONNECTOR_PREFIX + catalogName.getCatalogName());
+    }
+
+    public static CatalogName createSystemTablesCatalogName(CatalogName catalogName)
+    {
+        return new CatalogName(SYSTEM_TABLES_CONNECTOR_PREFIX + catalogName.getCatalogName());
+    }
+
     public String getCatalogName()
     {
         return catalogName;
@@ -64,21 +80,5 @@ public final class CatalogName
     public String toString()
     {
         return catalogName;
-    }
-
-    public static boolean isInternalSystemConnector(CatalogName catalogName)
-    {
-        return catalogName.getCatalogName().startsWith(SYSTEM_TABLES_CONNECTOR_PREFIX) ||
-                catalogName.getCatalogName().startsWith(INFORMATION_SCHEMA_CONNECTOR_PREFIX);
-    }
-
-    public static CatalogName createInformationSchemaCatalogName(CatalogName catalogName)
-    {
-        return new CatalogName(INFORMATION_SCHEMA_CONNECTOR_PREFIX + catalogName.getCatalogName());
-    }
-
-    public static CatalogName createSystemTablesCatalogName(CatalogName catalogName)
-    {
-        return new CatalogName(SYSTEM_TABLES_CONNECTOR_PREFIX + catalogName.getCatalogName());
     }
 }

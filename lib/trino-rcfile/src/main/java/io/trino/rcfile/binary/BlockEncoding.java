@@ -28,13 +28,12 @@ public abstract class BlockEncoding
         implements BinaryColumnEncoding
 {
     private final Type type;
+    private final DynamicSliceOutput buffer = new DynamicSliceOutput(0);
 
     public BlockEncoding(Type type)
     {
         this.type = type;
     }
-
-    private final DynamicSliceOutput buffer = new DynamicSliceOutput(0);
 
     @Override
     public final void encodeColumn(Block block, SliceOutput output, EncodeOutput encodeOutput)

@@ -47,6 +47,8 @@ import static io.trino.sql.planner.plan.JoinNode.Type.INNER;
  */
 public final class PushProjectionThroughJoin
 {
+    private PushProjectionThroughJoin() {}
+
     public static Optional<PlanNode> pushProjectionThroughJoin(
             Metadata metadata,
             ProjectNode projectNode,
@@ -158,13 +160,11 @@ public final class PushProjectionThroughJoin
     {
         // extract symbols required by the join itself
         return Streams.concat(
-                node.getCriteria().stream().map(JoinNode.EquiJoinClause::getLeft),
-                node.getCriteria().stream().map(JoinNode.EquiJoinClause::getRight),
-                node.getFilter().map(SymbolsExtractor::extractUnique).orElse(ImmutableSet.of()).stream(),
-                node.getLeftHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream(),
-                node.getRightHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream())
+                        node.getCriteria().stream().map(JoinNode.EquiJoinClause::getLeft),
+                        node.getCriteria().stream().map(JoinNode.EquiJoinClause::getRight),
+                        node.getFilter().map(SymbolsExtractor::extractUnique).orElse(ImmutableSet.of()).stream(),
+                        node.getLeftHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream(),
+                        node.getRightHashSymbol().map(ImmutableSet::of).orElse(ImmutableSet.of()).stream())
                 .collect(toImmutableSet());
     }
-
-    private PushProjectionThroughJoin() {}
 }

@@ -16,7 +16,6 @@ package io.trino.spi.connector;
 import io.airlift.slice.Slice;
 import io.trino.spi.DeltaPageBuilder;
 import io.trino.spi.Page;
-import io.trino.spi.PageBuilder;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.type.Type;
 

@@ -167,126 +167,6 @@ public class ExtractSpatialJoins
         this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
     }
 
-    public Set<Rule<?>> rules()
-    {
-        return ImmutableSet.of(
-                new ExtractSpatialInnerJoin(metadata, splitManager, pageSourceManager, typeAnalyzer),
-                new ExtractSpatialLeftJoin(metadata, splitManager, pageSourceManager, typeAnalyzer));
-    }
-
-    @VisibleForTesting
-    public static final class ExtractSpatialInnerJoin
-            implements Rule<FilterNode>
-    {
-        private static final Capture<JoinNode> JOIN = newCapture();
-        private static final Pattern<FilterNode> PATTERN = filter()
-                .with(source().matching(join().capturedAs(JOIN).matching(JoinNode::isCrossJoin)));
-
-        private final Metadata metadata;
-        private final SplitManager splitManager;
-        private final PageSourceManager pageSourceManager;
-        private final TypeAnalyzer typeAnalyzer;
-
-        public ExtractSpatialInnerJoin(Metadata metadata, SplitManager splitManager, PageSourceManager pageSourceManager, TypeAnalyzer typeAnalyzer)
-        {
-            this.metadata = requireNonNull(metadata, "metadata is null");
-            this.splitManager = requireNonNull(splitManager, "splitManager is null");
-            this.pageSourceManager = requireNonNull(pageSourceManager, "pageSourceManager is null");
-            this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
-        }
-
-        @Override
-        public boolean isEnabled(Session session)
-        {
-            return isSpatialJoinEnabled(session);
-        }
-
-        @Override
-        public Pattern<FilterNode> getPattern()
-        {
-            return PATTERN;
-        }
-
-        @Override
-        public Result apply(FilterNode node, Captures captures, Context context)
-        {
-            JoinNode joinNode = captures.get(JOIN);
-            Expression filter = node.getPredicate();
-            List<FunctionCall> spatialFunctions = extractSupportedSpatialFunctions(filter);
-            for (FunctionCall spatialFunction : spatialFunctions) {
-                Result result = tryCreateSpatialJoin(context, joinNode, filter, node.getId(), node.getOutputSymbols(), spatialFunction, Optional.empty(), metadata, splitManager, pageSourceManager, typeAnalyzer);
-                if (!result.isEmpty()) {
-                    return result;
-                }
-            }
-
-            List<ComparisonExpression> spatialComparisons = extractSupportedSpatialComparisons(filter);
-            for (ComparisonExpression spatialComparison : spatialComparisons) {
-                Result result = tryCreateSpatialJoin(context, joinNode, filter, node.getId(), node.getOutputSymbols(), spatialComparison, metadata, splitManager, pageSourceManager, typeAnalyzer);
-                if (!result.isEmpty()) {
-                    return result;
-                }
-            }
-
-            return Result.empty();
-        }
-    }
-
-    @VisibleForTesting
-    public static final class ExtractSpatialLeftJoin
-            implements Rule<JoinNode>
-    {
-        private static final Pattern<JoinNode> PATTERN = join().matching(node -> node.getCriteria().isEmpty() && node.getFilter().isPresent() && node.getType() == LEFT);
-
-        private final Metadata metadata;
-        private final SplitManager splitManager;
-        private final PageSourceManager pageSourceManager;
-        private final TypeAnalyzer typeAnalyzer;
-
-        public ExtractSpatialLeftJoin(Metadata metadata, SplitManager splitManager, PageSourceManager pageSourceManager, TypeAnalyzer typeAnalyzer)
-        {
-            this.metadata = requireNonNull(metadata, "metadata is null");
-            this.splitManager = requireNonNull(splitManager, "splitManager is null");
-            this.pageSourceManager = requireNonNull(pageSourceManager, "pageSourceManager is null");
-            this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
-        }
-
-        @Override
-        public boolean isEnabled(Session session)
-        {
-            return isSpatialJoinEnabled(session);
-        }
-
-        @Override
-        public Pattern<JoinNode> getPattern()
-        {
-            return PATTERN;
-        }
-
-        @Override
-        public Result apply(JoinNode joinNode, Captures captures, Context context)
-        {
-            Expression filter = joinNode.getFilter().get();
-            List<FunctionCall> spatialFunctions = extractSupportedSpatialFunctions(filter);
-            for (FunctionCall spatialFunction : spatialFunctions) {
-                Result result = tryCreateSpatialJoin(context, joinNode, filter, joinNode.getId(), joinNode.getOutputSymbols(), spatialFunction, Optional.empty(), metadata, splitManager, pageSourceManager, typeAnalyzer);
-                if (!result.isEmpty()) {
-                    return result;
-                }
-            }
-
-            List<ComparisonExpression> spatialComparisons = extractSupportedSpatialComparisons(filter);
-            for (ComparisonExpression spatialComparison : spatialComparisons) {
-                Result result = tryCreateSpatialJoin(context, joinNode, filter, joinNode.getId(), joinNode.getOutputSymbols(), spatialComparison, metadata, splitManager, pageSourceManager, typeAnalyzer);
-                if (!result.isEmpty()) {
-                    return result;
-                }
-            }
-
-            return Result.empty();
-        }
-    }
-
     private static Result tryCreateSpatialJoin(
             Context context,
             JoinNode joinNode,
@@ -618,5 +498,125 @@ public class ExtractSpatialJoins
     private static boolean containsNone(Collection<Symbol> values, Collection<Symbol> testValues)
     {
         return values.stream().noneMatch(ImmutableSet.copyOf(testValues)::contains);
+    }
+
+    public Set<Rule<?>> rules()
+    {
+        return ImmutableSet.of(
+                new ExtractSpatialInnerJoin(metadata, splitManager, pageSourceManager, typeAnalyzer),
+                new ExtractSpatialLeftJoin(metadata, splitManager, pageSourceManager, typeAnalyzer));
+    }
+
+    @VisibleForTesting
+    public static final class ExtractSpatialInnerJoin
+            implements Rule<FilterNode>
+    {
+        private static final Capture<JoinNode> JOIN = newCapture();
+        private static final Pattern<FilterNode> PATTERN = filter()
+                .with(source().matching(join().capturedAs(JOIN).matching(JoinNode::isCrossJoin)));
+
+        private final Metadata metadata;
+        private final SplitManager splitManager;
+        private final PageSourceManager pageSourceManager;
+        private final TypeAnalyzer typeAnalyzer;
+
+        public ExtractSpatialInnerJoin(Metadata metadata, SplitManager splitManager, PageSourceManager pageSourceManager, TypeAnalyzer typeAnalyzer)
+        {
+            this.metadata = requireNonNull(metadata, "metadata is null");
+            this.splitManager = requireNonNull(splitManager, "splitManager is null");
+            this.pageSourceManager = requireNonNull(pageSourceManager, "pageSourceManager is null");
+            this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
+        }
+
+        @Override
+        public boolean isEnabled(Session session)
+        {
+            return isSpatialJoinEnabled(session);
+        }
+
+        @Override
+        public Pattern<FilterNode> getPattern()
+        {
+            return PATTERN;
+        }
+
+        @Override
+        public Result apply(FilterNode node, Captures captures, Context context)
+        {
+            JoinNode joinNode = captures.get(JOIN);
+            Expression filter = node.getPredicate();
+            List<FunctionCall> spatialFunctions = extractSupportedSpatialFunctions(filter);
+            for (FunctionCall spatialFunction : spatialFunctions) {
+                Result result = tryCreateSpatialJoin(context, joinNode, filter, node.getId(), node.getOutputSymbols(), spatialFunction, Optional.empty(), metadata, splitManager, pageSourceManager, typeAnalyzer);
+                if (!result.isEmpty()) {
+                    return result;
+                }
+            }
+
+            List<ComparisonExpression> spatialComparisons = extractSupportedSpatialComparisons(filter);
+            for (ComparisonExpression spatialComparison : spatialComparisons) {
+                Result result = tryCreateSpatialJoin(context, joinNode, filter, node.getId(), node.getOutputSymbols(), spatialComparison, metadata, splitManager, pageSourceManager, typeAnalyzer);
+                if (!result.isEmpty()) {
+                    return result;
+                }
+            }
+
+            return Result.empty();
+        }
+    }
+
+    @VisibleForTesting
+    public static final class ExtractSpatialLeftJoin
+            implements Rule<JoinNode>
+    {
+        private static final Pattern<JoinNode> PATTERN = join().matching(node -> node.getCriteria().isEmpty() && node.getFilter().isPresent() && node.getType() == LEFT);
+
+        private final Metadata metadata;
+        private final SplitManager splitManager;
+        private final PageSourceManager pageSourceManager;
+        private final TypeAnalyzer typeAnalyzer;
+
+        public ExtractSpatialLeftJoin(Metadata metadata, SplitManager splitManager, PageSourceManager pageSourceManager, TypeAnalyzer typeAnalyzer)
+        {
+            this.metadata = requireNonNull(metadata, "metadata is null");
+            this.splitManager = requireNonNull(splitManager, "splitManager is null");
+            this.pageSourceManager = requireNonNull(pageSourceManager, "pageSourceManager is null");
+            this.typeAnalyzer = requireNonNull(typeAnalyzer, "typeAnalyzer is null");
+        }
+
+        @Override
+        public boolean isEnabled(Session session)
+        {
+            return isSpatialJoinEnabled(session);
+        }
+
+        @Override
+        public Pattern<JoinNode> getPattern()
+        {
+            return PATTERN;
+        }
+
+        @Override
+        public Result apply(JoinNode joinNode, Captures captures, Context context)
+        {
+            Expression filter = joinNode.getFilter().get();
+            List<FunctionCall> spatialFunctions = extractSupportedSpatialFunctions(filter);
+            for (FunctionCall spatialFunction : spatialFunctions) {
+                Result result = tryCreateSpatialJoin(context, joinNode, filter, joinNode.getId(), joinNode.getOutputSymbols(), spatialFunction, Optional.empty(), metadata, splitManager, pageSourceManager, typeAnalyzer);
+                if (!result.isEmpty()) {
+                    return result;
+                }
+            }
+
+            List<ComparisonExpression> spatialComparisons = extractSupportedSpatialComparisons(filter);
+            for (ComparisonExpression spatialComparison : spatialComparisons) {
+                Result result = tryCreateSpatialJoin(context, joinNode, filter, joinNode.getId(), joinNode.getOutputSymbols(), spatialComparison, metadata, splitManager, pageSourceManager, typeAnalyzer);
+                if (!result.isEmpty()) {
+                    return result;
+                }
+            }
+
+            return Result.empty();
+        }
     }
 }

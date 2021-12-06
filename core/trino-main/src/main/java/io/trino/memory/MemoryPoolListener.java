@@ -18,17 +18,17 @@ import java.util.function.Consumer;
 public interface MemoryPoolListener
 {
     /**
-     * Invoked when memory reservation completes successfully.
-     *
-     * @param memoryPool the {@link MemoryPool} where the reservation took place
-     */
-    void onMemoryReserved(MemoryPool memoryPool);
-
-    /**
      * Creates {@link MemoryPoolListener} implementing {@link #onMemoryReserved(MemoryPool)} only.
      */
     static MemoryPoolListener onMemoryReserved(Consumer<? super MemoryPool> action)
     {
         return action::accept;
     }
+
+    /**
+     * Invoked when memory reservation completes successfully.
+     *
+     * @param memoryPool the {@link MemoryPool} where the reservation took place
+     */
+    void onMemoryReserved(MemoryPool memoryPool);
 }
