@@ -86,7 +86,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
 import static io.airlift.http.client.Request.Builder.preparePost;
@@ -100,9 +99,7 @@ import static io.trino.spi.StandardErrorCode.SYNTAX_ERROR;
 import static io.trino.spi.StandardErrorCode.TYPE_MISMATCH;
 import static io.trino.sql.analyzer.SemanticExceptions.semanticException;
 import static java.lang.String.format;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static java.util.Objects.requireNonNull;
 
 public class DeltaUpdateTask
         implements DataDefinitionTask<DeltaUpdate>
@@ -155,7 +152,7 @@ public class DeltaUpdateTask
             JsonCodec<DeltaFlagRequest> deltaFlagRequestCodec)
     {
         // super();
-        this.dispatchManager = checkNotNull(dispatchManager, "dispatchManager is null");
+        this.dispatchManager = requireNonNull(dispatchManager, "dispatchManager is null");
         this.queryManager = queryManager;
         this.queryInfoUrlFactory = queryInfoUrlFactory;
         this.exchangeClientSupplier = exchangeClientSupplier;
@@ -195,8 +192,8 @@ public class DeltaUpdateTask
         // TODO move essentially everything into a new class DeltaManger
         // We are setting properties from execute which is not very nice
         // then return a future like in dispatchManager::createQuery
-        checkNotNull(stateMachine, "stateMachine is null");
-        deltaUpdate = (DeltaUpdate) checkNotNull(statement, "statement is null");
+        requireNonNull(stateMachine, "stateMachine is null");
+        deltaUpdate = (DeltaUpdate) requireNonNull(statement, "statement is null");
         session = stateMachine.getSession();
         this.metadata = metadata;
 
