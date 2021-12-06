@@ -42,7 +42,7 @@ information about reporting vulnerabilities.
 Trino is a standard Maven project. Simply run the following command from the
 project root directory:
 
-    ./mvnw clean install -DskipTests
+    ./mvnw clean install -DskipTests -Dair.check.skip-checkstyle
 
 On the first build, Maven downloads all the dependencies from the internet
 and caches them in the local repository (`~/.m2/repository`), which can take a
