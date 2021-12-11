@@ -210,8 +210,13 @@ public class MemoryPagesStore
 
             if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.INS.ordinal()) {
                 if (tableDataPosition != null) {
-                    // The entry with this key value already exists so no insert should happen.
-                    System.out.println("The entry with this key value already exists so no insert should happen.");
+                    // The entry with this key value already exists, so we treat this insert like an update!
+                    TableData tableData = tables.get(tableId);
+                    UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
+                    uPage.updateRow(row, tableDataPosition.position);
+                    System.out.println("Implicit insert");
+                    // Do not need to update the hashTables, as neither hash nor the storage position changed.
+
                     continue;
                 }
                 added++;
