@@ -39,7 +39,7 @@ public class VariableWidthBlockEncoding
     @Override
     public void writeBlock(BlockEncodingSerde blockEncodingSerde, SliceOutput sliceOutput, Block block)
     {
-        if (block instanceof UpdatableLongArrayBlock) {
+        if (block instanceof UpdatableVariableWidthBlock) {
             // The down casts here are safe because it is the block itself the provides this encoding implementation.
             UpdatableVariableWidthBlock variableWidthBlock = (UpdatableVariableWidthBlock) block;
 

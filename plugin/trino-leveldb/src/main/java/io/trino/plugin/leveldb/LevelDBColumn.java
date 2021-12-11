@@ -58,6 +58,8 @@ public final class LevelDBColumn
                 return IntegerType.INTEGER;
             case "decimal":
                 return DecimalType.createDecimalType(12, 2);
+            case "decimal(12,2)":
+                return DecimalType.createDecimalType(12, 2);
             case "date":
                 return DateType.DATE;
             default:
@@ -68,7 +70,7 @@ public final class LevelDBColumn
                     return CharType.createCharType(Integer.valueOf(type.substring(type.indexOf('(') + 1, type.indexOf(')'))));
                 }
         }
-        System.err.println("Could not convert " + typeName + " to a Trino type");
+        System.err.println("LevelDB connector does not support your type: "+ type);
         return null;
     }
 

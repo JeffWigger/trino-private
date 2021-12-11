@@ -125,7 +125,7 @@ public class MemoryPagesStore
         if (added == 0) {
             return 0;
         }
-        UpdatablePage updatablePage = make_updatable(page);
+        UpdatablePage updatablePage = make_updatable(page, tableId);
         updatablePage.compact();
 
         long newSize = currentBytes + updatablePage.getRetainedSizeInBytes();
@@ -466,13 +466,18 @@ public class MemoryPagesStore
     }
 
     //UpdatableLongArrayBlock(@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, byte[] valueMarker, long[] values, int nullCounter, int deleteCounter)
-    static UpdatablePage make_updatable(Page page)
+    private UpdatablePage make_updatable(Page page, long tableId)
     {
         int cols = page.getChannelCount();
         UpdatableBlock[] blocks = new UpdatableBlock[page.getChannelCount()];
         for (int i = 0; i < cols; i++) {
             Block b = page.getBlock(i).getLoadedBlock();
-            blocks[i] = b.makeUpdatable();
+            try {
+                blocks[i] = b.makeUpdatable();
+            }catch(UnsupportedOperationException e){
+                e.printStackTrace();
+                System.out.println("A block used by "+ indices.get(tableId).get(i).getName()+ ". It is of type " + indices.get(tableId).get(i).getType());
+            }
         }
         UpdatablePage newpage = new UpdatablePage(false, blocks[0].getPositionCount(), blocks);
         return newpage;
