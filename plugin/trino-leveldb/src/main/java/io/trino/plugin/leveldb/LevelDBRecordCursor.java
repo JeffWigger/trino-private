@@ -178,7 +178,7 @@ public class LevelDBRecordCursor
             catch (ParseException e) {
                 e.printStackTrace();
             }
-            Long dataLong = date.getTime();
+            long dataLong = date.getTime();
             //System.out.println("Long_date: "+ dataLong);
             return dataLong / 86400000 + 1; // millisecond in a day //TODO why is +1 needed
         }

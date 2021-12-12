@@ -32,6 +32,7 @@ import io.trino.execution.buffer.OutputBuffers.OutputBufferId;
 import io.trino.execution.buffer.SerializedPage;
 import io.trino.metadata.SessionPropertyManager;
 import io.trino.server.security.ResourceSecurity;
+import io.trino.spi.DeltaFlagRequest;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
 
@@ -141,6 +142,24 @@ public class TaskResource
         }
 
         return Response.ok().entity(taskInfo).build();
+    }
+
+    @ResourceSecurity(INTERNAL_ONLY)
+    @POST
+    @Path("deltaflag")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response setDeltaUpdateFlag(DeltaFlagRequest deltaFlagRequest)
+    {
+        requireNonNull(deltaFlagRequest, "taskUpdateRequest is null");
+        System.out.println("In setDeltaUpdateFlag");
+        DeltaFlagRequest.deltaFlagLock.writeLock().lock();
+        DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
+        DeltaFlagRequest.deltaFlagLock.writeLock().unlock();
+        //
+        System.out.println("Set globalDeltaUpdateInProcess to: "+deltaFlagRequest.getDeltaUpdateInProcess());
+        // just sending back the same thing
+        return Response.ok().entity(deltaFlagRequest).build();
     }
 
     @ResourceSecurity(INTERNAL_ONLY)

@@ -30,6 +30,7 @@ import io.trino.spi.type.VarcharType;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -182,8 +183,9 @@ public class LevelDBDeltaRecordCursor
             }
             catch (ParseException e) {
                 e.printStackTrace();
+                System.out.println(s +" " + Arrays.toString(fields.toArray()));
             }
-            Long dataLong = date.getTime();
+            long dataLong = date.getTime();
             //System.out.println("Long_date: "+ dataLong);
             return dataLong / 86400000 + 1; // millisecond in a day //TODO why is +1 needed
         }

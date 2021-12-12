@@ -203,9 +203,11 @@ public class DeltaUpdateTask
         // since the table name does not need to be defined we us QualifiedTablePrefixes
         processSourceAndTarget();
         ExecuteInserts(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
-        // return phaseIFuture;
-        addSuccessCallback(phaseIFuture, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
-        return phaseIIFuture;
+        //addSuccessCallback(phaseIFuture, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
+        SettableFuture<Void> finalFuture = SettableFuture.create();
+        addSuccessCallback(phaseIFuture, () -> unmarkDeltaUpdate(finalFuture, stateMachine::setOutput));
+        //return phaseIIFuture;
+        return finalFuture;
     }
 
     public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
@@ -293,7 +295,7 @@ public class DeltaUpdateTask
 
         // last step of the execution flow
         // unset the delta flag on all the nodes
-        unmarkDeltaUpdate(phaseIIFuture, outputConsumer);
+        // unmarkDeltaUpdate(phaseIIFuture, outputConsumer);
     }
 
     /**
@@ -633,7 +635,7 @@ public class DeltaUpdateTask
                     allDone.put(queryId, true);
                     if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
                         // documentation warns of not doing this when holding a lock
-                        outputConsumer.accept(Optional.empty());
+                        //outputConsumer.accept(Optional.empty());
                         boolean tvalue = phaseIFuture.set(null);
                         System.out.println("Queries finished: " + tvalue);
                     }
