@@ -156,7 +156,7 @@ public class TaskOutputOperator
 
         page = pagePreprocessor.apply(page);
 
-        System.out.println("TaskOutputOperator: "+counter.incrementAndGet());
+        //System.out.println("TaskOutputOperator: "+counter.incrementAndGet());
 
 
         outputBuffer.enqueue(splitAndSerializePage(page));

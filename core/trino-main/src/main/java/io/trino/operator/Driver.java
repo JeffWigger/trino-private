@@ -450,7 +450,7 @@ public class Driver
             for (int i = finishedIndex; i < activeOperators.size() - 1 && !driverContext.isDone(); i++) {
                 Operator current = activeOperators.get(i);
                 Operator next = activeOperators.get(i + 1);
-                System.out.println(String.format("%s -> %s is at index %d",current.toString(), next.toString(), i));
+                //System.out.println(String.format("%s -> %s is at index %d",current.toString(), next.toString(), i));
 
                 // skip blocked operator
                 if (getBlockedFuture(current).isPresent()) {
@@ -461,7 +461,7 @@ public class Driver
                 if (!current.isFinished() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
                     // get an output page from current operator
                     Page page = current.getOutput();
-                    System.out.println(String.format("%s page == %b",current.toString(), page == null));
+                    //System.out.println(String.format("%s page == %b",current.toString(), page == null));
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
                     // if we got an output page, add it to the next operator
@@ -583,7 +583,7 @@ public class Driver
                 if (!current.isFinishedDelta() && getBlockedFuture(next).isEmpty() && next.needsInput()) {
                     // get an output page from current operator
                     Page page = current.getOutputDelta();
-                    System.out.println(String.format("%s page == %b",current.toString(), page == null));
+                    //System.out.println(String.format("%s page == %b",current.toString(), page == null));
                     current.getOperatorContext().recordGetOutput(operationTimer, page);
 
                     // if we got an output page, add it to the next operator

@@ -332,7 +332,7 @@ public class TableScanOperator
         // updating system memory usage should happen after page is loaded.
         systemMemoryContext.setBytes(source.getSystemMemoryUsage());
         operatorContext.setLatestConnectorMetrics(source.getMetrics());
-        System.out.println(String.format("Tablescan: %d page == %b",counter, page==null));
+        //System.out.println(String.format("Tablescan: %d page == %b",counter, page==null));
         counter++;
         return page;
     }
