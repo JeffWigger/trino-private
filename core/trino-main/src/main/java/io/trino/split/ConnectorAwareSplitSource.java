@@ -18,6 +18,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.trino.connector.CatalogName;
 import io.trino.execution.Lifespan;
+import io.trino.metadata.DeltaSplit;
 import io.trino.metadata.Split;
 import io.trino.spi.connector.ConnectorPartitionHandle;
 import io.trino.spi.connector.ConnectorSplit;
@@ -53,7 +54,11 @@ public class ConnectorAwareSplitSource
         return Futures.transform(nextBatch, splitBatch -> {
             ImmutableList.Builder<Split> result = ImmutableList.builder();
             for (ConnectorSplit connectorSplit : splitBatch.getSplits()) {
-                result.add(new Split(catalogName, connectorSplit, lifespan));
+                if (connectorSplit.getIsDeltaSplit()){
+                    result.add(new DeltaSplit(catalogName, connectorSplit, lifespan));
+                }else {
+                    result.add(new Split(catalogName, connectorSplit, lifespan));
+                }
             }
             return new SplitBatch(result.build(), splitBatch.isNoMoreSplits());
         }, directExecutor());

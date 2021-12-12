@@ -30,6 +30,7 @@ import io.trino.execution.CreateViewTask;
 import io.trino.execution.DataDefinitionExecution.DataDefinitionExecutionFactory;
 import io.trino.execution.DataDefinitionTask;
 import io.trino.execution.DeallocateTask;
+import io.trino.execution.DeltaUpdateExecution;
 import io.trino.execution.DropColumnTask;
 import io.trino.execution.DropMaterializedViewTask;
 import io.trino.execution.DropRoleTask;
@@ -68,6 +69,7 @@ import io.trino.sql.tree.CreateSchema;
 import io.trino.sql.tree.CreateTable;
 import io.trino.sql.tree.CreateView;
 import io.trino.sql.tree.Deallocate;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.DropColumn;
 import io.trino.sql.tree.DropMaterializedView;
 import io.trino.sql.tree.DropRole;
@@ -113,6 +115,10 @@ public class QueryExecutionFactoryModule
         for (Class<? extends Statement> statement : getNonDataDefinitionStatements()) {
             executionBinder.addBinding(statement).to(SqlQueryExecutionFactory.class).in(Scopes.SINGLETON);
         }
+        //add my bindings here
+        binder.bind(DeltaUpdateExecution.DeltaUpdateExecutionFactory.class).in(Scopes.SINGLETON);
+        executionBinder.addBinding(DeltaUpdate.class).to(DeltaUpdateExecution.DeltaUpdateExecutionFactory.class).in(Scopes.SINGLETON);
+
 
         binder.bind(DataDefinitionExecutionFactory.class).in(Scopes.SINGLETON);
         bindDataDefinitionTask(binder, executionBinder, AddColumn.class, AddColumnTask.class);

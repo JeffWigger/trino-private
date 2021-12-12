@@ -16,6 +16,7 @@ package io.trino.plugin.memory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
+import io.trino.spi.DeltaPage;
 import io.trino.spi.HostAddress;
 import io.trino.spi.NodeManager;
 import io.trino.spi.Page;
@@ -62,7 +63,7 @@ public class MemoryPageSinkProvider
         checkState(memoryOutputTableHandle.getActiveTableIds().contains(tableId));
 
         pagesStore.cleanUp(memoryOutputTableHandle.getActiveTableIds());
-        pagesStore.initialize(tableId);
+        pagesStore.initialize(tableId, memoryOutputTableHandle.getIndecies());
         return new MemoryPageSink(pagesStore, currentHostAddress, tableId);
     }
 
@@ -74,7 +75,7 @@ public class MemoryPageSinkProvider
         checkState(memoryInsertTableHandle.getActiveTableIds().contains(tableId));
 
         pagesStore.cleanUp(memoryInsertTableHandle.getActiveTableIds());
-        pagesStore.initialize(tableId);
+        pagesStore.initialize(tableId, memoryInsertTableHandle.getIndecies());
         return new MemoryPageSink(pagesStore, currentHostAddress, tableId);
     }
 
@@ -96,8 +97,16 @@ public class MemoryPageSinkProvider
         @Override
         public CompletableFuture<?> appendPage(Page page)
         {
-            pagesStore.add(tableId, page);
-            addedRows += page.getPositionCount();
+            int added = 0;
+            if (page instanceof DeltaPage){
+                DeltaPage dpage = (DeltaPage) page;
+                //System.out.println("MemoryPageSinkProvider: Page is a DeltaPage: "+ dpage.getClass().getName());
+                added = pagesStore.addDelta(tableId, (DeltaPage) page);
+            }else {
+                //System.out.println("MemoryPageSinkProvider: Page got type: " + page.getClass().getName());
+                added = pagesStore.add(tableId, page);
+            }
+            addedRows += added;
             return NOT_BLOCKED;
         }
 

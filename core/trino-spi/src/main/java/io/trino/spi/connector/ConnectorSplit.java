@@ -24,4 +24,8 @@ public interface ConnectorSplit
     List<HostAddress> getAddresses();
 
     Object getInfo();
+
+    default boolean getIsDeltaSplit(){
+        return false;
+    }
 }

@@ -119,6 +119,7 @@ statement
     | SHOW CREATE SCHEMA qualifiedName                                 #showCreateSchema
     | SHOW CREATE VIEW qualifiedName                                   #showCreateView
     | SHOW CREATE MATERIALIZED VIEW qualifiedName                      #showCreateMaterializedView
+    | DELTAUPDATE target=qualifiedName FROM source=qualifiedName       #deltaUpdate
     | SHOW TABLES ((FROM | IN) qualifiedName)?
         (LIKE pattern=string (ESCAPE escape=string)?)?                 #showTables
     | SHOW SCHEMAS ((FROM | IN) identifier)?
@@ -727,6 +728,7 @@ COMMITTED: 'COMMITTED';
 CONSTRAINT: 'CONSTRAINT';
 COUNT: 'COUNT';
 CREATE: 'CREATE';
+DELTAUPDATE: 'DELTAUPDATE';
 CROSS: 'CROSS';
 CUBE: 'CUBE';
 CURRENT: 'CURRENT';

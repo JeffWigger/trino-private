@@ -21,8 +21,11 @@ import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplit;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.ConnectorTransactionHandle;
+import io.trino.spi.connector.DeltaRecordPageSource;
+import io.trino.spi.connector.DeltaRecordSet;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.RecordPageSource;
+import io.trino.spi.connector.RecordSet;
 
 import java.util.List;
 
@@ -47,6 +50,14 @@ public class RecordPageSourceProvider
             List<ColumnHandle> columns,
             DynamicFilter dynamicFilter)
     {
-        return new RecordPageSource(recordSetProvider.getRecordSet(transaction, session, split, table, columns));
+        RecordSet recordSet = recordSetProvider.getRecordSet(transaction, session, split, table, columns);
+        System.out.println("ConnectorRecordSetProvider: "+ recordSet.getClass().getName());
+        if (recordSet instanceof DeltaRecordSet){
+            System.out.println("ConnectorRecordSetProvider: DELTA");
+            return new DeltaRecordPageSource((DeltaRecordSet) recordSet);
+        }else{
+            return new RecordPageSource(recordSet);
+        }
+
     }
 }

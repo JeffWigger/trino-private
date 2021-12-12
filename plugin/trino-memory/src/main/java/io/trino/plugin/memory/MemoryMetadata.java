@@ -230,7 +230,7 @@ public class MemoryMetadata
         ImmutableList.Builder<ColumnInfo> columns = ImmutableList.builder();
         for (int i = 0; i < tableMetadata.getColumns().size(); i++) {
             ColumnMetadata column = tableMetadata.getColumns().get(i);
-            columns.add(new ColumnInfo(new MemoryColumnHandle(i), column.getName(), column.getType()));
+            columns.add(new ColumnInfo(new MemoryColumnHandle(i), column.getName(), column.getType(), (boolean) column.getProperties().getOrDefault(MemoryTableProperties.PRIMARY_KEY_PROPERTY, false)));
         }
 
         tableIds.put(tableMetadata.getTable(), tableId);
@@ -241,7 +241,10 @@ public class MemoryMetadata
                 columns.build(),
                 new HashMap<>()));
 
-        return new MemoryOutputTableHandle(tableId, ImmutableSet.copyOf(tableIds.values()));
+        //if(ci.isPrimaryKey()){
+        List<ColumnInfo> indices = new ArrayList<>(columns.build());
+
+        return new MemoryOutputTableHandle(tableId, ImmutableSet.copyOf(tableIds.values()), indices);
     }
 
     private void checkSchemaExists(String schemaName)
@@ -275,7 +278,15 @@ public class MemoryMetadata
     public synchronized MemoryInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle, List<ColumnHandle> columns)
     {
         MemoryTableHandle memoryTableHandle = (MemoryTableHandle) tableHandle;
-        return new MemoryInsertTableHandle(memoryTableHandle.getId(), ImmutableSet.copyOf(tableIds.values()));
+        List<ColumnInfo> indices = new ArrayList<>();
+        for (ColumnHandle ch : columns){
+            MemoryColumnHandle mch = (MemoryColumnHandle) ch ;
+            ColumnInfo ci = tables.get(memoryTableHandle.getId()).getColumn(ch);
+            //if(ci.isPrimaryKey()){
+            indices.add(ci);
+        }
+
+        return new MemoryInsertTableHandle(memoryTableHandle.getId(), ImmutableSet.copyOf(tableIds.values()), indices);
     }
 
     @Override

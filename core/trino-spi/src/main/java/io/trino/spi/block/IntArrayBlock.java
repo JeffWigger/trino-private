@@ -142,6 +142,16 @@ public class IntArrayBlock
     }
 
     @Override
+    public UpdatableBlock makeUpdatable()
+    {
+        if (valueIsNull == null){
+            return new UpdatableIntArrayBlock(null, positionCount, new boolean[positionCount], compactArray(values, arrayOffset, positionCount));
+        }else {
+            return new UpdatableIntArrayBlock(null, positionCount, compactArray(valueIsNull, arrayOffset, positionCount), compactArray(values, arrayOffset, positionCount));
+        }
+    }
+
+    @Override
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);

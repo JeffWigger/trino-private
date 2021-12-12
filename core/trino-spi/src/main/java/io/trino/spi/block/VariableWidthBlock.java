@@ -100,6 +100,16 @@ public class VariableWidthBlock
     }
 
     @Override
+    public UpdatableBlock makeUpdatable()
+    {
+        int[] newOffsets = compactOffsets(offsets, arrayOffset, positionCount);
+        Slice newSlice = compactSlice(slice, offsets[arrayOffset], newOffsets[positionCount]);
+        return new UpdatableVariableWidthBlock(null, positionCount, valueIsNull, new VariableSliceOutput(newSlice, newSlice.length()), newOffsets);
+
+
+    }
+
+    @Override
     protected boolean isEntryNull(int position)
     {
         return valueIsNull != null && valueIsNull[position + arrayOffset];

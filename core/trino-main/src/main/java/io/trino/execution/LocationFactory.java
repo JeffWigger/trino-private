@@ -27,4 +27,8 @@ public interface LocationFactory
     URI createTaskLocation(InternalNode node, TaskId taskId);
 
     URI createMemoryInfoLocation(InternalNode node);
+
+    default URI createDeltaFlagLocation(InternalNode node){
+        throw new UnsupportedOperationException(getClass().getName());
+    }
 }

@@ -347,4 +347,10 @@ public class LongArrayBlockBuilder
             throw new IllegalArgumentException("position is not valid");
         }
     }
+
+    @Override
+    public UpdatableBlock makeUpdatable(){
+        // (@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, long[] values)
+        return new UpdatableLongArrayBlock(blockBuilderStatus, positionCount, valueIsNull, values);
+    }
 }

@@ -98,6 +98,41 @@ public class SplitManager
         return splitSource;
     }
 
+    public SplitSource getDeltaSplits(Session session, TableHandle table, SplitSchedulingStrategy splitSchedulingStrategy, DynamicFilter dynamicFilter)
+    {
+        CatalogName catalogName = table.getCatalogName();
+        ConnectorSplitManager splitManager = getConnectorSplitManager(catalogName);
+
+        ConnectorSession connectorSession = session.toConnectorSession(catalogName);
+
+        ConnectorSplitSource source;
+        if (metadata.usesLegacyTableLayouts(session, table)) {
+            ConnectorTableLayoutHandle layout = table.getLayout()
+                    .orElseGet(() -> metadata.getLayout(session, table, Constraint.alwaysTrue(), Optional.empty())
+                            .get()
+                            .getNewTableHandle()
+                            .getLayout().get());
+
+            source = splitManager.getDeltaSplits(table.getTransaction(), connectorSession, layout, splitSchedulingStrategy);
+        }
+        else {
+            source = splitManager.getDeltaSplits(
+                    table.getTransaction(),
+                    connectorSession,
+                    table.getConnectorHandle(),
+                    splitSchedulingStrategy,
+                    dynamicFilter);
+        }
+        if (source == null){
+            return null;
+        }
+        SplitSource splitSource = new ConnectorAwareSplitSource(catalogName, source);
+        if (minScheduleSplitBatchSize > 1) {
+            splitSource = new BufferingSplitSource(splitSource, minScheduleSplitBatchSize);
+        }
+        return splitSource;
+    }
+
     private ConnectorSplitManager getConnectorSplitManager(CatalogName catalogName)
     {
         ConnectorSplitManager result = splitManagers.get(catalogName);

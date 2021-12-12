@@ -142,6 +142,16 @@ public class ByteArrayBlock
     }
 
     @Override
+    public UpdatableBlock makeUpdatable()
+    {
+        if (valueIsNull == null){
+            return new UpdatableByteArrayBlock(null, positionCount, new boolean[positionCount], compactArray(values, arrayOffset, positionCount));
+        }else {
+            return new UpdatableByteArrayBlock(null, positionCount, compactArray(valueIsNull, arrayOffset, positionCount), compactArray(values, arrayOffset, positionCount));
+        }
+    }
+
+    @Override
     public void writePositionTo(int position, BlockBuilder blockBuilder)
     {
         checkReadablePosition(position);

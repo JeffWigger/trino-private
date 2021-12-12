@@ -35,6 +35,28 @@ public interface ConnectorSplitManager
         throw new UnsupportedOperationException();
     }
 
+    @Deprecated
+    default ConnectorSplitSource getDeltaSplits(
+            ConnectorTransactionHandle transactionHandle,
+            ConnectorSession session,
+            ConnectorTableLayoutHandle layout,
+            SplitSchedulingStrategy splitSchedulingStrategy)
+    {
+        return null;
+    }
+
+    default ConnectorSplitSource getDeltaSplits(
+            ConnectorTransactionHandle transaction,
+            ConnectorSession session,
+            ConnectorTableHandle table,
+            SplitSchedulingStrategy splitSchedulingStrategy,
+            DynamicFilter dynamicFilter)
+    {
+        return null;
+    }
+
+
+
     enum SplitSchedulingStrategy
     {
         UNGROUPED_SCHEDULING,

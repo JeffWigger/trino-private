@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.trino.spi.connector.ConnectorOutputTableHandle;
 
+import java.util.List;
 import java.util.Set;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -27,14 +28,17 @@ public final class MemoryOutputTableHandle
 {
     private final long table;
     private final Set<Long> activeTableIds;
+    private final List<ColumnInfo> indecies;
 
     @JsonCreator
     public MemoryOutputTableHandle(
             @JsonProperty("table") long table,
-            @JsonProperty("activeTableIds") Set<Long> activeTableIds)
+            @JsonProperty("activeTableIds") Set<Long> activeTableIds,
+            @JsonProperty("indecies") List<ColumnInfo> indecies)
     {
         this.table = table;
         this.activeTableIds = requireNonNull(activeTableIds, "activeTableIds is null");
+        this.indecies = indecies; // can be null!
     }
 
     @JsonProperty
@@ -47,6 +51,11 @@ public final class MemoryOutputTableHandle
     public Set<Long> getActiveTableIds()
     {
         return activeTableIds;
+    }
+
+    @JsonProperty
+    public List<ColumnInfo> getIndecies(){
+        return this.indecies;
     }
 
     @Override

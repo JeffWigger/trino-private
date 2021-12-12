@@ -28,6 +28,7 @@ import io.trino.sql.tree.CreateTableAsSelect;
 import io.trino.sql.tree.CreateView;
 import io.trino.sql.tree.Deallocate;
 import io.trino.sql.tree.Delete;
+import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.DescribeInput;
 import io.trino.sql.tree.DescribeOutput;
 import io.trino.sql.tree.DropColumn;
@@ -121,6 +122,7 @@ public final class StatementUtils
             .put(Delete.class, DELETE)
             .put(Analyze.class, ANALYZE)
             // DDL
+            .put(DeltaUpdate.class, DATA_DEFINITION)
             .put(AddColumn.class, DATA_DEFINITION)
             .put(Call.class, DATA_DEFINITION)
             .put(Comment.class, DATA_DEFINITION)

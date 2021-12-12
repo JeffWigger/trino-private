@@ -46,6 +46,7 @@ public class MemoryModule
         binder.bind(MemoryPagesStore.class).in(Scopes.SINGLETON);
         binder.bind(MemoryPageSourceProvider.class).in(Scopes.SINGLETON);
         binder.bind(MemoryPageSinkProvider.class).in(Scopes.SINGLETON);
+        binder.bind(MemoryTableProperties.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(MemoryConfig.class);
     }
 }
