@@ -107,9 +107,9 @@ public class SqlQueryExecution
 
     private static final OutputBufferId OUTPUT_BUFFER_ID = new OutputBufferId(0);
 
-    private final QueryStateMachine stateMachine;
+    public final QueryStateMachine stateMachine;
     private final Slug slug;
-    private final Metadata metadata;
+    public final Metadata metadata;
     private final TypeOperators typeOperators;
     private final SqlParser sqlParser;
     private final SplitManager splitManager;
@@ -123,7 +123,7 @@ public class SqlQueryExecution
     private final ScheduledExecutorService schedulerExecutor;
     private final FailureDetector failureDetector;
 
-    private final AtomicReference<SqlQueryScheduler> queryScheduler = new AtomicReference<>();
+    public final AtomicReference<SqlQueryScheduler> queryScheduler = new AtomicReference<>();
     private final AtomicReference<Plan> queryPlan = new AtomicReference<>();
     private final NodeTaskMap nodeTaskMap;
     private final ExecutionPolicy executionPolicy;

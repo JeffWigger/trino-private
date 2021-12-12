@@ -255,7 +255,7 @@ public class DeltaUpdateTask
             // should not change after the scheduling is finished, and we work on Running queries.
 
 
-            sqlQueryScheduler.scheduleDelta();
+            // sqlQueryScheduler.scheduleDelta();
             // TODO: figure out when it finished
 
 

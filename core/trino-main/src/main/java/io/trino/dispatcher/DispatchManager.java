@@ -75,7 +75,7 @@ public class DispatchManager
 
     private final Executor dispatchExecutor;
 
-    private final QueryTracker<DispatchQuery> queryTracker;
+    public final QueryTracker<DispatchQuery> queryTracker;
 
     private final QueryManagerStats stats = new QueryManagerStats();
 
@@ -208,7 +208,7 @@ public class DispatchManager
                     slug,
                     selectionContext.getResourceGroupId());
 
-            boolean queryAdded = queryCreated(dispatchQuery);
+            boolean queryAdded = queryCreated(dispatchQuery, sessionContext);
             if (queryAdded && !dispatchQuery.isDone()) {
                 try {
                     resourceGroupManager.submit(dispatchQuery, selectionContext, dispatchExecutor);
@@ -230,13 +230,13 @@ public class DispatchManager
             }
             Optional<String> preparedSql = Optional.ofNullable(preparedQuery).flatMap(PreparedQuery::getPrepareSql);
             DispatchQuery failedDispatchQuery = failedDispatchQueryFactory.createFailedDispatchQuery(session, query, preparedSql, Optional.empty(), throwable);
-            queryCreated(failedDispatchQuery);
+            queryCreated(failedDispatchQuery, sessionContext);
         }
     }
 
-    private boolean queryCreated(DispatchQuery dispatchQuery)
+    private boolean queryCreated(DispatchQuery dispatchQuery, SessionContext context)
     {
-        boolean queryAdded = queryTracker.addQuery(dispatchQuery);
+        boolean queryAdded = queryTracker.addQuery(dispatchQuery, context);
 
         // only add state tracking if this query instance will actually be used for the execution
         if (queryAdded) {

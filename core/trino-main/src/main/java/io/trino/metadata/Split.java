@@ -25,7 +25,7 @@ import java.util.List;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
-public final class Split
+public class Split
 {
     private final CatalogName catalogName;
     private final ConnectorSplit connectorSplit;
