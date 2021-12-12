@@ -73,6 +73,7 @@ import io.trino.memory.NoneLowMemoryKiller;
 import io.trino.memory.TotalReservationLowMemoryKiller;
 import io.trino.memory.TotalReservationOnBlockedNodesLowMemoryKiller;
 import io.trino.metadata.CatalogManager;
+import io.trino.operator.ForDeltaUpdate;
 import io.trino.operator.ForScheduler;
 import io.trino.operator.OperatorStats;
 import io.trino.server.protocol.ExecutingStatementResource;
@@ -80,6 +81,7 @@ import io.trino.server.protocol.QueryInfoUrlFactory;
 import io.trino.server.remotetask.RemoteTaskStats;
 import io.trino.server.ui.WebUiModule;
 import io.trino.server.ui.WorkerResource;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.VersionEmbedder;
 import io.trino.spi.memory.ClusterMemoryPoolManager;
 import io.trino.sql.analyzer.QueryExplainer;
@@ -230,6 +232,7 @@ public class CoordinatorModule
         jsonCodecBinder(binder).bindJsonCodec(TaskStatus.class);
         jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
         jsonCodecBinder(binder).bindJsonCodec(VersionedDynamicFilterDomains.class);
+        jsonCodecBinder(binder).bindJsonCodec(DeltaFlagRequest.class);
         binder.bind(RemoteTaskFactory.class).to(HttpRemoteTaskFactory.class).in(Scopes.SINGLETON);
         newExporter(binder).export(RemoteTaskFactory.class).withGeneratedName();
 
@@ -247,6 +250,16 @@ public class CoordinatorModule
 
         binder.bind(ScheduledExecutorService.class).annotatedWith(ForScheduler.class)
                 .toInstance(newSingleThreadScheduledExecutor(threadsNamed("stage-scheduler")));
+
+
+        httpClientBinder(binder).bindHttpClient("deltaUpdater", ForDeltaUpdate.class)
+                .withTracing()
+                .withFilter(GenerateTraceTokenRequestFilter.class)
+                .withConfigDefaults(config -> {
+                    config.setIdleTimeout(new Duration(30, SECONDS));
+                    config.setRequestTimeout(new Duration(10, SECONDS));
+                    config.setMaxConnectionsPerServer(250);
+                });
 
         // query execution
         binder.bind(ExecutorService.class).annotatedWith(ForQueryExecution.class)
