@@ -34,6 +34,7 @@ public class MemoryConnector
     private final MemoryPageSourceProvider pageSourceProvider;
     private final MemoryPageSinkProvider pageSinkProvider;
     private final MemoryTableProperties tableProperties;
+    private final MemoryPagesStore pagesStore;
 
     @Inject
     public MemoryConnector(
@@ -41,13 +42,15 @@ public class MemoryConnector
             MemorySplitManager splitManager,
             MemoryPageSourceProvider pageSourceProvider,
             MemoryPageSinkProvider pageSinkProvider,
-            MemoryTableProperties tableProperties)
+            MemoryTableProperties tableProperties,
+            MemoryPagesStore pagesStore)
     {
         this.metadata = metadata;
         this.splitManager = splitManager;
         this.pageSourceProvider = pageSourceProvider;
         this.pageSinkProvider = pageSinkProvider;
         this.tableProperties = tableProperties;
+        this.pagesStore = pagesStore;
     }
 
     @Override
@@ -84,5 +87,10 @@ public class MemoryConnector
     public List<PropertyMetadata<?>> getColumnProperties()
     {
         return tableProperties.getColumnProperties();
+    }
+
+    @Override
+    public void shutdown() {
+        this.pagesStore.close();
     }
 }

@@ -24,20 +24,24 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class DeltaFlagRequest
 {
     private final boolean deltaUpdateInProcess;
-
+    private final int deltaUpdateCount;
     public static final ReentrantReadWriteLock deltaFlagLock = new ReentrantReadWriteLock(true);
 
     // use synchronized(DeltaFlagRequest.class)
     @GuardedBy("deltaFlagLock")
     public static boolean globalDeltaUpdateInProcess = false;
 
+    public static int globalDeltaUpdateCount= 0;
+
 
     @JsonCreator
     public DeltaFlagRequest(
-            @JsonProperty("deltaUpdateInProcess") boolean deltaUpdateInProcess)
+            @JsonProperty("deltaUpdateInProcess") boolean deltaUpdateInProcess,
+            @JsonProperty("deltaUpdateCount") int deltaUpdateCount)
     {
         //requireNonNull(deltaUpdateInProcess, "deltaUpdateInProcess is null");
         this.deltaUpdateInProcess = deltaUpdateInProcess;
+        this.deltaUpdateCount = deltaUpdateCount;
     }
 
     @JsonProperty
@@ -46,15 +50,20 @@ public class DeltaFlagRequest
         return deltaUpdateInProcess;
     }
 
+    @JsonProperty
+    public int getDeltaUpdateCount()
+    {
+        return deltaUpdateCount;
+    }
+
 
     @Override
     public String toString()
     {
         if (deltaUpdateInProcess){
-            return "deltaUpdateInProcess::true";
+            return "deltaUpdateInProcess::true;deltaUpdateCount::"+deltaUpdateCount;
         }else{
-            return "deltaUpdateInProcess::false";
+            return "deltaUpdateInProcess::false;deltaUpdateCount::"+deltaUpdateCount;
         }
-
     }
 }

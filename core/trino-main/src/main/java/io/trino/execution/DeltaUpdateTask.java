@@ -74,7 +74,13 @@ import javax.annotation.Nullable;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -138,6 +144,11 @@ public class DeltaUpdateTask
 
     private SettableFuture<Void> phaseIIFuture = SettableFuture.create();
 
+    private Path statisticsFilePath;
+    private File file;
+    FileWriter statisticsWriter;
+    long startTime;
+
 
     public DeltaUpdateTask(DispatchManager dispatchManager,
             QueryManager queryManager,
@@ -165,6 +176,28 @@ public class DeltaUpdateTask
         this.locationFactory = locationFactory;
         this.deltaFlagRequestCodec = deltaFlagRequestCodec;
 
+        String fileDirectory = "/tmp/stats/";
+        String statisticsFileName = "DeltaUpdateTask";
+
+        try {
+            Path dir = Paths.get(fileDirectory);
+            Files.createDirectories(dir);
+            statisticsFilePath = dir.resolve(statisticsFileName);
+            this.file = new File(statisticsFilePath.toString());
+            if(!this.file.exists()){
+                this.file.createNewFile();
+                assert(this.file.exists() && file.canWrite());
+                statisticsWriter = new FileWriter(this.file, true);
+                statisticsWriter.write("UpdateNr,NanoSeconds\n");
+            }else {
+                assert (this.file.exists() && file.canWrite());
+                statisticsWriter = new FileWriter(this.file, true);
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
     @Override
@@ -189,6 +222,7 @@ public class DeltaUpdateTask
             List<Expression> parameters,
             WarningCollector warningCollector)
     {
+        this.startTime = System.nanoTime();
         // TODO move essentially everything into a new class DeltaManger
         // We are setting properties from execute which is not very nice
         // then return a future like in dispatchManager::createQuery
@@ -309,7 +343,7 @@ public class DeltaUpdateTask
         if(memoryNodes.isEmpty()){
             throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
         }
-        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(false);
+        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(false, DeltaFlagRequest.globalDeltaUpdateCount);
         List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
         for (InternalNode node : memoryNodes){
             // System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
@@ -354,7 +388,15 @@ public class DeltaUpdateTask
                 }else{
                     future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
                 }
-
+                long endTime = System.nanoTime();
+                try {
+                    statisticsWriter.write(String.format("%d, %d\n", DeltaFlagRequest.globalDeltaUpdateCount, (endTime - startTime)/1000000));
+                    statisticsWriter.flush();
+                    statisticsWriter.close();
+                }
+                catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
 
             @Override
@@ -362,6 +404,14 @@ public class DeltaUpdateTask
             {
                 System.out.println("Setting the deltaFlag failed");
                 future.setException(throwable);
+                long endTime = System.nanoTime();
+                try {
+                    statisticsWriter.write(String.format("%d\n", (endTime - startTime)/1000000));
+                    statisticsWriter.close();
+                }
+                catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }, directExecutor());
     }
@@ -381,7 +431,9 @@ public class DeltaUpdateTask
         if(memoryNodes.isEmpty()){
             throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
         }
-        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(true);
+        // the assumption is that there is only ever one delta update at a time
+        DeltaFlagRequest.globalDeltaUpdateCount += 1;
+        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(true, DeltaFlagRequest.globalDeltaUpdateCount);
         List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
         for (InternalNode node : memoryNodes){
             System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());

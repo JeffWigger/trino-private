@@ -30,6 +30,11 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,6 +45,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.nio.file.Paths;
 
 import static io.trino.plugin.memory.MemoryErrorCode.MEMORY_LIMIT_EXCEEDED;
 import static io.trino.plugin.memory.MemoryErrorCode.MISSING_DATA;
@@ -52,7 +58,7 @@ public class MemoryPagesStore
     private int decreases = 0;
     private final long maxBytes;
 
-    static final int MAX_PAGE_SIZE = 10000;
+    static final int MAX_PAGE_SIZE = 10000; // only affects the regular inserts
 
     @GuardedBy("this")
     private long currentBytes;
@@ -66,10 +72,33 @@ public class MemoryPagesStore
     private Map<Long, Map<Slice, TableDataPosition>> hashTables = new HashMap<>();
     private Map<Long, List<ColumnInfo>> indices = new HashMap<>();
 
+    private Path statisticsFilePath;
+    private File file;
+    private FileWriter statisticsWriter;
+
     @Inject
     public MemoryPagesStore(MemoryConfig config)
     {
         this.maxBytes = config.getMaxDataPerNode().toBytes();
+        String fileDirectory = "/tmp/stats/";
+        String statisticsFileName = "MemoryPagesStore";
+
+        try {
+            Path dir = Paths.get(fileDirectory);
+            Files.createDirectories(dir);
+            statisticsFilePath = dir.resolve(statisticsFileName);
+            this.file = new File(statisticsFilePath.toString());
+            if(!this.file.exists()){
+                this.file.createNewFile();
+            }
+            assert(this.file.exists() && file.canWrite());
+            statisticsWriter = new FileWriter(this.file, true);
+            statisticsWriter.write(String.format("UpdateNr,InsertBytes,DeleteBytes,UpdateBytes,InsertCount,DeleteCount,UpdateCount,MicroSeconds\n"));
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
     public synchronized void initialize(long tableId, List<ColumnInfo> indices)
@@ -184,6 +213,13 @@ public class MemoryPagesStore
 
     public synchronized int addDelta(Long tableId, DeltaPage page)
     {
+        long startTime = System.nanoTime();
+        long updatesBytes = 0;
+        long insertsBytes = 0;
+        long deletesBytes = 0;
+        long updatesCount = 0;
+        long insertsCount = 0;
+        long deletesCount = 0;
         if (!contains(tableId)) {
             throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
         }
@@ -217,6 +253,8 @@ public class MemoryPagesStore
                     uPage.updateRow(row, tableDataPosition.position);
                     // System.out.println("Implicit insert");
                     // Do not need to update the hashTables, as neither hash nor the storage position changed.
+                    updatesBytes += row.getSizeInBytes();
+                    updatesCount += 1;
                     continue;
                 }
                 added++;
@@ -246,6 +284,8 @@ public class MemoryPagesStore
                         type.writeObject(insertsBlock, type.getObject(row.getBlock(c), 0));
                     }
                 }
+                insertsBytes += row.getSizeInBytes();
+                insertsCount += 1;
             }
             else {
                 TableData tableData = tables.get(tableId);
@@ -253,12 +293,16 @@ public class MemoryPagesStore
                 if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()) {
                     uPage.updateRow(row, tableDataPosition.position);
                     // Do not need to update the hashTables, as neither hash nor the storage position changed.
+                    updatesBytes += row.getSizeInBytes();
+                    updatesCount += 1;
                 }
                 else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
                     uPage.deleteRow(tableDataPosition.position);
                     hashTable.remove(key);
                     added--;
                     tableData.decreaseNumberOfRows(1);
+                    deletesBytes += row.getSizeInBytes();
+                    deletesCount += 1;
                 }
                 else {
                     throw new TrinoException(GENERIC_INTERNAL_ERROR, "Unkown type of insert for delta updates");
@@ -279,6 +323,14 @@ public class MemoryPagesStore
 
         TableData tableData = tables.get(tableId);
         tableData.add(inserts);
+        long endTime = System.nanoTime();
+        try {
+            statisticsWriter.write(String.format("%d, %d, %d, %d, %d, %d, %d, %d\n", DeltaFlagRequest.globalDeltaUpdateCount, insertsBytes, deletesBytes, updatesBytes, insertsCount, deletesCount, updatesCount, (endTime - startTime)/1000));
+            statisticsWriter.flush();
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
         return added;
     }
 
@@ -484,5 +536,14 @@ public class MemoryPagesStore
         }
         UpdatablePage newpage = new UpdatablePage(false, blocks[0].getPositionCount(), blocks);
         return newpage;
+    }
+
+    public void close(){
+        try {
+            this.statisticsWriter.close();
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
