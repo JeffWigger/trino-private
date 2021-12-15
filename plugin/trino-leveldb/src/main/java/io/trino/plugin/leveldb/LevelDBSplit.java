@@ -64,7 +64,6 @@ public class LevelDBSplit
     @Override
     public List<HostAddress> getAddresses()
     {
-        System.out.println("LevelDBSplit::getAddresses");
         return addresses;
     }
 

@@ -20,6 +20,7 @@ import io.trino.spi.block.DictionaryId;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.block.UpdatableByteArrayBlock;
+import io.trino.spi.block.UpdatableIntArrayBlock;
 import io.trino.spi.block.UpdatableLongArrayBlock;
 import io.trino.spi.block.UpdatableVariableWidthBlock;
 import io.trino.spi.block.VariableWidthBlock;
@@ -187,7 +188,9 @@ public class UpdatablePage
         for (int i = 0; i < channelCount; i++) {
             slicedBlocks[i] = ((UpdatableBlock) blocks[i]).getEntriesFrom(positionOffset, length);
         }
-        return wrapBlocksWithoutCopy(length, slicedBlocks);
+        int count = slicedBlocks[0].getPositionCount();
+        assert (Arrays.stream(slicedBlocks).allMatch(block -> block.getPositionCount() == count));
+        return Page.wrapBlocksWithoutCopy(count, slicedBlocks);
     }
 
     @Override
@@ -286,6 +289,8 @@ public class UpdatablePage
             target.deleteByte(position, 0);
         } else if (target instanceof UpdatableVariableWidthBlock){
             target.deleteBytes(position, 0, 0); // length does nothing
+        } else if (target instanceof UpdatableIntArrayBlock){
+            target.deleteInt(position, 0);
         }
     }
 

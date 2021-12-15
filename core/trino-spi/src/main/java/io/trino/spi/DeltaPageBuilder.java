@@ -35,7 +35,7 @@ public class DeltaPageBuilder
     private static final int DEFAULT_INITIAL_EXPECTED_ENTRIES = 8;
 
     public enum Mode {
-        INS, UPD, DEL
+        INS, DEL, UPD
     }
 
     private final BlockBuilder[] blockBuilders;
@@ -166,7 +166,6 @@ public class DeltaPageBuilder
 
     public DeltaPage build()
     {
-        System.out.println("BUILT DELTAPAGE");
         if (blockBuilders.length == 0) {
             return new DeltaPage(declaredPositions);
         }

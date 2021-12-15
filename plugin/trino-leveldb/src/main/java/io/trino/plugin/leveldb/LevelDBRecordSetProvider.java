@@ -37,7 +37,7 @@ public class LevelDBRecordSetProvider
     @Override
     public RecordSet getRecordSet(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorSplit split, ConnectorTableHandle table, List<? extends ColumnHandle> columns)
     {
-        System.out.println("LevelDBRecordSetProvider::getRecordSet");
+        // System.out.println("LevelDBRecordSetProvider::getRecordSet");
         LevelDBSplit levelDBSplit = (LevelDBSplit) split;
 
         ImmutableList.Builder<LevelDBColumnHandle> handles = ImmutableList.builder();
@@ -46,7 +46,7 @@ public class LevelDBRecordSetProvider
         }
         LevelDBTableHandle tableHandle = (LevelDBTableHandle) table;
         // cannot use deltaupdate as it is now a sql statement
-        System.out.println("LevelDBRecordSetProvider: "+ tableHandle.getSchemaName());
+        // System.out.println("LevelDBRecordSetProvider: "+ tableHandle.getSchemaName());
         if (tableHandle.getSchemaName().equals("dupdate")){
             return new LevelDBDeltaRecordSet(tableHandle, levelDBSplit, handles.build(), commFactory);
         }else{

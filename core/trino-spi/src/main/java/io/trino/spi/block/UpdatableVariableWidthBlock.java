@@ -376,7 +376,7 @@ public class UpdatableVariableWidthBlock
                     deleteCounter--;
                     valueMarker[position] = 0;
                 }
-                System.out.println("sliceOutput size: " + this.sliceOutput.size() + "slice output: " + this.sliceOutput);
+                // System.out.println("sliceOutput size: " + this.sliceOutput.size() + "slice output: " + this.sliceOutput);
                 this.sliceOutput.slice().setBytes(offsets[position], source, sourceIndex, length);
                 return this;
             }

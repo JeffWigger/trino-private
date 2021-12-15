@@ -57,9 +57,9 @@ class Communicator
         catch (JsonProcessingException e) {
             e.printStackTrace();
         }
-        System.out.println("serialized json:" + s);
+        // System.out.println("serialized json:" + s);
         try {
-            System.out.println("write json: " + s);
+            // System.out.println("write json: " + s);
             oWriter.write(s + "\n");
             oWriter.flush();
         }
@@ -78,7 +78,7 @@ class Communicator
             e.printStackTrace();
             return null;
         }
-        System.out.println(jstring);
+        // System.out.println(jstring);
         ObjectMapper mapper = new ObjectMapper();
         JsonNode ret = null;
         try {

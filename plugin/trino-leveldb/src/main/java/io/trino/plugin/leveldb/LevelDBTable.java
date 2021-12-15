@@ -65,7 +65,6 @@ public class LevelDBTable
 
     private static List<LevelDBColumn> getColumnList(JsonNode description)
     {
-        System.out.println("LevelDBTable::getColumnList");
         ObjectMapper mapper = new ObjectMapper();
         ArrayList<Map<String, Object>> cols = null;
         try {
@@ -81,7 +80,6 @@ public class LevelDBTable
             LevelDBColumn c = new LevelDBColumn((String) col.get("name"), checkNotNull(LevelDBColumn.type_converter((String) col.get("type")), "Failed to convert %s::%s", description.get("name"), col.get("name")), Integer.valueOf((Integer) col.get("index")));
             columns.add(c);
         }
-        System.out.println("LevelDBTable::getColumnList end");
         return columns;
     }
 

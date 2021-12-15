@@ -23,7 +23,6 @@ public class LevelDBPlugin
     @Override
     public Iterable<ConnectorFactory> getConnectorFactories()
     {
-        System.out.println("LevelDB plugin says Hi!");
         return ImmutableList.of(new LevelDBConnectorFactory());
     }
 }

@@ -38,7 +38,6 @@ public class LevelDBSplitManager
     @Inject
     public LevelDBSplitManager(LevelDBInterface levelDBAPI)
     {
-        System.out.println("LevelDBSplitManager");
         this.levelDBAPI = levelDBAPI;
     }
 
@@ -50,7 +49,6 @@ public class LevelDBSplitManager
             SplitSchedulingStrategy splitSchedulingStrategy,
             DynamicFilter dynamicFilter)
     {
-        System.out.println("LevelDBSplitManager::getSplits");
         LevelDBTableHandle tableHandle = (LevelDBTableHandle) connectorTableHandle;
         JsonNode json = levelDBAPI.getTableDesc(tableHandle.getTableName(), Optional.of(tableHandle.getSchemaName()));
         LevelDBTable table;
@@ -71,7 +69,6 @@ public class LevelDBSplitManager
         }*/
         //Collections.shuffle(splits);
         // TODO: check alternative implementations of ConnectorSplitSource
-        System.out.println("LevelDBSplitManager::getSplits end");
         return new FixedSplitSource(splits);
     }
 }

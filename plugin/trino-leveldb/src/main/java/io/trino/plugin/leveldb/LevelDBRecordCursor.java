@@ -59,7 +59,6 @@ public class LevelDBRecordCursor
 
     public LevelDBRecordCursor(LevelDBTableHandle table, List<LevelDBColumnHandle> columnHandles, CommunicatorFactory commFactory)
     {
-        System.out.println("LevelDBRecordCursor");
         this.columnHandles = columnHandles;
         this.table = table;
         this.formatter = new SimpleDateFormat("yyyy-MM-dd");

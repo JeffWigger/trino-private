@@ -57,7 +57,6 @@ public class LevelDBDeltaRecordCursor
 
     public LevelDBDeltaRecordCursor(LevelDBTableHandle table, List<LevelDBColumnHandle> columnHandles, CommunicatorFactory commFactory)
     {
-        System.out.println("LevelDBRecordCursor");
         this.columnHandles = columnHandles;
         this.table = table;
         this.formatter = new SimpleDateFormat("yyyy-MM-dd");
@@ -79,13 +78,13 @@ public class LevelDBDeltaRecordCursor
 
     private void setUpServer()
     {
-        System.out.println("LevelDBRecordCursor::setUpServer");
+        //System.out.println("LevelDBRecordCursor::setUpServer");
         ObjectMapper mapper = new ObjectMapper();
         Map<String, String> map = new HashMap<String, String>();
         map.put("msg_type", "ScanTable");
         map.put("schema", this.table.getSchemaName());
         map.put("table", this.table.getTableName());
-        System.out.println(mapper.valueToTree(map).asText());
+        //System.out.println(mapper.valueToTree(map).asText());
         comm.write_json(mapper.valueToTree(map));
     }
 

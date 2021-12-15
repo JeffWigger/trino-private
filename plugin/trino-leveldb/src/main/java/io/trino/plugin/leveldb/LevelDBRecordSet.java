@@ -33,7 +33,6 @@ public class LevelDBRecordSet
 
     public LevelDBRecordSet(LevelDBTableHandle table, LevelDBSplit split, List<LevelDBColumnHandle> columnHandles, CommunicatorFactory commFactory)
     {
-        System.out.println("LevelDBRecordSet");
         this.table = table;
         this.split = requireNonNull(split, "split is null");
         this.columnHandles = requireNonNull(columnHandles, "columnHandles is null");

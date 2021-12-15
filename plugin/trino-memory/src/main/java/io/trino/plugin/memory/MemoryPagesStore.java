@@ -49,9 +49,10 @@ import static java.lang.String.format;
 @ThreadSafe
 public class MemoryPagesStore
 {
+    private int decreases = 0;
     private final long maxBytes;
 
-    static final int MAX_PAGE_SIZE = 5;
+    static final int MAX_PAGE_SIZE = 10000;
 
     @GuardedBy("this")
     private long currentBytes;
@@ -214,9 +215,8 @@ public class MemoryPagesStore
                     TableData tableData = tables.get(tableId);
                     UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
                     uPage.updateRow(row, tableDataPosition.position);
-                    System.out.println("Implicit insert");
+                    // System.out.println("Implicit insert");
                     // Do not need to update the hashTables, as neither hash nor the storage position changed.
-
                     continue;
                 }
                 added++;
@@ -298,12 +298,14 @@ public class MemoryPagesStore
             DeltaFlagRequest.deltaFlagLock.readLock().lock();
             if (DeltaFlagRequest.globalDeltaUpdateInProcess) {
                 sleep = true;
-                sleepTime *= 2;
+                if(sleepTime < 1000) {
+                    sleepTime *= 2;
+                }
             }
             DeltaFlagRequest.deltaFlagLock.readLock().unlock();
             try {
                 if (sleep) {
-                    Thread.sleep(Math.min(sleepTime, 1000));
+                    Thread.sleep(sleepTime);
                 }
                 else {
                     break;
@@ -331,7 +333,7 @@ public class MemoryPagesStore
             TableData tableData = tables.get(tableId);
             if (tableData.getRows() != expectedRows) {
                 throw new TrinoException(MISSING_DATA,
-                        format("Expected to find [%s] rows on a worker, but found [%s].", expectedRows, tableData.getRows()));
+                        format("Expected to find [%s] rows on a worker, but found [%s]. Table had [%d] decreases.", expectedRows, tableData.getRows(), decreases));
             }
 
             boolean done = false;
@@ -419,35 +421,36 @@ public class MemoryPagesStore
         return new Page(false, page.getPositionCount(), outputBlocks);
     }
 
-    private static final class TableData
+    private final class TableData
     {
         private final List<UpdatablePage> pages = new ArrayList<>();
         private long rows;
 
         // TODO: check that it is synchronized
-        public int add(UpdatablePage page)
+        public synchronized int add(UpdatablePage page)
         {
             pages.add(page);
-            rows += page.getPositionCount();
+            rows += page.getPositionCount(); // TODO: does count deleted rows, but it is never used on pages with deleted rows
             return pages.size();
         }
-
-        public void decreaseNumberOfRows(int decrease)
+        // needs to be only called with a lock held
+        public synchronized void decreaseNumberOfRows(int decrease)
         {
             rows -= decrease;
+            decreases += decrease;
         }
 
-        private List<UpdatablePage> getPages()
+        private synchronized List<UpdatablePage> getPages()
         {
             return pages;
         }
 
-        private int getPageNumber()
+        private synchronized int getPageNumber()
         {
             return pages.size();
         }
 
-        private long getRows()
+        private synchronized long getRows()
         {
             return rows;
         }

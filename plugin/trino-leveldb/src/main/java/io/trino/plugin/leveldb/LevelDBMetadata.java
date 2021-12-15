@@ -64,15 +64,14 @@ public class LevelDBMetadata
     @Override
     public LevelDBTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName)
     {
-        System.out.println("getTableHandle");
         if (!listSchemaNames(session).contains(tableName.getSchemaName())) {
             return null;
         }
         List<String> tables = levelDBAPI.getTableNames(Optional.empty());
         // TODO: This is unfortunate
-        for (String str : tables) {
+        /* for (String str : tables) {
             System.out.println(str);
-        }
+        }*/
         if (!tables.contains(tableName.getTableName().toUpperCase(Locale.ENGLISH))) {
             System.out.println("getTableHandle table " + tableName.getTableName().toUpperCase(Locale.ENGLISH) + " not included in tables");
             return null;
@@ -84,14 +83,12 @@ public class LevelDBMetadata
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table)
     {
-        System.out.println("getTableMetadata");
         return getTableMetadata(((LevelDBTableHandle) table).toSchemaTableName());
     }
 
     @Override
     public List<SchemaTableName> listTables(ConnectorSession session, Optional<String> optionalSchemaName)
     {
-        System.out.println("listTables");
         List<String> schemaNames;
         if (optionalSchemaName.isPresent()) {
             schemaNames = new ArrayList<String>();
@@ -113,7 +110,6 @@ public class LevelDBMetadata
     @Override
     public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        System.out.println("getColumnHandles");
         LevelDBTableHandle levelDBTableHandle = (LevelDBTableHandle) tableHandle;
 
         JsonNode json = levelDBAPI.getTableDesc(levelDBTableHandle.getTableName(), Optional.of(levelDBTableHandle.getSchemaName()));
@@ -135,7 +131,6 @@ public class LevelDBMetadata
     @Override
     public Map<SchemaTableName, List<ColumnMetadata>> listTableColumns(ConnectorSession session, SchemaTablePrefix prefix)
     {
-        System.out.println("listTableColumns");
         requireNonNull(prefix, "prefix is null");
         ImmutableMap.Builder<SchemaTableName, List<ColumnMetadata>> columns = ImmutableMap.builder();
         for (SchemaTableName tableName : listTables(session, prefix)) {
@@ -150,24 +145,22 @@ public class LevelDBMetadata
 
     private ConnectorTableMetadata getTableMetadata(SchemaTableName tableName)
     {
-        System.out.println("getTableMetadata");
         if (!listSchemaNames().contains(tableName.getSchemaName())) {
             return null;
         }
 
         JsonNode json = levelDBAPI.getTableDesc(tableName.getTableName(), Optional.of(tableName.getSchemaName()));
         LevelDBTable table;
-        System.out.println("getTableMetadata cmp: " + tableName.getTableName() + " : " + json.get("name").asText());
+        // System.out.println("getTableMetadata cmp: " + tableName.getTableName() + " : " + json.get("name").asText());
         if (!tableName.getTableName().equalsIgnoreCase(json.get("name").asText())) { // TODO can json be null here or will it just be empty
             System.out.println("getTableMetadata: not equal");
             return null;
         }
         else {
-            System.out.println("getTableMetadata: Creating LevelDBTable");
+            // System.out.println("getTableMetadata: Creating LevelDBTable");
             table = new LevelDBTable(json, levelDBAPI.getAddress(), levelDBAPI.getPort());
         }
         ConnectorTableMetadata data = new ConnectorTableMetadata(tableName, table.getColumnsMetadata());
-        System.out.println("end getTableMetadata");
         return data;
     }
 
@@ -182,21 +175,18 @@ public class LevelDBMetadata
     @Override
     public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle)
     {
-        System.out.println("getColumnMetadata");
         return ((LevelDBColumnHandle) columnHandle).getColumnMetadata();
     }
 
     @Override
     public boolean usesLegacyTableLayouts()
     {
-        System.out.println("usesLegacyTableLayouts");
         return false;
     }
 
     @Override
     public ConnectorTableProperties getTableProperties(ConnectorSession session, ConnectorTableHandle table)
     {
-        System.out.println("getTableProperties");
         //TODO ??
         return new ConnectorTableProperties();
     }

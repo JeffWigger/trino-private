@@ -232,7 +232,7 @@ public class DeltaUpdateTask
                 List<QualifiedObjectName> tablesToUpdate = new ArrayList<>();
                 for(Input i : inputs){
                     QualifiedObjectName referencedTableName = new QualifiedObjectName(i.getCatalogName(), i.getSchema(), i.getTable());
-                    System.out.println(queryId.toString()+ ": gets referenced Tables: " + referencedTableName);
+                    // System.out.println(queryId.toString()+ ": gets referenced Tables: " + referencedTableName);
                     if(updatedTablesNames.contains(referencedTableName)){
                         // get SqlQueryExecution
                         tablesToUpdate.add(referencedTableName);
@@ -312,7 +312,7 @@ public class DeltaUpdateTask
         DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(false);
         List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
         for (InternalNode node : memoryNodes){
-            System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
+            // System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
             URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
             Request request = preparePost()
                     .setUri(flagSignalPoint)
@@ -484,7 +484,6 @@ public class DeltaUpdateTask
         markDeltaUpdate(settableFuture);
 
         for (TableHandle source : sourceTableH) {
-            System.out.println("LOOP");
             // based on visitInsert of StatementAnalyzer
             TableSchema sourceSchema = metadata.getTableSchema(session, source);
             String tableName = sourceSchema.getTable().getTableName();
@@ -596,14 +595,14 @@ public class DeltaUpdateTask
 
         dispatchManager.getQuery(queryId).addStateChangeListener(state ->
         {
-            System.out.println(state);
+            // System.out.println(state);
             if (state.equals(QueryState.RUNNING)){
                 // based on code from Query.java and ExecutingStatementResource.java
                 // Flushing does not exist as a query state it only exists as a task state
                 ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), DeltaUpdateTask.class.getSimpleName()));
 
                 queryManager.addOutputInfoListener(queryId, outputInfo -> {
-                    System.out.println(outputInfo.getColumnNames());
+                    // System.out.println(outputInfo.getColumnNames());
                     for (URI outputLocation : outputInfo.getBufferLocations()) {
                         exchangeClient.addLocation(outputLocation);
                     }
@@ -658,8 +657,8 @@ public class DeltaUpdateTask
                  SerializedPage p = exchangeClient.pollPage();
                  // should I again call is blocked here? - In Query they don't
                  if (p != null) {
-                     System.out.println("Got page: " + p.getPositionCount() + " id: " + id+ " i: "+i);
-                     System.out.println("Got page: " + p);
+                     // System.out.println("Got page: " + p.getPositionCount() + " id: " + id+ " i: "+i);
+                     // System.out.println("Got page: " + p);
                      i++;
                      //System.out.println("Blocked?: " + exchangeClient.isBlocked());
                  }
@@ -680,7 +679,7 @@ public class DeltaUpdateTask
                  }
              }
         }
-        System.out.println("Finished" + " id: " + id);
+        // System.out.println("Finished" + " id: " + id);
         // Query::closeExchangeClientIfNecessary
         // not sure if we should close here
         // TDOD: potentially call this twice, seems not to be an issue

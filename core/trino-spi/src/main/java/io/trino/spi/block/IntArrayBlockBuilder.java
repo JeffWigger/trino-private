@@ -300,4 +300,10 @@ public class IntArrayBlockBuilder
             throw new IllegalArgumentException("position is not valid");
         }
     }
+
+    @Override
+    public UpdatableBlock makeUpdatable(){
+        // (@Nullable BlockBuilderStatus blockBuilderStatus, int positionCount, boolean[] valueMarker, long[] values)
+        return new UpdatableIntArrayBlock(blockBuilderStatus, positionCount, valueIsNull, values);
+    }
 }

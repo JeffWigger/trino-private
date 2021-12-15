@@ -43,7 +43,6 @@ public class DeltaRecordPageSource
         this.cursor = requireNonNull(cursor, "cursor is null");
         this.types = List.copyOf(requireNonNull(types, "types is null"));
         this.pageBuilder = new DeltaPageBuilder(this.types);
-        System.out.println("DeltaRecordPageSource");
     }
 
     public RecordCursor getCursor()

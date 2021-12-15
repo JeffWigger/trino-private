@@ -24,6 +24,7 @@ import io.airlift.units.Duration;
 import io.trino.Session;
 import io.trino.memory.context.LocalMemoryContext;
 import io.trino.operator.OperationTimer.OperationTiming;
+import io.trino.spi.DeltaPage;
 import io.trino.spi.Mergeable;
 import io.trino.spi.Page;
 import io.trino.spi.PageBuilder;
@@ -260,7 +261,13 @@ public class TableWriterOperator
         timer.end(statisticsTiming);
 
         ListenableFuture<Void> blockedOnAggregation = statisticAggregationOperator.isBlocked();
-        CompletableFuture<?> future = pageSink.appendPage(new Page(blocks));
+        CompletableFuture<?> future = null;
+        if (page instanceof DeltaPage){
+            future = pageSink.appendPage(new DeltaPage(blocks, ((DeltaPage) page).getUpdateType()));
+        }else{
+            future = pageSink.appendPage(new Page(blocks));
+        }
+
         updateMemoryUsage();
         ListenableFuture<?> blockedOnWrite = toListenableFuture(future);
         blocked = asVoid(allAsList(blockedOnAggregation, blockedOnWrite));

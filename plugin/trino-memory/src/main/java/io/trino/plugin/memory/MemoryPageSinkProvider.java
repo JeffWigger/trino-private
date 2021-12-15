@@ -101,7 +101,7 @@ public class MemoryPageSinkProvider
             if (page instanceof DeltaPage){
                 DeltaPage dpage = (DeltaPage) page;
                 //System.out.println("MemoryPageSinkProvider: Page is a DeltaPage: "+ dpage.getClass().getName());
-                added = pagesStore.addDelta(tableId, (DeltaPage) page);
+                added = pagesStore.addDelta(tableId, dpage);
             }else {
                 //System.out.println("MemoryPageSinkProvider: Page got type: " + page.getClass().getName());
                 added = pagesStore.add(tableId, page);
