@@ -1,0 +1,16 @@
+./mvnw clean install -DskipTests -Dair.check.skip-checkstyle
+
+Copy
+trino-private/core/trino-server/target/trino-server-363.tar.gz
+Also copy etc:
+trino-private/testing/trino-server-ms-dev
+
+remove plugin.bundles from config.properties
+
+create a trino-leveldb folder in plugings and copy all jar files from:
+trino-private/plugin/trino-leveldb/target/trino-leveldb-363
+
+
+bin/launcher run
+
+
