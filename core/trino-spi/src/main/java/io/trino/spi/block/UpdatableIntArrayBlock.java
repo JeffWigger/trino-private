@@ -141,7 +141,7 @@ public class UpdatableIntArrayBlock
                 nullCounter--;
             }
             else if (valueMarker[position] == DEL) {
-                deleteCounter++;
+                deleteCounter--;
             }
             valueMarker[position] = 0;
         }
@@ -417,6 +417,12 @@ public class UpdatableIntArrayBlock
         // TODO: check if it has actually a null value in that interval!
         // could use unsafe methods to make the arrays smaller?
         return new IntArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull, 0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
+    }
+
+    @Override
+    public UpdatableBlock newLike()
+    {
+        return new UpdatableIntArrayBlock(null, 0, new byte[valueMarker.length], new int[values.length], 0, 0);
     }
 
     @Override

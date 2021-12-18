@@ -223,4 +223,11 @@ public interface UpdatableBlock
      * It does not return deleted rows
      */
     Block getEntriesFrom(int positionOffset, int length);
+
+    /**
+     * returns a new instance like this updatabeBlock. The sizes of the fields are retained, but the values are not copied!. blockBuilderStatus is set to null.
+     */
+    UpdatableBlock newLike();
+
+
 }

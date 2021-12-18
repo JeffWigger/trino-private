@@ -17,6 +17,7 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.DictionaryId;
+import io.trino.spi.block.IntArrayBlock;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.block.UpdatableByteArrayBlock;
@@ -261,6 +262,13 @@ public class UpdatablePage
         }
     }
 
+    public void insertRow(Page row){
+        int cols = getChannelCount();
+        for (int c = 0; c < cols; c++) {
+            insertBlock(this.getBlock(c), row.getBlock(c));
+        }
+    }
+
     public void deleteRow(int position){
         int cols = getChannelCount();
         for (int c = 0; c < cols; c++) {
@@ -279,6 +287,22 @@ public class UpdatablePage
             VariableWidthBlock variableWidthBlock = (VariableWidthBlock) sourceRow;
             int length = variableWidthBlock.getSliceLength(0);
             target.updateBytes(variableWidthBlock.getSlice(0, 0,length ), 0, length, position, 0);
+        }else if (target instanceof UpdatableIntArrayBlock){
+            target.updateInt(((IntArrayBlock) sourceRow).getInt(0, 0), position, 0);
+        }
+    }
+
+    private void insertBlock(UpdatableBlock target, Block sourceRow){
+        if (target instanceof UpdatableLongArrayBlock){
+            target.writeLong(((LongArrayBlock) sourceRow).getLong(0, 0));
+        } else if (target instanceof UpdatableByteArrayBlock){
+            target.writeByte((int)((ByteArrayBlock) sourceRow).getByte(0, 0));
+        } else if (target instanceof UpdatableVariableWidthBlock){
+            VariableWidthBlock variableWidthBlock = (VariableWidthBlock) sourceRow;
+            int length = variableWidthBlock.getSliceLength(0);
+            target.writeBytes(variableWidthBlock.getSlice(0,0,length),0,length);
+        }else if (target instanceof UpdatableIntArrayBlock){
+            target.writeInt(((IntArrayBlock) sourceRow).getInt(0, 0));
         }
     }
 

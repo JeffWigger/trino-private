@@ -471,6 +471,13 @@ public class UpdatableVariableWidthBlock
     }
 
     @Override
+    public UpdatableVariableWidthBlock newLike()
+    {
+        // new UpdatableVariableWidthBlock(null, 0, Arrays.copyOf(valueMarker, valueMarker.length), new VariableSliceOutput(sliceOutput.copySlice(), sliceOutput.size()), nullCounter, deleteCounter, Arrays.copyOf(offsets, offsets.length))
+        return new UpdatableVariableWidthBlock(null, 0, new byte[valueMarker.length], new VariableSliceOutput(Slices.allocate(sliceOutput.size()), 0), 0, 0, new int[offsets.length]);
+    }
+
+    @Override
     public Block build()
     {
         if (currentEntrySize > 0) {

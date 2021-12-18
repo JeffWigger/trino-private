@@ -139,7 +139,7 @@ public class UpdatableLongArrayBlock
                 nullCounter--;
             }
             else if (valueMarker[position] == DEL) {
-                deleteCounter++;
+                deleteCounter--;
             }
             valueMarker[position] = 0;
         }
@@ -461,6 +461,13 @@ public class UpdatableLongArrayBlock
         // TODO: check if it has actually a null value in that interval!
         // could use unsafe methods to make the arrays smaller?
         return new LongArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull, 0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
+    }
+
+    @Override
+    public UpdatableBlock newLike()
+    {
+        // new UpdatableLongArrayBlock(null, positionCount, Arrays.copyOf(valueMarker, valueMarker.length), Arrays.copyOf(values, values.length), nullCounter, deleteCounter);
+        return new UpdatableLongArrayBlock(null, 0, new byte[valueMarker.length], new long[values.length], 0, 0);
     }
 
     @Override

@@ -138,7 +138,7 @@ public class UpdatableByteArrayBlock
                 nullCounter--;
             }
             else if (valueMarker[position] == DEL) {
-                deleteCounter++;
+                deleteCounter--;
             }
             valueMarker[position] = 0;
         }
@@ -412,6 +412,12 @@ public class UpdatableByteArrayBlock
         }
         // could use unsafe methods to make the arrays smaller?
         return new ByteArrayBlock(0, acctualSize, newValueIsNull == null ? null : Arrays.copyOfRange(newValueIsNull, 0, acctualSize), Arrays.copyOfRange(newValues, 0, acctualSize));
+    }
+
+    @Override
+    public UpdatableBlock newLike()
+    {
+        return new UpdatableByteArrayBlock(null, 0, new byte[valueMarker.length], new byte[values.length], 0, 0);
     }
 
     @Override
