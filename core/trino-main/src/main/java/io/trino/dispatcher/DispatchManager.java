@@ -14,8 +14,12 @@
 package io.trino.dispatcher;
 
 import com.google.common.util.concurrent.AbstractFuture;
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+import io.airlift.http.client.FullJsonResponseHandler;
+import io.airlift.log.Logger;
 import io.trino.Session;
 import io.trino.execution.QueryIdGenerator;
 import io.trino.execution.QueryInfo;
@@ -24,6 +28,7 @@ import io.trino.execution.QueryManagerStats;
 import io.trino.execution.QueryPreparer;
 import io.trino.execution.QueryPreparer.PreparedQuery;
 import io.trino.execution.QueryTracker;
+import io.trino.execution.SqlTaskManager;
 import io.trino.execution.resourcegroups.ResourceGroupManager;
 import io.trino.metadata.SessionPropertyManager;
 import io.trino.security.AccessControl;
@@ -32,6 +37,7 @@ import io.trino.server.SessionContext;
 import io.trino.server.SessionPropertyDefaults;
 import io.trino.server.SessionSupplier;
 import io.trino.server.protocol.Slug;
+import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
 import io.trino.spi.resourcegroups.SelectionContext;
@@ -40,23 +46,34 @@ import io.trino.transaction.TransactionManager;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
 
+import javax.annotation.Nullable;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
+import static io.airlift.concurrent.Threads.threadsNamed;
+import static io.airlift.http.client.HttpStatus.OK;
 import static io.trino.execution.QueryState.QUEUED;
 import static io.trino.execution.QueryState.RUNNING;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.QUERY_TEXT_TOO_LARGE;
 import static io.trino.util.StatementUtils.getQueryType;
 import static io.trino.util.StatementUtils.isTransactionControlStatement;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.Executors.newScheduledThreadPool;
 
 public class DispatchManager
 {
@@ -78,6 +95,12 @@ public class DispatchManager
     public final QueryTracker<DispatchQuery> queryTracker;
 
     private final QueryManagerStats stats = new QueryManagerStats();
+
+    private final ScheduledExecutorService taskBatcher;
+
+    private final List<CreateQueryStore> storeList = new LinkedList<CreateQueryStore>();
+
+    private static final Logger log = Logger.get(DispatchManager.class);
 
     @Inject
     public DispatchManager(
@@ -111,18 +134,31 @@ public class DispatchManager
         this.dispatchExecutor = requireNonNull(dispatchExecutor, "dispatchExecutor is null").getExecutor();
 
         this.queryTracker = new QueryTracker<>(queryManagerConfig, dispatchExecutor.getScheduledExecutor());
+
+        taskBatcher = newScheduledThreadPool(1, threadsNamed("task-batcher-%s"));
     }
 
     @PostConstruct
     public void start()
     {
         queryTracker.start();
+
+        taskBatcher.scheduleWithFixedDelay(() -> {
+            try {
+                startTasks();
+            }
+            catch (Throwable e) {
+                log.warn(e, "Error scheduling the Batch Tasks");
+            }
+        }, 200, 200, TimeUnit.MILLISECONDS);
+
     }
 
     @PreDestroy
     public void stop()
     {
         queryTracker.stop();
+        taskBatcher.shutdown();
     }
 
     @Managed
@@ -137,6 +173,39 @@ public class DispatchManager
         return queryIdGenerator.createNextQueryId();
     }
 
+    public void startTasks(){
+
+        synchronized(this){
+            Iterator<CreateQueryStore> it = storeList.iterator();
+            // TODO: check if all queries are finished,
+            // Then start the integration of the delta data
+            // When finished, run this next batch
+            while (it.hasNext()) {
+                CreateQueryStore cqs = it.next();
+                ListenableFuture<Void> listenableFuture = createQueryInternal(cqs.queryId, cqs.slug, cqs.sessionContext, cqs.query);
+                // listenableFuture.addListener(()-> cqs.settableFuture.set((Void) null), taskBatcher); // todo: using the taskBatcher here may cause problems
+                Futures.addCallback(listenableFuture, new FutureCallback<>()
+                {
+
+                    @Override
+                    public void onSuccess(@org.checkerframework.checker.nullness.qual.Nullable Void result)
+                    {
+                        cqs.settableFuture.set(null);
+                    }
+
+                    @Override
+                    public void onFailure(Throwable throwable)
+                    {
+                        log.warn("createQuery future failed");
+                        cqs.settableFuture.setException(throwable);
+                    }
+                }, directExecutor());
+                it.remove();
+            }
+        }
+    }
+
+
     public ListenableFuture<Void> createQuery(QueryId queryId, Slug slug, SessionContext sessionContext, String query)
     {
         requireNonNull(queryId, "queryId is null");
@@ -145,6 +214,15 @@ public class DispatchManager
         checkArgument(!query.isEmpty(), "query must not be empty string");
         checkArgument(queryTracker.tryGetQuery(queryId).isEmpty(), "query %s already exists", queryId);
 
+        SettableFuture<Void> settableFuture = SettableFuture.create();
+        CreateQueryStore store = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
+        synchronized(this){
+            storeList.add(store);
+        }
+        return settableFuture;
+    }
+
+    public ListenableFuture<Void> createQueryInternal(QueryId queryId, Slug slug, SessionContext sessionContext, String query){
         // It is important to return a future implementation which ignores cancellation request.
         // Using NonCancellationPropagatingFuture is not enough; it does not propagate cancel to wrapped future
         // but it would still return true on call to isCancelled() after cancel() is called on it.
@@ -348,6 +426,22 @@ public class DispatchManager
         {
             // query submission cannot be canceled
             return false;
+        }
+    }
+
+    private static class CreateQueryStore
+    {
+        QueryId queryId;
+        Slug slug;
+        SessionContext sessionContext;
+        String query;
+        SettableFuture<Void> settableFuture;
+        CreateQueryStore(QueryId queryId, Slug slug, SessionContext sessionContext, String query, SettableFuture<Void> settableFuture){
+            this.queryId = queryId;
+            this.slug = slug;
+            this.sessionContext = sessionContext;
+            this.query = query;
+            this.settableFuture = settableFuture;
         }
     }
 }
