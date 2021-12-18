@@ -176,7 +176,7 @@ public class DeltaUpdateTask
         this.locationFactory = locationFactory;
         this.deltaFlagRequestCodec = deltaFlagRequestCodec;
 
-        String fileDirectory = "/tmp/stats/";
+        String fileDirectory = "/scratch/wigger/";
         String statisticsFileName = "DeltaUpdateTask";
 
         try {

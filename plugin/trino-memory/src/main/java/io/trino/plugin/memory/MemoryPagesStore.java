@@ -80,7 +80,7 @@ public class MemoryPagesStore
     public MemoryPagesStore(MemoryConfig config)
     {
         this.maxBytes = config.getMaxDataPerNode().toBytes();
-        String fileDirectory = "/tmp/stats/";
+        String fileDirectory = "/scratch/wigger/";
         String statisticsFileName = "MemoryPagesStore";
 
         try {
