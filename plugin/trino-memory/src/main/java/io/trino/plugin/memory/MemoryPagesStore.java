@@ -19,10 +19,12 @@ import io.airlift.slice.Slice;
 import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.DeltaPage;
 import io.trino.spi.DeltaPageBuilder;
+import io.trino.spi.DeltaPageBuilder.Mode;
 import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
 import io.trino.spi.UpdatablePage;
 import io.trino.spi.block.Block;
+import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.UpdatableBlock;
 import io.trino.spi.type.Type;
 
@@ -39,7 +41,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -65,21 +66,21 @@ public class MemoryPagesStore
     private long currentBytes;
 
     private final Map<Long, TableData> tables = new HashMap<>();
-    private final Map<Long, List<UpdatablePage>> tablesDelta = new HashMap<>();
+    private final Map<Long, List<DeltaPage>[]> tablesDelta = new HashMap<>();
 
     // Hashtables that map primary keys to the storage position.
     // TODO: chose a good initial capacity
     // This will be unaccounted for in the tracked storage size
     @GuardedBy("this")
-    private Map<Long, Map<Slice, TableDataPosition>> hashTables = new HashMap<>();
+    private final Map<Long, Map<Slice, TableDataPosition>> hashTables = new HashMap<>();
     // private Map<Long, Map<Slice, TableDataPosition>> hashTablesDelta = new HashMap<>();,preprocessing deltas has little value, as for merging the hashTable we do the same amount of work, or could use putall, but it is not more efficient, it calls put for all entreis
-    private Map<Long, List<ColumnInfo>> indices = new HashMap<>();
+    private final Map<Long, List<ColumnInfo>> indices = new HashMap<>();
 
-    private Path statisticsFilePath;
-    private File file;
     private FileWriter statisticsWriter;
+    private FileWriter integrationWriter;
 
-    private int splitsPerNode;
+    private final int splitsPerNode;
+    private long currentBucketCounter;
 
     @Inject
     public MemoryPagesStore(MemoryConfig config)
@@ -88,18 +89,23 @@ public class MemoryPagesStore
         splitsPerNode = config.getSplitsPerNode();
         String fileDirectory = "/scratch/wigger/";
         String statisticsFileName = "MemoryPagesStore";
+        String BatchIntegrationFileName = "BatchIntegration";
 
         try {
             Path dir = Paths.get(fileDirectory);
             Files.createDirectories(dir);
-            statisticsFilePath = dir.resolve(statisticsFileName);
-            this.file = new File(statisticsFilePath.toString());
-            if(!this.file.exists()){
-                this.file.createNewFile();
+            Path statisticsFilePath = dir.resolve(statisticsFileName);
+            File file = new File(statisticsFilePath.toString());
+            if(!file.exists()){
+                file.createNewFile();
             }
-            assert(this.file.exists() && file.canWrite());
-            statisticsWriter = new FileWriter(this.file, true);
-            statisticsWriter.write(String.format("UpdateNr,InsertBytes,DeleteBytes,UpdateBytes,InsertCount,DeleteCount,UpdateCount,MicroSeconds\n"));
+            File integrationFile = new File(statisticsFilePath.toString());
+            if(!integrationFile.exists()){
+                integrationFile.createNewFile();
+            }
+            assert(integrationFile.exists() && integrationFile.canWrite());
+            integrationWriter = new FileWriter(integrationFile, true);
+            integrationWriter.write(String.format("UpdateNr,Added,Deleted,MicroSeconds\n"));
         }
         catch (IOException e) {
             e.printStackTrace();
@@ -107,12 +113,22 @@ public class MemoryPagesStore
 
     }
 
+    private synchronized int nextBucket(){
+        return (int) (currentBucketCounter++) % splitsPerNode;
+    }
+
     public synchronized void initialize(long tableId, List<ColumnInfo> indices)
     {
         // TODO: should update the indices in case a new column was added.
         if (!tables.containsKey(tableId)) {
-            tables.put(tableId, new TableData());
-            tablesDelta.put(tableId, new LinkedList<>());
+            tables.put(tableId, new TableData(splitsPerNode));
+            // TODO: add cleanup for this
+            List<DeltaPage>[] pages = new ArrayList[splitsPerNode];
+            for(int i = 0; i < splitsPerNode; i++){
+                pages[i] = new ArrayList<>();
+            }
+            tablesDelta.put(tableId, pages);
+            // TODO: add cleanup for this
             hashTables.put(tableId, new HashMap<>());
             this.indices.put(tableId, indices);
         }
@@ -147,19 +163,30 @@ public class MemoryPagesStore
             htable = new HashMap<Slice, TableDataPosition>((int) (pageSize * 1.3));
             hashTables.put(tableId, htable);
         }
-        int pageNr = tableData.getPageNumber(); // + 1; getPageNumber returns 0 for the first page that gets added.
+        int bucket = nextBucket();
+        int pageNr = tableData.getPageNumber(bucket); // + 1; getPageNumber returns 0 for the first page that gets added.
         for (int i = 0; i < pageSize; i++) {
             Page row = page.getSingleValuePage(i);
             Slice key = getKey(tableId, row);
             TableDataPosition tableDataPosition = htable.getOrDefault(key, null);
             if (tableDataPosition != null) {
                 // entry is already in the DB
-                // implicit insert
-                UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
-                uPage.updateRow(row, tableDataPosition.position);
-                continue;
+                // implicit update
+                // UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
+                // uPage.updateRow(row, tableDataPosition.position);
+                // This updates the old records and leaves the current one in the page, --> have untracked data
+                // continue;
+                //TODO: Need to decide how to handle this
+
+
+                // Best solution for now is to delete the old record
+                UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
+                uPage.deleteRow(tableDataPosition.position);
+                // Now we add the entry in the new page to the hash table
+                added--;
+                tableData.decreaseNumberOfRows(1);
             }
-            htable.put(key, new TableDataPosition(pageNr, i));
+            htable.put(key, new TableDataPosition(bucket, pageNr, i));
             added++;
         }
         if (added == 0) {
@@ -174,7 +201,7 @@ public class MemoryPagesStore
         }
         currentBytes = newSize;
 
-        tableData.add(updatablePage);
+        tableData.add(updatablePage, bucket);
         return added;
     }
 
@@ -221,124 +248,117 @@ public class MemoryPagesStore
         return key.slice();
     }
 
-    public synchronized int addDeltaNew(Long tableId, DeltaPage page)
-    {
-        long startTime = System.nanoTime();
-        long updatesBytes = 0;
-        long insertsBytes = 0;
-        long deletesBytes = 0;
-        long updatesCount = 0;
-        long insertsCount = 0;
-        long deletesCount = 0;
-        if (!contains(tableId)) {
-            throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
-        }
-        int cols = page.getChannelCount();
-        int size = page.getPositionCount();
-
-        UpdatableBlock[] insertBlocks = new UpdatableBlock[cols];
-        Type[] types = new Type[cols];
-
-        // extract the types of each column, and create updatableBlocks of the right type
-        for (int c = 0; c < cols; c++) {
-            // todo: this copies or creates arrays twice, introduce function reset to updatable blocks
-            insertBlocks[c] = page.getBlock(c).makeUpdatable().newLike();
-        }
-        UpdatablePage updatablePage = new UpdatablePage(insertBlocks);
+    public synchronized void applyDeltas(){
+        // we do not further break up the pages, as they should already be small enough, else we need to make sure that we do not split at a deleted followed by an insert
+        // as that may simulate an update.
         int added = 0;
-        for (int i = 0; i < size; i++) {
-            Page row = page.getSingleValuePage(i);
-            // assumes the entries actually exist, what if not.
-            Map<Slice, TableDataPosition> hashTable = hashTables.get(tableId);
-            Slice key = getKey(tableId, row);
-            TableDataPosition tableDataPosition = hashTable.getOrDefault(key, null);
+        int delTotal = 0;
+        long startTime = System.nanoTime();
+        // TODO add timing, and logging
+        for(Map.Entry<Long, List<DeltaPage>[]> entry : tablesDelta.entrySet()){
+            long tableId = entry.getKey();
 
-            if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.INS.ordinal()) {
-                if (tableDataPosition != null) {
-                    // The entry with this key value already exists, so we treat this insert like an update!
-                    TableData tableData = tables.get(tableId);
-                    UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
-                    uPage.updateRow(row, tableDataPosition.position);
-                    // Do not need to update the hashTables, as neither hash nor the storage position changed.
-                    updatesBytes += row.getSizeInBytes();
-                    updatesCount += 1;
-                    continue;
-                }
-                added++;
-                for (int c = 0; c < cols; c++) {
-                    Type type = types[c];
-                    Class<?> javaType = type.getJavaType();
-                    UpdatableBlock insertsBlock = insertBlocks[c];
-                    // TODO: what about the other types? // not needed for LevelDB
-                    if (javaType == boolean.class) {
-                        // Uses a byte array
-                        type.writeBoolean(insertsBlock, type.getBoolean(row.getBlock(c), 0));
+            for(int i = 0; i < splitsPerNode; i++) {
+                List<DeltaPage> dPages = entry.getValue()[i];
+                int numberOfPages = dPages.size();
+                for(int j = 0; j < numberOfPages; j++){
+                    DeltaPage dpage = dPages.get(j);
+                    int entries = dpage.getPositionCount();
+                    UpdatablePage pageBuilder = make_updatable(dpage, tableId);
+                    Slice prevKey = null;
+                    TableDataPosition prevTableDataPosition = null;
+                    int deletes = 0;
+                    for(int k = 0; k < entries; k++){
+                        DeltaPage row = dpage.getSingleValuePage(k);
+                        Map<Slice, TableDataPosition> hashTable = hashTables.get(tableId);
+                        Slice key = getKey(tableId, row);
+                        TableDataPosition tableDataPosition = hashTable.getOrDefault(key, null);
+
+                        TableData tableData = tables.get(tableId);
+                        int pageNr = tableData.getPageNumber(i);
+                        if(row.getUpdateType().getByte(0,0) == Mode.DEL.ordinal()){
+                            pageBuilder.deleteRow(k);
+                            if(tableDataPosition != null){
+                                UpdatablePage uPage = tableData.pages[tableDataPosition.pageNr].get(tableDataPosition.pageNr);
+                                uPage.deleteRow(tableDataPosition.position);
+                                hashTable.remove(key);
+                                added--;
+                                deletes++;
+                                tableData.decreaseNumberOfRows(1);
+                                prevKey = key;
+                                prevTableDataPosition = tableDataPosition;
+                            }else{
+                                throw new TrinoException(GENERIC_INTERNAL_ERROR, "applyDelta delete without row in hashTables");
+                            }
+                        }else if(row.getUpdateType().getByte(0,0) == Mode.INS.ordinal()){
+                            if(tableDataPosition != null){
+                                // should never happen as we simulate updates as delete and insert
+                                throw new TrinoException(GENERIC_INTERNAL_ERROR, "applyDelta insert with being in hashTables");
+                            }else{
+                                added++;
+                                // for the simulated deletes I need to know the bucket
+                                // would want to add it to the same table to, to fill the hole again
+                                // theoretically could add it to any pageNr as during delta update there are no queries going on
+                                if(prevKey != null && prevKey.equals(key)){
+                                    hashTable.put(key, prevTableDataPosition);
+                                    UpdatablePage uPage = tableData.pages[prevTableDataPosition.bucket].get(prevTableDataPosition.pageNr);
+                                    uPage.updateRow(row, prevTableDataPosition.position);
+                                }else{
+                                    // upage already contains the entry
+                                    hashTable.put(key, new TableDataPosition(i, pageNr, k - deletes)); // as we will compact the upage
+                                }
+                            }
+                            prevKey = null;
+                            prevTableDataPosition = null;
+                        } //TODO: upd
                     }
-                    else if (javaType == long.class) {
-                        type.writeLong(insertsBlock, type.getLong(row.getBlock(c), 0));
-                    }
-                    else if (javaType == double.class) {
-                        // uses long array
-                        type.writeDouble(insertsBlock, type.getDouble(row.getBlock(c), 0));
-                    }
-                    else if (javaType == Slice.class) {
-                        Slice slice = type.getSlice(row.getBlock(c), 0);
-                        type.writeSlice(insertsBlock, slice, 0, slice.length());
-                    }
-                    else {
-                        System.out.println("MemoryPageStore writes an object!");
-                        type.writeObject(insertsBlock, type.getObject(row.getBlock(c), 0));
-                    }
-                }
-                insertsBytes += row.getSizeInBytes();
-                insertsCount += 1;
-            }
-            else {
-                TableData tableData = tables.get(tableId);
-                UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
-                if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()) {
-                    uPage.updateRow(row, tableDataPosition.position);
-                    // Do not need to update the hashTables, as neither hash nor the storage position changed.
-                    updatesBytes += row.getSizeInBytes();
-                    updatesCount += 1;
-                }
-                else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
-                    uPage.deleteRow(tableDataPosition.position);
-                    hashTable.remove(key);
-                    added--;
-                    tableData.decreaseNumberOfRows(1);
-                    deletesBytes += row.getSizeInBytes();
-                    deletesCount += 1;
-                }
-                else {
-                    throw new TrinoException(GENERIC_INTERNAL_ERROR, "Unkown type of insert for delta updates");
+                    delTotal += deletes;
                 }
             }
         }
-
-        // Page containing only the inserts
-        UpdatablePage inserts = new UpdatablePage(false, insertBlocks[0].getPositionCount(), insertBlocks);
-
-        inserts.compact(); // not needed for leveldb
-
-        long newSize = currentBytes + inserts.getRetainedSizeInBytes();
-        if (maxBytes < newSize) {
-            throw new TrinoException(MEMORY_LIMIT_EXCEEDED, format("Memory limit [%d] for memory connector exceeded", maxBytes));
-        }
-        currentBytes = newSize;
-        tablesDelta.get(tableId).add(inserts);
-
-
-
         long endTime = System.nanoTime();
         try {
-            statisticsWriter.write(String.format("%d, %d, %d, %d, %d, %d, %d, %d\n", DeltaFlagRequest.globalDeltaUpdateCount, insertsBytes, deletesBytes, updatesBytes, insertsCount, deletesCount, updatesCount, (endTime - startTime)/1000));
-            statisticsWriter.flush();
+            integrationWriter.write(String.format("%d,%d,%d,%d\n", DeltaFlagRequest.globalDeltaUpdateCount, added, delTotal,(endTime - startTime)/1000));
+            integrationWriter.flush();
         }
         catch (IOException e) {
             e.printStackTrace();
         }
-        return added;
+    }
+
+    private void pageBuilderAddRecord(DeltaPageBuilder pageBuilder, ArrayList<Type> types, Page row, Mode mode){
+        // based on RecordPageSource::getNextPage
+        pageBuilder.declarePosition();
+        for (int c = 0; c < types.size(); c++) {
+            BlockBuilder output = pageBuilder.getBlockBuilder(c);
+            if (row.getBlock(c).isNull(0)) {
+                output.appendNull();
+            }
+            else {
+                Type type = types.get(c);
+                Class<?> javaType = type.getJavaType();
+                if (javaType == boolean.class) {
+                    // Uses a byte array
+                    type.writeBoolean(output, type.getBoolean(row.getBlock(c), 0));
+                }
+                else if (javaType == long.class) {
+                    type.writeLong(output, type.getLong(row.getBlock(c), 0));
+                }
+                else if (javaType == double.class) {
+                    // uses long array
+                    type.writeDouble(output, type.getDouble(row.getBlock(c), 0));
+                }
+                else if (javaType == Slice.class) {
+                    Slice slice = type.getSlice(row.getBlock(c), 0);
+                    type.writeSlice(output, slice, 0, slice.length());
+                }
+                else {
+                    System.out.println("MemoryPageStore writes an object!");
+                    type.writeObject(output, type.getObject(row.getBlock(c), 0));
+                }
+            }
+        }
+        pageBuilder.updateBuilder.writeByte(mode.ordinal());
     }
 
     public synchronized int addDelta(Long tableId, DeltaPage page)
@@ -356,16 +376,17 @@ public class MemoryPagesStore
         int cols = page.getChannelCount();
         int size = page.getPositionCount();
 
-        UpdatableBlock[] insertBlocks = new UpdatableBlock[cols];
-        Type[] types = new Type[cols];
+        ArrayList<Type> types = new ArrayList<>(cols);
 
         // extract the types of each column, and create updatableBlocks of the right type
         for (int c = 0; c < cols; c++) {
             ColumnInfo ci = indices.get(tableId).get(c);
             Type type = ci.getType();
-            types[c] = type;
-            // TODO: better value expected entries.
-            insertBlocks[c] = ci.getType().createBlockBuilder(null, 2).makeUpdatable();
+            types.add(type);
+        }
+        DeltaPageBuilder pageBuilder[] = new DeltaPageBuilder[splitsPerNode];
+        for(int i = 0; i < splitsPerNode; i++) {
+            pageBuilder[i] = new DeltaPageBuilder(types);
         }
         int added = 0;
         for (int i = 0; i < size; i++) {
@@ -379,81 +400,55 @@ public class MemoryPagesStore
                 if (tableDataPosition != null) {
                     // The entry with this key value already exists, so we treat this insert like an update!
                     TableData tableData = tables.get(tableId);
-                    UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
-                    uPage.updateRow(row, tableDataPosition.position);
-                    // System.out.println("Implicit insert");
+                    UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
+
+                    // TODO: what if the same value gets deleted several times in the same delta update ????, this works for the experimental data
+                    pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, uPage.getSingleValuePage(tableDataPosition.position), Mode.DEL);
+                    pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, row, Mode.INS);
                     // Do not need to update the hashTables, as neither hash nor the storage position changed.
                     updatesBytes += row.getSizeInBytes();
                     updatesCount += 1;
                     continue;
                 }
                 added++;
-                for (int c = 0; c < cols; c++) {
-                    Type type = types[c];
-                    Class<?> javaType = type.getJavaType();
-                    UpdatableBlock insertsBlock = insertBlocks[c];
-                    // TODO: what about the other types? // not needed for LevelDB
-
-                    if (javaType == boolean.class) {
-                        // Uses a byte array
-                        type.writeBoolean(insertsBlock, type.getBoolean(row.getBlock(c), 0));
-                    }
-                    else if (javaType == long.class) {
-                        type.writeLong(insertsBlock, type.getLong(row.getBlock(c), 0));
-                    }
-                    else if (javaType == double.class) {
-                        // uses long array
-                        type.writeDouble(insertsBlock, type.getDouble(row.getBlock(c), 0));
-                    }
-                    else if (javaType == Slice.class) {
-                        Slice slice = type.getSlice(row.getBlock(c), 0);
-                        type.writeSlice(insertsBlock, slice, 0, slice.length());
-                    }
-                    else {
-                        System.out.println("MemoryPageStore writes an object!");
-                        type.writeObject(insertsBlock, type.getObject(row.getBlock(c), 0));
-                    }
-                }
+                int bucket = nextBucket();
+                pageBuilderAddRecord(pageBuilder[bucket], types, row, Mode.INS);
                 insertsBytes += row.getSizeInBytes();
                 insertsCount += 1;
             }
             else {
-                TableData tableData = tables.get(tableId);
-                UpdatablePage uPage = tableData.pages.get(tableDataPosition.pageNr);
-                if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()) {
-                    uPage.updateRow(row, tableDataPosition.position);
-                    // Do not need to update the hashTables, as neither hash nor the storage position changed.
-                    updatesBytes += row.getSizeInBytes();
-                    updatesCount += 1;
-                }
-                else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
-                    uPage.deleteRow(tableDataPosition.position);
-                    hashTable.remove(key);
-                    added--;
-                    tableData.decreaseNumberOfRows(1);
-                    deletesBytes += row.getSizeInBytes();
-                    deletesCount += 1;
-                }
-                else {
-                    throw new TrinoException(GENERIC_INTERNAL_ERROR, "Unkown type of insert for delta updates");
+                if (tableDataPosition != null) {
+                    TableData tableData = tables.get(tableId);
+                    UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
+                    if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.UPD.ordinal()) {
+                        // TODO: what if the same value gets deleted several times in the same delta update ????, this works for the experimental data
+                        pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, uPage.getSingleValuePage(tableDataPosition.position), Mode.DEL);
+                        pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, row, Mode.INS);
+
+                        // Do not need to update the hashTables, as neither hash nor the storage position changed.
+                        updatesBytes += row.getSizeInBytes();
+                        updatesCount += 1;
+                    }
+                    else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
+                        // TODO: what if the same value gets deleted several times in the same delta update ????, this works for the experimental data
+                        pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, uPage.getSingleValuePage(tableDataPosition.position), Mode.DEL);
+                        hashTable.remove(key);
+                        added--;
+                        //tableData.decreaseNumberOfRows(1);
+                        deletesBytes += row.getSizeInBytes();
+                        deletesCount += 1;
+                    }
+                    else {
+                        throw new TrinoException(GENERIC_INTERNAL_ERROR, "Unkown type of insert for delta updates");
+                    }
+                }else{
+                    throw new TrinoException(GENERIC_INTERNAL_ERROR, "Wanting to delete or update a record that is not yet in the memory table");
                 }
             }
         }
-
-        // Page containing only the inserts
-        UpdatablePage inserts = new UpdatablePage(false, insertBlocks[0].getPositionCount(), insertBlocks);
-
-        inserts.compact(); // not needed for leveldb
-
-        long newSize = currentBytes + inserts.getRetainedSizeInBytes();
-        if (maxBytes < newSize) {
-            throw new TrinoException(MEMORY_LIMIT_EXCEEDED, format("Memory limit [%d] for memory connector exceeded", maxBytes));
+        for(int i = 0; i < splitsPerNode; i++){
+            tablesDelta.get(tableId)[i].add(pageBuilder[i].build());
         }
-        currentBytes = newSize;
-
-        //TableData tableData = tables.get(tableId);
-        //tableData.add(inserts);
-        add(tableId, inserts);
         long endTime = System.nanoTime();
         try {
             statisticsWriter.write(String.format("%d, %d, %d, %d, %d, %d, %d, %d\n", DeltaFlagRequest.globalDeltaUpdateCount, insertsBytes, deletesBytes, updatesBytes, insertsCount, deletesCount, updatesCount, (endTime - startTime)/1000));
@@ -462,7 +457,7 @@ public class MemoryPagesStore
         catch (IOException e) {
             e.printStackTrace();
         }
-        return added;
+        return 0; //added; TODO: need to find a good solution here
     }
 
     public List<Page> getPages(
@@ -474,31 +469,6 @@ public class MemoryPagesStore
             OptionalLong limit,
             OptionalDouble sampleRatio)
     {
-        long sleepTime = 1; //sleep for 1 ms
-        while (true) {
-            // replace DeltaFlagRequest.globalDeltaUpdateInProcess with atomic
-            boolean sleep = false;
-            DeltaFlagRequest.deltaFlagLock.readLock().lock();
-            if (DeltaFlagRequest.globalDeltaUpdateInProcess) {
-                sleep = true;
-                if(sleepTime < 1000) {
-                    sleepTime *= 2;
-                }
-            }
-            DeltaFlagRequest.deltaFlagLock.readLock().unlock();
-            try {
-                if (sleep) {
-                    Thread.sleep(sleepTime);
-                }
-                else {
-                    break;
-                }
-            }
-            catch (InterruptedException e) {
-                e.printStackTrace();
-                return null;
-            }
-        }
         // Problems that could arise due to the locking:
         // in TaskSource::setDeltaUpdateFlag the request may timeout if this process here takes too long
         // -> change the timeout times in CoordinatorModule httpClientBinder(binder).bindHttpClient for ForDeltaUpdate
@@ -506,6 +476,8 @@ public class MemoryPagesStore
         // Also the engine might be working on the results of splits gotten before the delta update synchronization was activated
         // We must sure that all the tasks working on this data finish their derived splits before derivations of the delta split reach
         // them as new input
+
+        assert(totalParts == splitsPerNode);
 
         // it takes the DeltaFlagRequest lock such that TaskSource::setDeltaUpdateFlag must wait for the current split to be processed
         synchronized (this) {
@@ -521,12 +493,13 @@ public class MemoryPagesStore
 
             boolean done = false;
             long totalRows = 0;
-            for (int i = partNumber; i < tableData.getPages().size() && !done; i += totalParts) {
+
+            List<UpdatablePage> uPages = tableData.getPages(partNumber);
+            for (UpdatablePage uPage : uPages) {
                 if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
                     continue;
                 }
 
-                UpdatablePage uPage = tableData.getPages().get(i);
                 Page page = null;
 
                 if (limit.isPresent()) {
@@ -572,6 +545,7 @@ public class MemoryPagesStore
         // that:
         // - have smaller value then max(activeTableIds).
         // - are missing from activeTableIds set
+        // TODO: cleanup for hashtables used for delta updates, low priority as it cannot happen during experimental setup
 
         if (activeTableIds.isEmpty()) {
             // if activeTableIds is empty, we cannot determine latestTableId...
@@ -583,8 +557,10 @@ public class MemoryPagesStore
             Map.Entry<Long, TableData> tablePagesEntry = tableDataIterator.next();
             Long tableId = tablePagesEntry.getKey();
             if (tableId < latestTableId && !activeTableIds.contains(tableId)) {
-                for (UpdatablePage removedPage : tablePagesEntry.getValue().getPages()) {
-                    currentBytes -= removedPage.getRetainedSizeInBytes();
+                for(int i = 0; i < splitsPerNode; i++) {
+                    for (UpdatablePage removedPage : tablePagesEntry.getValue().getPages(i)) {
+                        currentBytes -= removedPage.getRetainedSizeInBytes();
+                    }
                 }
                 tableDataIterator.remove();
                 hashTables.remove(tableId);
@@ -606,15 +582,22 @@ public class MemoryPagesStore
 
     private final class TableData
     {
-        private final List<UpdatablePage> pages = new ArrayList<>();
+        private final List<UpdatablePage>[] pages;
         private long rows;
 
+        TableData(int buckets){
+            pages = new ArrayList[buckets];
+            for(int i = 0; i < buckets; i++){
+                pages[i] = new ArrayList<>();
+            }
+        }
+
         // TODO: check that it is synchronized
-        public synchronized int add(UpdatablePage page)
+        public synchronized int add(UpdatablePage page, int bucket)
         {
-            pages.add(page);
+            pages[bucket].add(page);
             rows += page.getPositionCount(); // TODO: does count deleted rows, but it is never used on pages with deleted rows
-            return pages.size();
+            return pages[bucket].size();
         }
         // needs to be only called with a lock held
         public synchronized void decreaseNumberOfRows(int decrease)
@@ -623,14 +606,14 @@ public class MemoryPagesStore
             decreases += decrease;
         }
 
-        private synchronized List<UpdatablePage> getPages()
+        private synchronized List<UpdatablePage> getPages(int bucket)
         {
-            return pages;
+            return pages[bucket];
         }
 
-        private synchronized int getPageNumber()
+        private synchronized int getPageNumber(int bucket)
         {
-            return pages.size();
+            return pages[bucket].size();
         }
 
         private synchronized long getRows()
@@ -643,9 +626,11 @@ public class MemoryPagesStore
     {
         public int position;
         public int pageNr;
+        public int bucket;
 
-        public TableDataPosition(int pageNr, int position)
+        public TableDataPosition(int bucket, int pageNr, int position)
         {
+            this.bucket = bucket;
             this.pageNr = pageNr;
             this.position = position;
         }
