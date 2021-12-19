@@ -53,15 +53,10 @@ import io.trino.spi.QueryId;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.BlockEncodingSerde;
 import io.trino.spi.connector.ColumnSchema;
-import io.trino.spi.eventlistener.TableInfo;
 import io.trino.spi.type.Type;
 import io.trino.sql.analyzer.Output;
-import io.trino.sql.planner.InputExtractor;
-import io.trino.sql.planner.PlanFragment;
-import io.trino.sql.planner.SubPlan;
 import io.trino.sql.tree.DeltaUpdate;
 import io.trino.sql.tree.Expression;
-import io.trino.sql.tree.Table;
 import io.trino.transaction.TransactionManager;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
@@ -238,10 +233,7 @@ public class DeltaUpdateTask
         processSourceAndTarget();
         ExecuteInserts(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput);
         //addSuccessCallback(phaseIFuture, () -> ExecuteQueryUpdates(accessControl, stateMachine.getSession(), parameters, stateMachine::setOutput));
-        SettableFuture<Void> finalFuture = SettableFuture.create();
-        addSuccessCallback(phaseIFuture, () -> unmarkDeltaUpdate(finalFuture, stateMachine::setOutput));
-        //return phaseIIFuture;
-        return finalFuture;
+        return phaseIFuture;
     }
 
     public void ExecuteQueryUpdates(AccessControl accessControl, Session session, List<Expression> parameters,  Consumer<Optional<Output>> outputConsumer)
@@ -332,164 +324,6 @@ public class DeltaUpdateTask
         // unmarkDeltaUpdate(phaseIIFuture, outputConsumer);
     }
 
-    /**
-     * Unsets flag on all the nodes that use the memory connector.
-     * By setting that flag to false all regular MemoryPagesStore::getPages are again free to continue.
-     */
-    public void unmarkDeltaUpdate(SettableFuture<Void> future, Consumer<Optional<Output>> outputConsumer){
-
-        // TODO: make sure we unmark all that were active when we marked them
-        Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
-        if(memoryNodes.isEmpty()){
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
-        }
-        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(false, DeltaFlagRequest.globalDeltaUpdateCount);
-        List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
-        for (InternalNode node : memoryNodes){
-            // System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
-            URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
-            Request request = preparePost()
-                    .setUri(flagSignalPoint)
-                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.JSON_UTF_8.toString())
-                    .setBodyGenerator(createStaticBodyGenerator(deltaFlagRequestCodec.toJsonBytes(deltaFlagRequest)))
-                    .build();
-            HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>> responseFuture = httpClient.executeAsync(request, createFullJsonResponseHandler(deltaFlagRequestCodec));
-
-            responseFutures.add(responseFuture);
-        }
-        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture= Futures.successfulAsList(responseFutures);
-        Futures.addCallback(allAsListFuture, new FutureCallback<>()
-        {
-            @Override
-            public void onSuccess(@Nullable List<JsonResponse<DeltaFlagRequest>> result)
-            {
-                System.out.println("Unsetting the deltaFlag succeeded");
-                boolean success = true;
-                if (result != null) {
-                    for (JsonResponse<DeltaFlagRequest> res : result) {
-                        if (!res.hasValue()) {
-                            System.out.println("A response from setting the delta flag does not have a result");
-                            success = false;
-                        }
-                        if (res.getStatusCode() != OK.code()) {
-                            System.out.println("Unsetting the delta flag failed with error code: " + res.getStatusCode());
-                            success = false;
-                        }
-                    }
-                }else{
-                    success = false;
-                }
-                if(success){
-                    // start next part of execution
-                    outputConsumer.accept(Optional.empty());
-                    phaseIIFuture.set(null);
-                    System.out.println("SUCCESSFULLY unset the delta update flag on all nodes");
-                    future.set(null);
-                }else{
-                    future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
-                }
-                long endTime = System.nanoTime();
-                try {
-                    statisticsWriter.write(String.format("%d, %d\n", DeltaFlagRequest.globalDeltaUpdateCount, (endTime - startTime)/1000000));
-                    statisticsWriter.flush();
-                    statisticsWriter.close();
-                }
-                catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            @Override
-            public void onFailure(Throwable throwable)
-            {
-                System.out.println("Setting the deltaFlag failed");
-                future.setException(throwable);
-                long endTime = System.nanoTime();
-                try {
-                    statisticsWriter.write(String.format("%d\n", (endTime - startTime)/1000000));
-                    statisticsWriter.close();
-                }
-                catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }, directExecutor());
-    }
-
-    /**
-     * Sets a flag on all the nodes that use the memory connector.
-     * By setting that flag all regular MemoryPagesStore::getPages are blocked until the delta update is finished.
-     */
-    public void markDeltaUpdate(SettableFuture<Void> future){
-        // Could add a flag or state to QueryState / StateMachine indicating that a delta update is going on
-        // splits will already be on the nodes, so this is mute unless we inform first all queries and have them
-        // then inform all their tasks
-
-        // Or we inform all nodes that run a memoryDB that they need to block further page polls
-        //TODO: Need to store them such that we can check in unmarkDeltaUpdate that we unmarked all of them successfully
-        Set<InternalNode> memoryNodes = this.internalNodeManager.getActiveConnectorNodes(new CatalogName("memory"));
-        if(memoryNodes.isEmpty()){
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, "There should be at least one node running the memory plugin");
-        }
-        // the assumption is that there is only ever one delta update at a time
-        DeltaFlagRequest.globalDeltaUpdateCount += 1;
-        DeltaFlagRequest deltaFlagRequest = new DeltaFlagRequest(true, DeltaFlagRequest.globalDeltaUpdateCount);
-        List<HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>>> responseFutures = new ArrayList<>();
-        for (InternalNode node : memoryNodes){
-            System.out.println("sending delta update Flag request to: "+ node.getNodeIdentifier());
-            URI flagSignalPoint = this.locationFactory.createDeltaFlagLocation(node);
-            Request request = preparePost()
-                    .setUri(flagSignalPoint)
-                    .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.JSON_UTF_8.toString())
-                    .setBodyGenerator(createStaticBodyGenerator(deltaFlagRequestCodec.toJsonBytes(deltaFlagRequest)))
-                    .build();
-            HttpClient.HttpResponseFuture<JsonResponse<DeltaFlagRequest>> responseFuture = httpClient.executeAsync(request, createFullJsonResponseHandler(deltaFlagRequestCodec));
-
-            responseFutures.add(responseFuture);
-        }
-        ListenableFuture<List<JsonResponse<DeltaFlagRequest>>> allAsListFuture= Futures.successfulAsList(responseFutures);
-        Futures.addCallback(allAsListFuture, new FutureCallback<>()
-        {
-            @Override
-            public void onSuccess(@Nullable List<JsonResponse<DeltaFlagRequest>> result)
-            {
-                System.out.println("Setting the deltaFlag succeeded");
-                boolean success = true;
-                if (result != null) {
-                    for (JsonResponse<DeltaFlagRequest> res : result) {
-                        if (!res.hasValue()) {
-                            System.out.println("A response from setting the delta flag does not have a result");
-                            success = false;
-                        }
-                        if (res.getStatusCode() != OK.code()) {
-                            System.out.println("Setting the delta flag failed with error code: " + res.getStatusCode());
-                            success = false;
-                        }
-                    }
-                }else{
-                    success = false;
-                }
-                if(success){
-                    // start next part of execution
-                    //outputConsumer.accept(Optional.empty());
-                    //phaseIIFuture.set(null);
-                    System.out.println("SUCCESSFULLY set the delta update flag on all nodes");
-                    future.set(null);
-                }else{
-                    future.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Could not set the delta flag on some of the nodes"));
-                }
-
-            }
-
-            @Override
-            public void onFailure(Throwable throwable)
-            {
-                System.out.println("Setting the deltaFlag failed");
-                future.setException(throwable);
-            }
-        }, directExecutor());
-    }
-
 
     private void ExecuteInserts(AccessControl accessControl, Session session, List<Expression> parameters, Consumer<Optional<Output>> outputConsumer)
     {
@@ -530,10 +364,6 @@ public class DeltaUpdateTask
             targetMap.put(tableSchema.getTable().getTableName(), target);
         }
 
-        // Before we add the Delta data to the tables we need to switch the deltaData flag
-        // Need to do it before the loop as it is otherwise executed on every iteration
-        SettableFuture<Void> settableFuture = SettableFuture.create();
-        markDeltaUpdate(settableFuture);
 
         for (TableHandle source : sourceTableH) {
             // based on visitInsert of StatementAnalyzer
@@ -610,33 +440,19 @@ public class DeltaUpdateTask
             //INSERT INTO memory.d1.test
             //SELECT * FROM memory.d2.test;
             // TODO: Does this work for every loop iteration or only on the first one?
-            Futures.addCallback(settableFuture,  new FutureCallback<>()
-            {
-
-                @Override
-                public void onSuccess(@Nullable Void result)
-                {
-                    QualifiedObjectName tQON = targetSchema.getQualifiedName();
-                    QualifiedObjectName sQON = sourceSchema.getQualifiedName();
-                    //SqlParser sqlParser = new SqlParser();
-                    String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString());
-                    QueryId queryId = dispatchManager.createQueryId();
-                    Slug slug = Slug.createNew();
-                    ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, slug, context, query);
-                    queryFutures.put(queryId, queryFuture);
-                    synchronized (this) {
-                        allDone.put(queryId, false);
-                    }
-                    // TODO: replcace successCallback, with Futures.addCallback
-                    addSuccessCallback(queryFuture, () -> exitFlushing(queryId, outputConsumer));
-                }
-
-                @Override
-                public void onFailure(Throwable t)
-                {
-
-                }
-            }, directExecutor());
+            QualifiedObjectName tQON = targetSchema.getQualifiedName();
+            QualifiedObjectName sQON = sourceSchema.getQualifiedName();
+            //SqlParser sqlParser = new SqlParser();
+            String query = String.format("INSERT INTO %s SELECT * FROM %s", tQON.toString(), sQON.toString());
+            QueryId queryId = dispatchManager.createQueryId();
+            Slug slug = Slug.createNew();
+            ListenableFuture<Void> queryFuture = dispatchManager.createQuery(queryId, slug, context, query);
+            queryFutures.put(queryId, queryFuture);
+            synchronized (this) {
+                allDone.put(queryId, false);
+            }
+            // TODO: replcace successCallback, with Futures.addCallback
+            addSuccessCallback(queryFuture, () -> exitFlushing(queryId, outputConsumer));
         }
     }
 
@@ -686,7 +502,7 @@ public class DeltaUpdateTask
                     allDone.put(queryId, true);
                     if (allDone.values().stream().reduce(true, (a,b) -> a && b)){
                         // documentation warns of not doing this when holding a lock
-                        //outputConsumer.accept(Optional.empty());
+                        outputConsumer.accept(Optional.empty());
                         boolean tvalue = phaseIFuture.set(null);
                         System.out.println("Queries finished: " + tvalue);
                     }

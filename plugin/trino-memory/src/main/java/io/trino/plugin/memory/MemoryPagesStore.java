@@ -486,10 +486,11 @@ public class MemoryPagesStore
                 throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
             }
             TableData tableData = tables.get(tableId);
-            if (tableData.getRows() != expectedRows) {
+            // TODO: Currently cannot support it as addDelta does not directly change the data.
+            /*if (tableData.getRows() != expectedRows) {
                 throw new TrinoException(MISSING_DATA,
                         format("Expected to find [%s] rows on a worker, but found [%s]. Table had [%d] decreases.", expectedRows, tableData.getRows(), decreases));
-            }
+            }*/
 
             boolean done = false;
             long totalRows = 0;
