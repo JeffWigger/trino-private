@@ -48,10 +48,13 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -99,13 +102,19 @@ public class DispatchManager
 
     private final List<CreateQueryStore> batchList = new LinkedList<CreateQueryStore>();
 
-    private final List<ListenableFuture<Void>> batchFuturesList= new LinkedList<ListenableFuture<Void>>();
+    private final List<QueryId> batchedQueries = new ArrayList<>();
+
+    private final List<ListenableFuture<Void>> batchFuturesList = new ArrayList<>();
 
     private static final Logger log = Logger.get(DispatchManager.class);
 
     public final ReentrantLock reentrantLock = new ReentrantLock(true);
 
+    public final ReentrantLock deltaupdateLock = new ReentrantLock(true);
+
     //private final AtomicBoolean atomicBoolean = new AtomicBoolean();
+
+    private volatile boolean deltaupdateQueryOn = false;
 
     private final AtomicReference<QueryId> atomicReference = new AtomicReference<>();
 
@@ -160,7 +169,6 @@ public class DispatchManager
                 log.warn(e, "Error scheduling the Batch Tasks");
             }
         }, 200, 200, TimeUnit.MILLISECONDS); // waits for current to finish only then is the timer for the next started.
-
     }
 
     @PreDestroy
@@ -182,8 +190,8 @@ public class DispatchManager
         return queryIdGenerator.createNextQueryId();
     }
 
-    public void startBatch(){
-
+    public void startBatch()
+    {
 
         reentrantLock.lock();
         if (batchFuturesList.isEmpty()) {
@@ -210,28 +218,53 @@ public class DispatchManager
                         cqs.settableFuture.setException(throwable);
                     }
                 }, directExecutor());
+                batchedQueries.add(cqs.queryId);
                 it.remove();
             }
 
-            // Do not care if they finished successfully
-            ListenableFuture<Void> allSucceeded = Futures.whenAllComplete(batchFuturesList).call(() -> null, directExecutor());
+            ArrayList<ListenableFuture<Void>> queriesFinished = new ArrayList<>();
 
-            allSucceeded.addListener(()->{
+            // Do not care if they finished successfully,
+            // Indicates that all of them have been dispatched
+            ListenableFuture<Void> allSucceeded = Futures.whenAllComplete(batchFuturesList).call(() -> {
+                for (int i = 0; i < batchFuturesList.size(); i++) {
+                    ListenableFuture<Void> dispatched = batchFuturesList.get(i);
+                    try {
+                        Futures.getDone(dispatched);
+                        SettableFuture<Void> done = SettableFuture.create();
+                        queriesFinished.add(done);
+                        getQuery(batchedQueries.get(i)).addStateChangeListener(state -> {
+                            if (state.isDone()) {
+                                done.set(null);
+                            }
+                        });
+                    }
+                    catch (ExecutionException | CancellationException e) {
+                        log.warn("Query failed to dispatch: " + batchedQueries.get(i));
+                    }
+                }
+                return null;
+            }, directExecutor());
+
+            allSucceeded.addListener(() -> {
                 // do the delta update
-                ListenableFuture<Void> deltaStart = deltaRequestExchanger.markDeltaUpdate();
-                deltaStart.addListener(()->{
-                    ListenableFuture<Void> deltaEnd = deltaRequestExchanger.unmarkDeltaUpdate();
-                    deltaEnd.addListener(()->{
-                        reentrantLock.lock();
-                        batchFuturesList.clear();
-                        reentrantLock.unlock();
+                Futures.whenAllComplete(queriesFinished).call(() -> {
+                    ListenableFuture<Void> deltaStart = deltaRequestExchanger.markDeltaUpdate();
+                    deltaStart.addListener(() -> {
+                        ListenableFuture<Void> deltaEnd = deltaRequestExchanger.unmarkDeltaUpdate();
+                        deltaEnd.addListener(() -> {
+                            reentrantLock.lock();
+                            batchFuturesList.clear();
+                            batchedQueries.clear();
+                            reentrantLock.unlock();
+                        }, directExecutor());
                     }, directExecutor());
+                    return null;
                 }, directExecutor());
             }, directExecutor());
         }
         reentrantLock.unlock();
     }
-
 
     public ListenableFuture<Void> createQuery(QueryId queryId, Slug slug, SessionContext sessionContext, String query)
     {
@@ -241,18 +274,29 @@ public class DispatchManager
         checkArgument(!query.isEmpty(), "query must not be empty string");
         checkArgument(queryTracker.tryGetQuery(queryId).isEmpty(), "query %s already exists", queryId);
 
-        if(query.startsWith("DELTAUPDATE")){
-            if(atomicReference.compareAndSet(null, queryId)){
-                ListenableFuture<Void> listenableFuture= createQueryBatched(queryId, slug, sessionContext, query);
-                listenableFuture.addListener(()->{
+        if (query.startsWith("DELTAUPDATE")) {
+            // Want: only one deltaupdate going on at a time
+            // No deltaupdates when we apply the deltas.
+            if (atomicReference.compareAndSet(null, queryId)) {
+                deltaupdateLock.lock();
+                deltaupdateQueryOn = true;
+                ListenableFuture<Void> listenableFuture = createQueryBatched(queryId, slug, sessionContext, query);
+                listenableFuture.addListener(() -> {
                     atomicReference.set(null);
+                    deltaupdateLock.lock();
+                    deltaupdateQueryOn = false;
+                    deltaupdateLock.unlock();
                 }, directExecutor());
-            }else{
+                deltaupdateLock.unlock();
+                // TODO: add a return here
+            }
+            else {
                 SettableFuture<Void> settableFuture = SettableFuture.create();
                 settableFuture.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Only one Deltaupdate at a time can happen"));
                 return settableFuture;
             }
-        }else {
+        }
+        else {
             SettableFuture<Void> settableFuture = SettableFuture.create();
             CreateQueryStore store = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
             reentrantLock.lock();
