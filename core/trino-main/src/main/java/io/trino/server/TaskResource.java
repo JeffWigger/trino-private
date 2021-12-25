@@ -156,6 +156,9 @@ public class TaskResource
         DeltaFlagRequest.deltaFlagLock.writeLock().lock();
         DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
         DeltaFlagRequest.globalDeltaUpdateCount = deltaFlagRequest.getDeltaUpdateCount();
+        if(DeltaFlagRequest.globalDeltaUpdateInProcess == true){
+            DeltaFlagRequest.runCallbacks();
+        }
         DeltaFlagRequest.deltaFlagLock.writeLock().unlock();
         //
         System.out.println("Set globalDeltaUpdateInProcess to: "+deltaFlagRequest.getDeltaUpdateInProcess());

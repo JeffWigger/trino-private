@@ -108,15 +108,23 @@ public class DispatchManager
 
     private static final Logger log = Logger.get(DispatchManager.class);
 
-    public final ReentrantLock reentrantLock = new ReentrantLock(true);
+    // locks the batchList
+    public final ReentrantLock batchListLock = new ReentrantLock(true);
 
+    // held during the entire time that the deltas are applied.
     public final ReentrantLock deltaupdateLock = new ReentrantLock(true);
 
     //private final AtomicBoolean atomicBoolean = new AtomicBoolean();
 
-    private volatile boolean deltaupdateQueryOn = false;
-
     private final AtomicReference<QueryId> atomicReference = new AtomicReference<>();
+
+    private CreateQueryStore deferredDeltaUpdate = null;
+
+    // looks the entire defferedDeltaUpdate process, it executes a deltaupdate that comes in whilst the delta is applied.
+    public final ReentrantLock deferredDeltaUpdateLock = new ReentrantLock(true);
+
+    // looks the batchFuturesList
+    public final ReentrantLock batchFuturesListLock = new ReentrantLock(true);
 
     @Inject
     public DispatchManager(
@@ -192,10 +200,18 @@ public class DispatchManager
 
     public void startBatch()
     {
-
-        reentrantLock.lock();
+        batchFuturesListLock.lock();
         if (batchFuturesList.isEmpty()) {
-            Iterator<CreateQueryStore> it = batchList.iterator();
+            batchListLock.lock();
+            // copy the global list such that createQuery can add new queries to the global list
+            List<CreateQueryStore> localBatchList = new ArrayList<CreateQueryStore>(batchList);
+            batchList.clear();
+            batchListLock.unlock();
+
+            if (localBatchList.isEmpty()){
+                return;
+            }
+            Iterator<CreateQueryStore> it = localBatchList.iterator();
             // TODO: check if all queries are finished, keep track of all queries that were started
             // Then start the integration of the delta data
             // When finished, run this next batch
@@ -246,24 +262,67 @@ public class DispatchManager
                 return null;
             }, directExecutor());
 
+            // Starting applying the deltaupdate
             allSucceeded.addListener(() -> {
                 // do the delta update
                 Futures.whenAllComplete(queriesFinished).call(() -> {
+                    // held for the duration of applying the stored deltas
+                    deltaupdateLock.lock();
                     ListenableFuture<Void> deltaStart = deltaRequestExchanger.markDeltaUpdate();
                     deltaStart.addListener(() -> {
                         ListenableFuture<Void> deltaEnd = deltaRequestExchanger.unmarkDeltaUpdate();
                         deltaEnd.addListener(() -> {
-                            reentrantLock.lock();
-                            batchFuturesList.clear();
                             batchedQueries.clear();
-                            reentrantLock.unlock();
+                            batchFuturesListLock.lock();
+                            batchFuturesList.clear();
+                            batchFuturesListLock.unlock();
+
+                            // held for the duration of applying the batch
+                            deltaupdateLock.unlock();
+
+                            // no looks should be held when this function is called
+                            startBlockedDeltaupdate();
                         }, directExecutor());
                     }, directExecutor());
                     return null;
                 }, directExecutor());
             }, directExecutor());
         }
-        reentrantLock.unlock();
+        batchFuturesListLock.unlock();
+    }
+
+    public void startBlockedDeltaupdate(){
+        assert (!deltaupdateLock.isHeldByCurrentThread() && !batchListLock.isHeldByCurrentThread());
+        deferredDeltaUpdateLock.lock();
+        if (deferredDeltaUpdate != null) {
+            assert (atomicReference.get() == null);
+            atomicReference.compareAndSet(null, deferredDeltaUpdate.queryId);
+            CreateQueryStore ddu = deferredDeltaUpdate;
+            ListenableFuture<Void> listenableFuture = createQueryBatched(ddu.queryId, ddu.slug, ddu.sessionContext, ddu.query);
+            Futures.addCallback(listenableFuture, new FutureCallback<>()
+            {
+                @Override
+                public void onSuccess(@org.checkerframework.checker.nullness.qual.Nullable Void result)
+                {
+                    ddu.settableFuture.set(null);
+                    getQuery(ddu.queryId).addStateChangeListener(state -> {
+                        if (state.isDone()) {
+                            assert (atomicReference.get() == ddu.queryId);
+                            atomicReference.compareAndSet(ddu.queryId, null);
+                        }
+                    });
+                }
+
+                @Override
+                public void onFailure(Throwable throwable)
+                {
+                    log.warn("createQuery future failed for the deferred delta update");
+                    ddu.settableFuture.setException(throwable);
+                }
+            }, directExecutor());
+        }
+        deferredDeltaUpdate = null;
+        deferredDeltaUpdateLock.unlock();
     }
 
     public ListenableFuture<Void> createQuery(QueryId queryId, Slug slug, SessionContext sessionContext, String query)
@@ -273,35 +332,56 @@ public class DispatchManager
         requireNonNull(query, "query is null");
         checkArgument(!query.isEmpty(), "query must not be empty string");
         checkArgument(queryTracker.tryGetQuery(queryId).isEmpty(), "query %s already exists", queryId);
-
         if (query.startsWith("DELTAUPDATE")) {
             // Want: only one deltaupdate going on at a time
             // No deltaupdates when we apply the deltas.
-            if (atomicReference.compareAndSet(null, queryId)) {
-                deltaupdateLock.lock();
-                deltaupdateQueryOn = true;
-                ListenableFuture<Void> listenableFuture = createQueryBatched(queryId, slug, sessionContext, query);
-                listenableFuture.addListener(() -> {
-                    atomicReference.set(null);
+
+            // need to hold this lock before calling isLocked
+            deferredDeltaUpdateLock.lock();
+            if(deltaupdateLock.isLocked()) {
+                // should add a queue that holds all deltaupdate queries and only processes the top one
+                // However in my implementation of the leveldb server there will alway only be one deltaupdate at a time
+                if (deferredDeltaUpdate == null) {
+                    SettableFuture<Void> settableFuture = SettableFuture.create();
+                    CreateQueryStore store = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
+                    deferredDeltaUpdate = store;
+                    deferredDeltaUpdateLock.unlock();
+                    return settableFuture;
+                }else{
+                    SettableFuture<Void> settableFuture = SettableFuture.create();
+                    settableFuture.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Only one Deltaupdate can be buffered"));
+                    return settableFuture;
+                }
+            }else {
+                deferredDeltaUpdateLock.unlock();
+                if (atomicReference.compareAndSet(null, queryId)) {
                     deltaupdateLock.lock();
-                    deltaupdateQueryOn = false;
+                    ListenableFuture<Void> listenableFuture = createQueryBatched(queryId, slug, sessionContext, query);
+                    listenableFuture.addListener(() -> {
+                        getQuery(queryId).addStateChangeListener(state -> {
+                            if (state.isDone()) {
+                                assert (atomicReference.get() == queryId);
+                                atomicReference.compareAndSet(queryId, null);
+                            }
+                        });
+                    }, directExecutor());
                     deltaupdateLock.unlock();
-                }, directExecutor());
-                deltaupdateLock.unlock();
-                // TODO: add a return here
-            }
-            else {
-                SettableFuture<Void> settableFuture = SettableFuture.create();
-                settableFuture.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Only one Deltaupdate at a time can happen"));
-                return settableFuture;
+                    // TODO: add a return here
+                    return listenableFuture;
+                }
+                else {
+                    SettableFuture<Void> settableFuture = SettableFuture.create();
+                    settableFuture.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Only one Deltaupdate at a time can happen"));
+                    return settableFuture;
+                }
             }
         }
         else {
             SettableFuture<Void> settableFuture = SettableFuture.create();
             CreateQueryStore store = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
-            reentrantLock.lock();
+            batchListLock.lock();
             batchList.add(store);
-            reentrantLock.unlock();
+            batchListLock.unlock();
             return settableFuture;
         }
     }

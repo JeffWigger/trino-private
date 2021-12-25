@@ -19,6 +19,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.concurrent.GuardedBy;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DeltaFlagRequest
@@ -26,6 +28,18 @@ public class DeltaFlagRequest
     private final boolean deltaUpdateInProcess;
     private final int deltaUpdateCount;
     public static final ReentrantReadWriteLock deltaFlagLock = new ReentrantReadWriteLock(true);
+
+    private static final List<Runnable> deltaUpdateConsumer = new LinkedList<>();
+
+    public static synchronized void registerCallback(Runnable function){
+        deltaUpdateConsumer.add(function);
+    }
+
+    public static synchronized void runCallbacks(){
+        for(Runnable callable : deltaUpdateConsumer){
+            callable.run();
+        }
+    }
 
     // use synchronized(DeltaFlagRequest.class)
     @GuardedBy("deltaFlagLock")

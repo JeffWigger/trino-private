@@ -110,6 +110,7 @@ public class MemoryPagesStore
         catch (IOException e) {
             e.printStackTrace();
         }
+        DeltaFlagRequest.registerCallback(() -> applyDeltas());
 
     }
 
@@ -292,6 +293,9 @@ public class MemoryPagesStore
                             }
                         }else if(row.getUpdateType().getByte(0,0) == Mode.INS.ordinal()){
                             if(tableDataPosition != null){
+                                // TODO: can happen if batch 1 adds a record and then Batch 2 adds the same record, but as a "update"
+                                // after batch 1 was preprocessed batch 2 does not know about the changes in batch 1!
+
                                 // should never happen as we simulate updates as delete and insert
                                 throw new TrinoException(GENERIC_INTERNAL_ERROR, "applyDelta insert with being in hashTables");
                             }else{

@@ -227,9 +227,6 @@ public class CoordinatorModule
         // explain analyze
         binder.bind(ExplainAnalyzeContext.class).in(Scopes.SINGLETON);
 
-        // delta update batch manager
-        binder.bind(DeltaRequestExchanger.class).in(Scopes.SINGLETON);
-
         // execution scheduler
         jsonCodecBinder(binder).bindJsonCodec(TaskInfo.class);
         jsonCodecBinder(binder).bindJsonCodec(TaskStatus.class);
@@ -263,6 +260,9 @@ public class CoordinatorModule
                     config.setRequestTimeout(new Duration(10, SECONDS));
                     config.setMaxConnectionsPerServer(250);
                 });
+
+        // delta update batch manager
+        binder.bind(DeltaRequestExchanger.class).in(Scopes.SINGLETON);
 
         // query execution
         binder.bind(ExecutorService.class).annotatedWith(ForQueryExecution.class)

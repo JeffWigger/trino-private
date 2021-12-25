@@ -36,6 +36,7 @@ import io.trino.connector.CatalogName;
 import io.trino.execution.LocationFactory;
 import io.trino.metadata.InternalNode;
 import io.trino.metadata.InternalNodeManager;
+import io.trino.operator.ForDeltaUpdate;
 import io.trino.spi.DeltaFlagRequest;
 import io.trino.spi.TrinoException;
 import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
@@ -64,7 +65,7 @@ public class DeltaRequestExchanger
     public DeltaRequestExchanger(InternalNodeManager internalNodeManager,
                                 LocationFactory locationFactory,
                                 JsonCodec<DeltaFlagRequest> deltaFlagRequestCodec,
-                                HttpClient httpClient){
+                                @ForDeltaUpdate HttpClient httpClient){
         this.internalNodeManager = internalNodeManager;
         this.locationFactory = locationFactory;
         this.deltaFlagRequestCodec = deltaFlagRequestCodec;
@@ -163,6 +164,8 @@ public class DeltaRequestExchanger
         // Could add a flag or state to QueryState / StateMachine indicating that a delta update is going on
         // splits will already be on the nodes, so this is mute unless we inform first all queries and have them
         // then inform all their tasks
+
+        startTime = System.nanoTime();
 
         SettableFuture<Void> future = SettableFuture.create();
 
