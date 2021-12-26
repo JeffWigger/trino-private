@@ -15,9 +15,14 @@ package io.trino.server;
 
 
 import javax.annotation.Nullable;
+
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -59,7 +64,9 @@ public class DeltaRequestExchanger
     private SettableFuture<Void> phaseIIFuture = SettableFuture.create();
 
     FileWriter statisticsWriter;
-    long startTime;
+    private Path statisticsFilePath;
+    private File file;
+    long startTime = 0;
 
     @Inject
     public DeltaRequestExchanger(InternalNodeManager internalNodeManager,
@@ -70,12 +77,48 @@ public class DeltaRequestExchanger
         this.locationFactory = locationFactory;
         this.deltaFlagRequestCodec = deltaFlagRequestCodec;
         this.httpClient = httpClient;
+
+        newWritter();
+    }
+
+    public void newWritter(){
+        String fileDirectory = "/scratch/wigger/";
+        String statisticsFileName = "DeltaUpdateTask";
+        if (statisticsWriter != null){
+            try {
+                statisticsWriter.close();
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        try {
+            Path dir = Paths.get(fileDirectory);
+            Files.createDirectories(dir);
+            statisticsFilePath = dir.resolve(statisticsFileName);
+            this.file = new File(statisticsFilePath.toString());
+            if(!this.file.exists()){
+                this.file.createNewFile();
+                assert(this.file.exists() && file.canWrite());
+                statisticsWriter = new FileWriter(this.file, true);
+                statisticsWriter.write("UpdateNr,NanoSeconds\n");
+            }else {
+                assert (this.file.exists() && file.canWrite());
+                statisticsWriter = new FileWriter(this.file, true);
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
     }
     /**
      * Unsets flag on all the nodes that use the memory connector.
      * By setting that flag to false all regular MemoryPagesStore::getPages are again free to continue.
      */
     public ListenableFuture<Void> unmarkDeltaUpdate(){
+
+        newWritter();
 
         // TODO: make sure we unmark all that were active when we marked them
         SettableFuture<Void> future = SettableFuture.create();

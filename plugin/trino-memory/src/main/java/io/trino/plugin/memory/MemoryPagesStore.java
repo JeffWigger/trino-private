@@ -94,7 +94,7 @@ public class MemoryPagesStore
         try {
             Path dir = Paths.get(fileDirectory);
             Files.createDirectories(dir);
-            Path statisticsFilePath = dir.resolve(statisticsFileName);
+            Path statisticsFilePath = dir.resolve(BatchIntegrationFileName);
             File file = new File(statisticsFilePath.toString());
             if(!file.exists()){
                 file.createNewFile();
@@ -106,6 +106,16 @@ public class MemoryPagesStore
             assert(integrationFile.exists() && integrationFile.canWrite());
             integrationWriter = new FileWriter(integrationFile, true);
             integrationWriter.write(String.format("UpdateNr,Added,Deleted,MicroSeconds\n"));
+
+
+            statisticsFilePath = dir.resolve(statisticsFileName);
+            File file2 = new File(statisticsFilePath.toString());
+            if(!file2.exists()){
+                file2.createNewFile();
+            }
+            assert(file2.exists() && file.canWrite());
+            statisticsWriter = new FileWriter(file2, true);
+            statisticsWriter.write(String.format("UpdateNr,InsertBytes,DeleteBytes,UpdateBytes,InsertCount,DeleteCount,UpdateCount,MicroSeconds\n"));
         }
         catch (IOException e) {
             e.printStackTrace();
@@ -249,6 +259,51 @@ public class MemoryPagesStore
         return key.slice();
     }
 
+    private String getKeyAsString(long tableId, Page row)
+    {
+        List<ColumnInfo> indecies = this.indices.get(tableId);
+        // 10 is a good enough estimated size
+        StringBuilder key = new StringBuilder();
+        for (ColumnInfo ci : indecies) {
+            if (ci.isPrimaryKey()) {// should always be the case
+                Type type = ci.getType();
+                Block block = row.getBlock(((MemoryColumnHandle) ci.getHandle()).getColumnIndex());
+                // from RecordPageSource
+                Class<?> javaType = type.getJavaType();
+                if (javaType == boolean.class) {
+                    boolean b = type.getBoolean(block, 0);
+                    key.append(b);
+                    key.append("|");
+                }
+                else if (javaType == long.class) {
+                    long l = type.getLong(block, 0);
+                    key.append(l);
+                    key.append("|");
+                }
+                else if (javaType == double.class) {
+                    double d = type.getDouble(block, 0);
+                    key.append(d);
+                    key.append("|");
+                }
+                else if (javaType == Slice.class) {
+                    Slice s = type.getSlice(block, 0);
+                    key.append(s.toStringUtf8());
+                    key.append("|");
+                }
+                else {
+                    // TODO: THIS PROBABLY DOES NOT WORK!
+                    Object o = type.getObject(block, 0);
+                    key.append(o.toString());
+                    key.append("|");
+                }
+            }
+            //else {
+            //  throw new TrinoException(GENERIC_INTERNAL_ERROR, "got index column that is not an index");
+            //}
+        }
+        return key.toString();
+    }
+
     public synchronized void applyDeltas(){
         // we do not further break up the pages, as they should already be small enough, else we need to make sure that we do not split at a deleted followed by an insert
         // as that may simulate an update.
@@ -280,7 +335,7 @@ public class MemoryPagesStore
                         if(row.getUpdateType().getByte(0,0) == Mode.DEL.ordinal()){
                             pageBuilder.deleteRow(k);
                             if(tableDataPosition != null){
-                                UpdatablePage uPage = tableData.pages[tableDataPosition.pageNr].get(tableDataPosition.pageNr);
+                                UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
                                 uPage.deleteRow(tableDataPosition.position);
                                 hashTable.remove(key);
                                 added--;
@@ -289,6 +344,7 @@ public class MemoryPagesStore
                                 prevKey = key;
                                 prevTableDataPosition = tableDataPosition;
                             }else{
+                                System.err.println("Error: key: "+ getKeyAsString(tableId, row));
                                 throw new TrinoException(GENERIC_INTERNAL_ERROR, "applyDelta delete without row in hashTables");
                             }
                         }else if(row.getUpdateType().getByte(0,0) == Mode.INS.ordinal()){
@@ -318,6 +374,9 @@ public class MemoryPagesStore
                     }
                     delTotal += deletes;
                 }
+                // Removing the entries that we just now added from the tablesDelta
+                entry.getValue()[i].clear();
+                assert tablesDelta.get(tableId)[i].size() == 0;
             }
         }
         long endTime = System.nanoTime();
@@ -662,6 +721,7 @@ public class MemoryPagesStore
     public void close(){
         try {
             this.statisticsWriter.close();
+            this.integrationWriter.close();
         }
         catch (IOException e) {
             e.printStackTrace();
