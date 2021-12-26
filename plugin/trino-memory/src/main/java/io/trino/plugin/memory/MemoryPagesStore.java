@@ -50,6 +50,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.nio.file.Paths;
+import java.util.stream.Collectors;
 
 import static io.trino.plugin.memory.MemoryErrorCode.MEMORY_LIMIT_EXCEEDED;
 import static io.trino.plugin.memory.MemoryErrorCode.MISSING_DATA;
@@ -309,6 +310,15 @@ public class MemoryPagesStore
     public synchronized void applyDeltas(){
         // we do not further break up the pages, as they should already be small enough, else we need to make sure that we do not split at a deleted followed by an insert
         // as that may simulate an update.
+        List<Map.Entry<Long, List<DeltaPage>[]>> expList = new ArrayList<>(tablesDelta.entrySet());
+        if(expList.isEmpty()){
+            System.out.println("applyDeltas empty");
+            return;
+        }else {
+            Map.Entry<Long, List<DeltaPage>[]> expl = expList.get(0);
+            System.out.println("applyDeltas: " + expl.getValue()[0].size());
+        }
+
         int added = 0;
         int delTotal = 0;
         long startTime = System.nanoTime();
@@ -387,7 +397,7 @@ public class MemoryPagesStore
                                     //System.out.println("INS After DEL bucket: "+ prevTableDataPosition.bucket + " pageNr: "+ prevTableDataPosition.pageNr + " position: "+ prevTableDataPosition.position);
                                 }else{
                                     // upage already contains the entry
-                                    hashTable.put(key, new TableDataPosition(i, pageNr, pos ));//k - deletes)); // as we will compact the upage
+                                    hashTable.put(key, new TableDataPosition(i, pageNr, pos));//k - deletes)); // as we will compact the upage
                                     pos++;
                                     pageBuilderAddRecord(pageBuilder[i], types, row);
                                 }

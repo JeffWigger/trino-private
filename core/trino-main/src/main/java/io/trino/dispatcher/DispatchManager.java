@@ -218,7 +218,7 @@ public class DispatchManager
                 batchFuturesListLock.unlock();
                 return;
             }
-            log.info("startBatch not empty");
+            log.info("startBatch not empty: "+ localBatchList.size());
             Iterator<CreateQueryStore> it = localBatchList.iterator();
             // TODO: check if all queries are finished, keep track of all queries that were started
             // Then start the integration of the delta data
