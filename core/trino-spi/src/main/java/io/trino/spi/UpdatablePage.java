@@ -118,6 +118,7 @@ public class UpdatablePage
     public void compact()
     {
         // currently not supported
+        //throw new UnsupportedOperationException();
     }
 
     /**

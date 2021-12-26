@@ -21,8 +21,10 @@ import io.trino.spi.DeltaPage;
 import io.trino.spi.DeltaPageBuilder;
 import io.trino.spi.DeltaPageBuilder.Mode;
 import io.trino.spi.Page;
+import io.trino.spi.PageBuilder;
 import io.trino.spi.TrinoException;
 import io.trino.spi.UpdatablePage;
+import io.trino.spi.UpdatablePageBuilder;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.UpdatableBlock;
@@ -321,7 +323,24 @@ public class MemoryPagesStore
                 for(int j = 0; j < numberOfPages; j++){
                     DeltaPage dpage = dPages.get(j);
                     int entries = dpage.getPositionCount();
-                    UpdatablePage pageBuilder = make_updatable(dpage, tableId);
+
+                    int cols = dpage.getChannelCount();
+                    int size = dpage.getPositionCount();
+
+                    ArrayList<Type> types = new ArrayList<>(cols);
+
+                    // extract the types of each column, and create updatableBlocks of the right type
+                    for (int c = 0; c < cols; c++) {
+                        ColumnInfo ci = indices.get(tableId).get(c);
+                        Type type = ci.getType();
+                        types.add(type);
+                    }
+                    UpdatablePageBuilder pageBuilder[] = new UpdatablePageBuilder[splitsPerNode];
+                    for(int t = 0; t < splitsPerNode; t++) {
+                        pageBuilder[t] = new UpdatablePageBuilder(types);
+                    }
+                    int pos = 0;
+                    //UpdatablePage pageBuilder = make_updatable(dpage, tableId);
                     Slice prevKey = null;
                     TableDataPosition prevTableDataPosition = null;
                     int deletes = 0;
@@ -333,10 +352,11 @@ public class MemoryPagesStore
                         TableDataPosition tableDataPosition = hashTable.getOrDefault(key, null);
 
                         if(row.getUpdateType().getByte(0,0) == Mode.DEL.ordinal()){
-                            pageBuilder.deleteRow(k);
+                            //pageBuilder.deleteRow(k);
                             if(tableDataPosition != null){
                                 UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
                                 uPage.deleteRow(tableDataPosition.position);
+                                //System.out.println("DEL bucket: "+ tableDataPosition.bucket + " pageNr: "+ tableDataPosition.pageNr + " position: "+ tableDataPosition.position);
                                 hashTable.remove(key);
                                 added--;
                                 deletes++;
@@ -364,9 +384,12 @@ public class MemoryPagesStore
                                     UpdatablePage uPage = tableData.pages[prevTableDataPosition.bucket].get(prevTableDataPosition.pageNr);
                                     uPage.updateRow(row, prevTableDataPosition.position);
                                     tableData.decreaseNumberOfRows(-1); // as it is a simulated update
+                                    //System.out.println("INS After DEL bucket: "+ prevTableDataPosition.bucket + " pageNr: "+ prevTableDataPosition.pageNr + " position: "+ prevTableDataPosition.position);
                                 }else{
                                     // upage already contains the entry
-                                    hashTable.put(key, new TableDataPosition(i, pageNr, k - deletes)); // as we will compact the upage
+                                    hashTable.put(key, new TableDataPosition(i, pageNr, pos ));//k - deletes)); // as we will compact the upage
+                                    pos++;
+                                    pageBuilderAddRecord(pageBuilder[i], types, row);
                                 }
                             }
                             prevKey = null;
@@ -374,8 +397,11 @@ public class MemoryPagesStore
                         } //TODO: upd
                     }
                     delTotal += deletes;
-                    pageBuilder.compact();
-                    tableData.pages[i].add(pageBuilder);
+                    //System.out.println("before compact: " + pageBuilder.getPositionCount());
+                    //pageBuilder.compact();
+                    //System.out.println("after compact: " + pageBuilder.getPositionCount());
+
+                    tableData.pages[i].add(pageBuilder[i].build());
                 }
                 // Removing the entries that we just now added from the tablesDelta
                 entry.getValue()[i].clear();
@@ -425,6 +451,40 @@ public class MemoryPagesStore
             }
         }
         pageBuilder.updateBuilder.writeByte(mode.ordinal());
+    }
+
+    private void pageBuilderAddRecord(UpdatablePageBuilder pageBuilder, ArrayList<Type> types, Page row){
+        // based on RecordPageSource::getNextPage
+        pageBuilder.declarePosition();
+        for (int c = 0; c < types.size(); c++) {
+            BlockBuilder output = pageBuilder.getBlockBuilder(c);
+            if (row.getBlock(c).isNull(0)) {
+                output.appendNull();
+            }
+            else {
+                Type type = types.get(c);
+                Class<?> javaType = type.getJavaType();
+                if (javaType == boolean.class) {
+                    // Uses a byte array
+                    type.writeBoolean(output, type.getBoolean(row.getBlock(c), 0));
+                }
+                else if (javaType == long.class) {
+                    type.writeLong(output, type.getLong(row.getBlock(c), 0));
+                }
+                else if (javaType == double.class) {
+                    // uses long array
+                    type.writeDouble(output, type.getDouble(row.getBlock(c), 0));
+                }
+                else if (javaType == Slice.class) {
+                    Slice slice = type.getSlice(row.getBlock(c), 0);
+                    type.writeSlice(output, slice, 0, slice.length());
+                }
+                else {
+                    System.out.println("MemoryPageStore writes an object!");
+                    type.writeObject(output, type.getObject(row.getBlock(c), 0));
+                }
+            }
+        }
     }
 
     public synchronized int addDelta(Long tableId, DeltaPage page)
