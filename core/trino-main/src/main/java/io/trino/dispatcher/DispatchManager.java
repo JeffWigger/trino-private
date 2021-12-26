@@ -353,14 +353,14 @@ public class DispatchManager
         requireNonNull(query, "query is null");
         checkArgument(!query.isEmpty(), "query must not be empty string");
         checkArgument(queryTracker.tryGetQuery(queryId).isEmpty(), "query %s already exists", queryId);
-        if (query.startsWith("DELTAUPDATE")) {
+        if (query.toUpperCase().startsWith("DELTAUPDATE")) {
             log.info("GOT DELTAUPDATE");
             // Want: only one deltaupdate going on at a time
             // No deltaupdates when we apply the deltas.
 
             // need to hold this lock before calling isLocked
             deferredDeltaUpdateLock.lock();
-            if(deltaupdateLock.isLocked()) {
+            if (deltaupdateLock.isLocked()) {
                 // should add a queue that holds all deltaupdate queries and only processes the top one
                 // However in my implementation of the leveldb server there will alway only be one deltaupdate at a time
                 if (deferredDeltaUpdate == null) {
@@ -375,7 +375,7 @@ public class DispatchManager
                     settableFuture.setException(new TrinoException(GENERIC_INTERNAL_ERROR, "Only one Deltaupdate can be buffered"));
                     return settableFuture;
                 }
-            }else {
+            } else {
                 log.info("DELTAUPDATE REGULAR");
                 deferredDeltaUpdateLock.unlock();
                 if (atomicReference.compareAndSet(null, queryId)) {
@@ -401,6 +401,14 @@ public class DispatchManager
                     return settableFuture;
                 }
             }
+        } else if (query.toUpperCase().startsWith("INSERT")){
+            // We assume the inserts (after setup) are entirely caused by the delta update.
+            // otherwise, we would need to prevent them from running when the delta is applied.
+
+            // Also do not care to figure out when INSERT is finished as this is handled by DELTAUPDATE
+            log.info("INSERT QUERY");
+            return createQueryBatched(queryId, slug, sessionContext, query);
+
         }
         else {
             log.info("QUERY REGULAR");

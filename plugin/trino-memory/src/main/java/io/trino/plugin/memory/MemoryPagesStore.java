@@ -204,7 +204,7 @@ public class MemoryPagesStore
             return 0;
         }
         UpdatablePage updatablePage = make_updatable(page, tableId);
-        updatablePage.compact();
+        //updatablePage.compact();
 
         long newSize = currentBytes + updatablePage.getRetainedSizeInBytes();
         if (maxBytes < newSize) {
@@ -313,7 +313,8 @@ public class MemoryPagesStore
         // TODO add timing, and logging
         for(Map.Entry<Long, List<DeltaPage>[]> entry : tablesDelta.entrySet()){
             long tableId = entry.getKey();
-
+            Map<Slice, TableDataPosition> hashTable = hashTables.get(tableId);
+            TableData tableData = tables.get(tableId);
             for(int i = 0; i < splitsPerNode; i++) {
                 List<DeltaPage> dPages = entry.getValue()[i];
                 int numberOfPages = dPages.size();
@@ -324,14 +325,13 @@ public class MemoryPagesStore
                     Slice prevKey = null;
                     TableDataPosition prevTableDataPosition = null;
                     int deletes = 0;
+                    int pageNr = tableData.getPageNumber(i); // updated after every iteration of this j loop
                     for(int k = 0; k < entries; k++){
                         DeltaPage row = dpage.getSingleValuePage(k);
-                        Map<Slice, TableDataPosition> hashTable = hashTables.get(tableId);
+
                         Slice key = getKey(tableId, row);
                         TableDataPosition tableDataPosition = hashTable.getOrDefault(key, null);
 
-                        TableData tableData = tables.get(tableId);
-                        int pageNr = tableData.getPageNumber(i);
                         if(row.getUpdateType().getByte(0,0) == Mode.DEL.ordinal()){
                             pageBuilder.deleteRow(k);
                             if(tableDataPosition != null){
@@ -344,7 +344,7 @@ public class MemoryPagesStore
                                 prevKey = key;
                                 prevTableDataPosition = tableDataPosition;
                             }else{
-                                System.err.println("Error: key: "+ getKeyAsString(tableId, row));
+                                System.err.println("Error: key: "+ getKeyAsString(tableId, row) + " the bucket is: "+ i + " bucket has #pages: " + numberOfPages);
                                 throw new TrinoException(GENERIC_INTERNAL_ERROR, "applyDelta delete without row in hashTables");
                             }
                         }else if(row.getUpdateType().getByte(0,0) == Mode.INS.ordinal()){
@@ -363,6 +363,7 @@ public class MemoryPagesStore
                                     hashTable.put(key, prevTableDataPosition);
                                     UpdatablePage uPage = tableData.pages[prevTableDataPosition.bucket].get(prevTableDataPosition.pageNr);
                                     uPage.updateRow(row, prevTableDataPosition.position);
+                                    tableData.decreaseNumberOfRows(-1); // as it is a simulated update
                                 }else{
                                     // upage already contains the entry
                                     hashTable.put(key, new TableDataPosition(i, pageNr, k - deletes)); // as we will compact the upage
@@ -373,6 +374,8 @@ public class MemoryPagesStore
                         } //TODO: upd
                     }
                     delTotal += deletes;
+                    pageBuilder.compact();
+                    tableData.pages[i].add(pageBuilder);
                 }
                 // Removing the entries that we just now added from the tablesDelta
                 entry.getValue()[i].clear();
@@ -495,7 +498,7 @@ public class MemoryPagesStore
                     else if (page.getUpdateType().getByte(i, 0) == (byte) DeltaPageBuilder.Mode.DEL.ordinal()) { // delete
                         // TODO: what if the same value gets deleted several times in the same delta update ????, this works for the experimental data
                         pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, uPage.getSingleValuePage(tableDataPosition.position), Mode.DEL);
-                        hashTable.remove(key);
+                        //hashTable.remove(key); // do not update it here during delta updates
                         added--;
                         //tableData.decreaseNumberOfRows(1);
                         deletesBytes += row.getSizeInBytes();
