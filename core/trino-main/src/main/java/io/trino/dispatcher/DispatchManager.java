@@ -41,6 +41,7 @@ import io.trino.spi.TrinoException;
 import io.trino.spi.resourcegroups.SelectionContext;
 import io.trino.spi.resourcegroups.SelectionCriteria;
 import io.trino.transaction.TransactionManager;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
 
@@ -59,6 +60,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -102,6 +104,8 @@ public class DispatchManager
 
     private final ScheduledExecutorService batchExecutor;
 
+    private final ScheduledExecutorService deltaupdateExecutor;
+
     private final List<CreateQueryStore> batchList = new LinkedList<CreateQueryStore>();
 
     private final List<QueryId> batchedQueries = new ArrayList<>();
@@ -127,6 +131,9 @@ public class DispatchManager
 
     // looks the batchFuturesList
     public final ReentrantLock batchFuturesListLock = new ReentrantLock(true);
+
+    // only used for code debugging and analysis
+    private AtomicInteger deltaUpdateCounter = new AtomicInteger(0);
 
     @Inject
     public DispatchManager(
@@ -166,6 +173,8 @@ public class DispatchManager
         taskBatcher = newScheduledThreadPool(1, threadsNamed("task-batcher-%s"));
 
         batchExecutor = newScheduledThreadPool(1, threadsNamed("batcher-executor-%s"));
+
+        deltaupdateExecutor = newScheduledThreadPool(1, threadsNamed("delta-executor-%s"));
     }
 
     @PostConstruct
@@ -181,6 +190,15 @@ public class DispatchManager
                 log.warn(e, "Error scheduling the Batch Tasks");
             }
         }, 200, 200, TimeUnit.MILLISECONDS); // waits for current to finish only then is the timer for the next started.
+
+        deltaupdateExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                scheduleDelta();
+            }
+            catch (Throwable e) {
+                log.warn(e, "Error scheduling the deltaupdateExecutor");
+            }
+        }, 10, 10, TimeUnit.MILLISECONDS); // waits for current to finish only then is the timer for the next started.
     }
 
     @PreDestroy
@@ -200,6 +218,10 @@ public class DispatchManager
     public QueryId createQueryId()
     {
         return queryIdGenerator.createNextQueryId();
+    }
+
+    public void scheduleDelta(){
+
     }
 
     public void startBatch()
@@ -293,6 +315,7 @@ public class DispatchManager
                             log.info("after the lock");
                             batchFuturesList.clear();
                             batchFuturesListLock.unlock();
+                            log.info(String.format("During the batch processing we got %d deltaupdates", deltaUpdateCounter.getAndSet(0)));
                             // held for the duration of applying the batch
                             deltaupdateLock.unlock();
 
@@ -380,18 +403,32 @@ public class DispatchManager
                 deferredDeltaUpdateLock.unlock();
                 if (atomicReference.compareAndSet(null, queryId)) {
                     deltaupdateLock.lock();
+                    deltaUpdateCounter.incrementAndGet();
                     ListenableFuture<Void> listenableFuture = createQueryBatched(queryId, slug, sessionContext, query);
-                    listenableFuture.addListener(() -> {
-                        log.info("deltaupdate query dispatched");
-                        getQuery(queryId).addStateChangeListener(state -> {
-                            if (state.isDone()) {
-                                assert (atomicReference.get() == queryId);
-                                log.info("deltaupdate query is done");
-                                atomicReference.compareAndSet(queryId, null);
-                            }
-                        });
-                    }, directExecutor());
-                    deltaupdateLock.unlock();
+                    Futures.addCallback(listenableFuture, new FutureCallback<Void>() {
+                                @Override
+                                public void onSuccess(@Nullable Void result)
+                                {
+                                    log.info("deltaupdate query dispatched");
+                                    getQuery(queryId).addStateChangeListener(state -> {
+                                        if (state.isDone()) {
+                                            assert (atomicReference.get() == queryId);
+                                            log.info("deltaupdate query is done");
+                                            atomicReference.compareAndSet(queryId, null);
+                                            deltaupdateLock.unlock();
+                                        }
+                                    });
+                                }
+
+                                @Override
+                                public void onFailure(Throwable t)
+                                {
+                                    log.info("deltaupdate query dispatch failed");
+                                    atomicReference.compareAndSet(queryId, null);
+                                    deltaupdateLock.unlock();
+                                }
+                            }, directExecutor());
+                    //deltaupdateLock.unlock(); // TODO: Should this be in the above listener, atm the applying could start before this deltaupdate is finished ?????????????????????????????????????
                     // TODO: add a return here
                     return listenableFuture;
                 }
