@@ -156,7 +156,8 @@ public class TaskResource
         DeltaFlagRequest.deltaFlagLock.writeLock().lock();
         DeltaFlagRequest.globalDeltaUpdateInProcess = deltaFlagRequest.getDeltaUpdateInProcess();
         DeltaFlagRequest.globalDeltaUpdateCount = deltaFlagRequest.getDeltaUpdateCount();
-        if(DeltaFlagRequest.globalDeltaUpdateInProcess == true){
+        if(DeltaFlagRequest.globalDeltaUpdateInProcess){
+            System.out.println("TaskResource DeltaFlagRequest::runCallbacks: "+DeltaFlagRequest.callbackCount());
             DeltaFlagRequest.runCallbacks();
         }
         DeltaFlagRequest.deltaFlagLock.writeLock().unlock();

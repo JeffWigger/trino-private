@@ -354,8 +354,8 @@ public class DispatchManager
             }, directExecutor());
 
             // Starting applying the deltaupdate
-            allSucceeded.addListener(() -> {
-                log.info("All queries of the batch are done");
+            //allSucceeded.addListener(() -> {
+                //log.info("All queries dispatched queries have been added to the waiting queue");
                 // do the delta update
                 Futures.whenAllComplete(queriesFinished).call(() -> {
                     // held for the duration of applying the stored deltas
@@ -384,47 +384,10 @@ public class DispatchManager
                     }, batchExecutor);
                     return null;
                 }, batchExecutor);
-            }, batchExecutor);
+            //}, batchExecutor);
         }
         //log.info("finished startBatch");
         batchFuturesListLock.unlock();
-    }
-
-    public void startBlockedDeltaupdate(){
-        log.info("startBlockedDeltaupdate");
-        assert (!deltaupdateLock.isHeldByCurrentThread() && !batchListLock.isHeldByCurrentThread());
-        deferredDeltaUpdateLock.lock();
-        if (deferredDeltaUpdate != null) {
-            assert (atomicReference.get() == null);
-            atomicReference.compareAndSet(null, deferredDeltaUpdate.queryId);
-            CreateQueryStore ddu = deferredDeltaUpdate;
-            ListenableFuture<Void> listenableFuture = createQueryBatched(ddu.queryId, ddu.slug, ddu.sessionContext, ddu.query);
-            Futures.addCallback(listenableFuture, new FutureCallback<>()
-            {
-                @Override
-                public void onSuccess(@org.checkerframework.checker.nullness.qual.Nullable Void result)
-                {
-                    log.info("deferred deltaupdate is dispatched");
-                    ddu.settableFuture.set(null);
-                    getQuery(ddu.queryId).addStateChangeListener(state -> {
-                        if (state.isDone()) {
-                            assert (atomicReference.get() == ddu.queryId);
-                            log.info("deferred deltaupdate is done");
-                            atomicReference.compareAndSet(ddu.queryId, null);
-                        }
-                    });
-                }
-
-                @Override
-                public void onFailure(Throwable throwable)
-                {
-                    log.warn("createQuery future failed for the deferred delta update");
-                    ddu.settableFuture.setException(throwable);
-                }
-            }, directExecutor());
-        }
-        deferredDeltaUpdate = null;
-        deferredDeltaUpdateLock.unlock();
     }
 
     public ListenableFuture<Void> createQuery(QueryId queryId, Slug slug, SessionContext sessionContext, String query)
@@ -443,8 +406,7 @@ public class DispatchManager
             if (atomicReference.compareAndSet(null, queryId)){
                 SettableFuture<Void> settableFuture = SettableFuture.create();
                 deferredDeltaUpdateLock.lock(); // TODO: may be doable lock free
-                CreateQueryStore store = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
-                deferredDeltaUpdate = store;
+                deferredDeltaUpdate = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
                 deltaUpdateCounter.incrementAndGet();
                 deferredDeltaUpdateLock.unlock();
 
@@ -464,7 +426,7 @@ public class DispatchManager
 
         }
         else {
-            log.info("QUERY REGULAR");
+            log.info("QUERY REGULAR: "+ query);
             SettableFuture<Void> settableFuture = SettableFuture.create();
             CreateQueryStore store = new CreateQueryStore(queryId, slug, sessionContext, query, settableFuture);
             batchListLock.lock();

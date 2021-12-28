@@ -35,6 +35,10 @@ public class DeltaFlagRequest
         deltaUpdateConsumer.add(function);
     }
 
+    public static synchronized int callbackCount(){
+        return deltaUpdateConsumer.size();
+    }
+
     public static synchronized void runCallbacks(){
         for(Runnable callable : deltaUpdateConsumer){
             callable.run();
