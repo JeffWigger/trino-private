@@ -41,7 +41,6 @@ import io.trino.spi.TrinoException;
 import io.trino.spi.resourcegroups.SelectionContext;
 import io.trino.spi.resourcegroups.SelectionCriteria;
 import io.trino.transaction.TransactionManager;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
 
@@ -59,7 +58,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -135,7 +133,11 @@ public class DispatchManager
     // only used for code debugging and analysis
     private AtomicInteger deltaUpdateCounter = new AtomicInteger(0);
 
-    private final AtomicInteger deltaOngoing = new AtomicInteger(0);
+    private final AtomicInteger deltaState = new AtomicInteger(0);
+
+    private final AtomicInteger batchState = new AtomicInteger(0);
+
+    private final AtomicInteger deltaupdateSynchronizer = new AtomicInteger(0); // 0 is neural, 1 is apply, 2 is delta update
 
     @Inject
     public DispatchManager(
@@ -223,17 +225,21 @@ public class DispatchManager
     }
 
     public void scheduleDelta(){
-        if(deltaOngoing.get() == 0) { // function can only be called again once this call is finished (the futures may not yet be finished)
+        if(deltaState.get() == 0) { // function can only be called again once this call is finished (the futures may not yet be finished)
             if (atomicReference.get() != null) {
                 log.info("scheduleDelta exec");
-                boolean success = deltaOngoing.compareAndSet(0,1);
+                if (deltaupdateSynchronizer.compareAndExchange(0, 2) != 0 ){
+                    log.error("cannot start scheduleDelta as apply delta is going on.");
+                    return;
+                }
+                boolean success = deltaState.compareAndSet(0,1);
                 if(!success){
                     log.error("scheduleDelta compareAndSet does not work");
                     return;
                 }
                 // assert (!deltaupdateLock.isHeldByCurrentThread() && !batchListLock.isHeldByCurrentThread());
                 if (deferredDeltaUpdate != null) {
-                    deltaupdateLock.lock();
+                    log.info("Before aq deltaupdateLock");
                     deferredDeltaUpdateLock.lock();
                     CreateQueryStore ddu = deferredDeltaUpdate;
                     assert (atomicReference.get() == ddu.queryId);
@@ -250,7 +256,7 @@ public class DispatchManager
                                     assert (atomicReference.get() == ddu.queryId);
                                     log.info("deferred deltaupdate is done");
                                     atomicReference.compareAndSet(ddu.queryId, null);
-                                    boolean success = deltaOngoing.compareAndSet(1, 2);
+                                    boolean success = deltaState.compareAndSet(1, 2);
                                     if(!success){
                                         log.error("scheduleDelta compareAndSet state 1->2 did not work");
                                     }
@@ -265,28 +271,36 @@ public class DispatchManager
                         {
                             log.warn("createQuery future failed for the deferred delta update");
                             ddu.settableFuture.setException(throwable);
+                            boolean success = deltaState.compareAndSet(1, 2);
+                            if(!success){
+                                log.error("scheduleDelta onFailure compareAndSet state 1->2 did not work");
+                            }
                         }
                     }, directExecutor()); // deltaupdateExecutor did not solve the lock issue
                 }
                 else {
                     log.error("Deferred DeltaUpdate is null");
                 }
-                deferredDeltaUpdateLock.unlock();
+
             }
-        } else if(deltaOngoing.get() == 2) {
-            deltaupdateLock.unlock();
-            boolean success = deltaOngoing.compareAndSet(2,0);
+        } else if(deltaState.get() == 2) {
+            //deltaupdateLock.unlock();
+            if (deltaupdateSynchronizer.compareAndExchange(2, 0) != 2 ){
+                log.error("cannot turn off scheduleDelta as deltaupdateSynchronizer changed unexpectedly");
+                return;
+            }
+            boolean success = deltaState.compareAndSet(2,0);
             if(!success){
                 log.error("scheduleDelta compareAndSet state 2->0 did not work");
             }
+            deferredDeltaUpdateLock.unlock();
         }
     }
 
     public void startBatch()
     {
-        //log.info("start startBatch");
-        batchFuturesListLock.lock();
-        if (batchFuturesList.isEmpty()) {
+        log.info("start startBatch: " + batchState.get());
+        if (batchState.compareAndExchange(0,1) == 0) {
             batchListLock.lock();
             // copy the global list such that createQuery can add new queries to the global list
             List<CreateQueryStore> localBatchList = new ArrayList<CreateQueryStore>(batchList);
@@ -294,8 +308,7 @@ public class DispatchManager
             batchListLock.unlock();
 
             if (localBatchList.isEmpty()){
-                //log.info("unlock batchFuturesListLock");
-                batchFuturesListLock.unlock();
+                batchState.compareAndExchange(1, 0);
                 return;
             }
             log.info("startBatch not empty: "+ localBatchList.size());
@@ -354,13 +367,26 @@ public class DispatchManager
             }, directExecutor());
 
             // Starting applying the deltaupdate
-            //allSucceeded.addListener(() -> {
+            allSucceeded.addListener(() -> {
                 //log.info("All queries dispatched queries have been added to the waiting queue");
                 // do the delta update
+                log.info("before whenAllComplete");
                 Futures.whenAllComplete(queriesFinished).call(() -> {
                     // held for the duration of applying the stored deltas
-                    log.info("All queries of the batch are done inner");
-                    deltaupdateLock.lock();
+                    log.info("All queries of the batch are done inner: ");
+                    //deltaupdateLock.lock();
+                    // spin waiting
+                    while(deltaupdateSynchronizer.compareAndExchange(0,1) != 0){
+                        // pass, ev. sleep
+                        try {
+                            Thread.sleep(10);
+                        }
+                        catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        log.info("deltaupdateSynchronizer was not 0");
+                    };
+
                     ListenableFuture<Void> deltaStart = deltaRequestExchanger.markDeltaUpdate();
                     deltaStart.addListener(() -> {
                         log.info("finished marking the delta");
@@ -368,26 +394,30 @@ public class DispatchManager
                         deltaEnd.addListener(() -> {
                             log.info("finished unmarking the delta");
                             batchedQueries.clear();
-                            log.info("before the lock");
-                            batchFuturesListLock.lock();
-                            log.info("after the lock");
                             batchFuturesList.clear();
-                            batchFuturesListLock.unlock();
                             log.info(String.format("During the batch processing we got %d deltaupdates", deltaUpdateCounter.getAndSet(0)));
                             // held for the duration of applying the batch
-                            deltaupdateLock.unlock();
-
+                            while(deltaupdateSynchronizer.compareAndExchange(1,0) != 1){
+                                try {
+                                    Thread.sleep(10);
+                                }
+                                catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                                log.info("deltaupdateSynchronizer was not 1");
+                            }
                             // no looks should be held when this function is called
                             // startBlockedDeltaupdate();
                             log.info("Finished entire apply batch");
+                            if(batchState.compareAndExchange(1,0) == 1){
+                                log.info("batchState got screwed");
+                            }
                         }, batchExecutor);
                     }, batchExecutor);
                     return null;
                 }, batchExecutor);
-            //}, batchExecutor);
+            }, batchExecutor);
         }
-        //log.info("finished startBatch");
-        batchFuturesListLock.unlock();
     }
 
     public ListenableFuture<Void> createQuery(QueryId queryId, Slug slug, SessionContext sessionContext, String query)

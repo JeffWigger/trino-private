@@ -612,7 +612,7 @@ public class MemoryPagesStore
         // Also the engine might be working on the results of splits gotten before the delta update synchronization was activated
         // We must sure that all the tasks working on this data finish their derived splits before derivations of the delta split reach
         // them as new input
-
+        System.out.println("getPages: "+partNumber);
         assert(totalParts == splitsPerNode);
 
         // it takes the DeltaFlagRequest lock such that TaskSource::setDeltaUpdateFlag must wait for the current split to be processed
