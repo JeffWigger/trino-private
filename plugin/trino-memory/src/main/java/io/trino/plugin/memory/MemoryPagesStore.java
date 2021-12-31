@@ -27,7 +27,9 @@ import io.trino.spi.UpdatablePage;
 import io.trino.spi.UpdatablePageBuilder;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.block.IntArrayBlock;
 import io.trino.spi.block.UpdatableBlock;
+import io.trino.spi.block.UpdatableIntArrayBlock;
 import io.trino.spi.type.Type;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -45,6 +47,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -77,7 +80,7 @@ public class MemoryPagesStore
     // TODO: chose a good initial capacity
     // This will be unaccounted for in the tracked storage size
     @GuardedBy("this")
-    private final Map<Long, Map<Slice, TableDataPosition>> hashTables = new HashMap<>();
+    private final Map<Long, Map<Slice, TableDataPosition>> hashTables = new ConcurrentHashMap<>();
     // private Map<Long, Map<Slice, TableDataPosition>> hashTablesDelta = new HashMap<>();,preprocessing deltas has little value, as for merging the hashTable we do the same amount of work, or could use putall, but it is not more efficient, it calls put for all entreis
     private final Map<Long, List<ColumnInfo>> indices = new HashMap<>();
 
@@ -145,7 +148,7 @@ public class MemoryPagesStore
             }
             tablesDelta.put(tableId, pages);
             // TODO: add cleanup for this
-            hashTables.put(tableId, new HashMap<>());
+            hashTables.put(tableId, new ConcurrentHashMap<>(100)); // some initial capacity
             this.indices.put(tableId, indices);
         }
     }
@@ -156,7 +159,6 @@ public class MemoryPagesStore
      */
     public int add(Long tableId, Page page)
     {
-        System.out.println("adding a page: "+ Thread.currentThread().getName());
         int added = 0;
         int index = 0;
         int positionCount = page.getPositionCount();
@@ -180,12 +182,18 @@ public class MemoryPagesStore
 
         // checking the hashTable
         Map<Slice, TableDataPosition> htable = hashTables.get(tableId);
-        if (htable.isEmpty()) {
+
+        // we are not changing the underlying map as this may cause race conditions
+        /*if (htable.isEmpty()) {
             htable = new HashMap<Slice, TableDataPosition>((int) (pageSize * 1.3));
             hashTables.put(tableId, htable);
+        }*/
+        if (htable == null){
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, "htable was null");
         }
         int bucket = nextBucket();
-        int pageNr = tableData.getPageNumber(bucket); // + 1; getPageNumber returns 0 for the first page that gets added.
+        int pageNr = tableData.addDummy(bucket);//tableData.getPageNumber(bucket); // + 1; getPageNumber returns 0 for the first page that gets added.
+        // add the fake page
         for (int i = 0; i < pageSize; i++) {
             Page row = page.getSingleValuePage(i);
             Slice key = getKey(tableId, row);
@@ -202,7 +210,7 @@ public class MemoryPagesStore
 
                 // Best solution for now is to delete the old record
                 // TODO: give unique lock
-                //tableData.lock(tableDataPosition.bucket);
+                tableData.lock(tableDataPosition.bucket);
                 UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
                 uPage.deleteRow(tableDataPosition.position);
                 // Now we add the entry in the new page to the hash table
@@ -210,7 +218,7 @@ public class MemoryPagesStore
                 tableData.decreaseNumberOfRows(1);
                 htable.put(key, new TableDataPosition(bucket, pageNr, i));
                 added++;
-                //tableData.unlock(tableDataPosition.bucket);
+                tableData.unlock(tableDataPosition.bucket);
                 continue;
             }
             htable.put(key, new TableDataPosition(bucket, pageNr, i));
@@ -229,7 +237,7 @@ public class MemoryPagesStore
         }
         currentBytes = newSize;
 
-        tableData.add(updatablePage, bucket);
+        tableData.replaceDummy(updatablePage, bucket, pageNr);
         return added;
     }
 
@@ -769,9 +777,29 @@ public class MemoryPagesStore
         // TODO: check that it is synchronized
         public synchronized int add(UpdatablePage page, int bucket)
         {
+            lock(bucket);
             pages[bucket].add(page);
             rows += page.getPositionCount(); // TODO: does count deleted rows, but it is never used on pages with deleted rows
-            return pages[bucket].size();
+            int size =  pages[bucket].size();
+            unlock(bucket);
+            return size;
+        }
+
+        public synchronized int addDummy(int bucket){
+            lock(bucket);
+            int pageNr = pages[bucket].size();
+            pages[bucket].add(new UpdatablePage(new IntArrayBlock(0, Optional.empty(), new int[0])));
+            unlock(bucket);
+            return pageNr;
+        }
+
+        public synchronized int replaceDummy(UpdatablePage page, int bucket, int pageNr){
+            lock(bucket);
+            pages[bucket].set(pageNr, page);
+            rows += page.getPositionCount(); // TODO: does count deleted rows, but it is never used on pages with deleted rows
+            int size = pages[bucket].size();
+            unlock(bucket);
+            return size;
         }
         // needs to be only called with a lock held
         public synchronized void decreaseNumberOfRows(int decrease)
