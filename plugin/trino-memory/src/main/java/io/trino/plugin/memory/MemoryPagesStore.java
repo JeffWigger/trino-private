@@ -75,6 +75,7 @@ public class MemoryPagesStore
 
     private final Map<Long, TableData> tables = new HashMap<>();
     private final Map<Long, List<DeltaPage>[]> tablesDelta = new HashMap<>();
+    private final ReentrantLock tablesDeltaWriteLock = new ReentrantLock();
 
     // Hashtables that map primary keys to the storage position.
     // TODO: chose a good initial capacity
@@ -331,6 +332,7 @@ public class MemoryPagesStore
 
     /**
      * This function is also applied in a single thread. So locking is not really necessary.
+     * Confirmed that this gets only called once
      */
     public void applyDeltas(){
         // we do not further break up the pages, as they should already be small enough, else we need to make sure that we do not split at a deleted followed by an insert
@@ -526,9 +528,12 @@ public class MemoryPagesStore
      * It also only gets called once per table
      * Only works if a delta update does not contain updates to another delta update of this batch.
      * This runs while other queries are running, so parallelling it would yield only marginal gains.
+     *
+     * It is read only so we do not need to add any locks, with the exception of tablesDelta
      */
-    public synchronized int addDelta(Long tableId, DeltaPage page)
+    public int addDelta(Long tableId, DeltaPage page)
     {
+        System.out.println("addDelta: " + Thread.currentThread().getName());
         long startTime = System.nanoTime();
         long updatesBytes = 0;
         long insertsBytes = 0;
@@ -550,11 +555,12 @@ public class MemoryPagesStore
             Type type = ci.getType();
             types.add(type);
         }
-        DeltaPageBuilder pageBuilder[] = new DeltaPageBuilder[splitsPerNode];
+        DeltaPageBuilder[] pageBuilder = new DeltaPageBuilder[splitsPerNode];
         for(int i = 0; i < splitsPerNode; i++) {
             pageBuilder[i] = new DeltaPageBuilder(types);
         }
         int added = 0;
+        int bucket = 0;
         for (int i = 0; i < size; i++) {
             Page row = page.getSingleValuePage(i);
             // assumes the entries actually exist, what if not.
@@ -576,8 +582,8 @@ public class MemoryPagesStore
                     continue;
                 }
                 added++;
-                int bucket = nextBucket();
-                pageBuilderAddRecord(pageBuilder[bucket], types, row, Mode.INS);
+                pageBuilderAddRecord(pageBuilder[bucket % 8], types, row, Mode.INS);
+                bucket++;
                 insertsBytes += row.getSizeInBytes();
                 insertsCount += 1;
             }
@@ -611,9 +617,11 @@ public class MemoryPagesStore
                 }
             }
         }
+        tablesDeltaWriteLock.lock();
         for(int i = 0; i < splitsPerNode; i++){
             tablesDelta.get(tableId)[i].add(pageBuilder[i].build());
         }
+        tablesDeltaWriteLock.unlock();
         long endTime = System.nanoTime();
         try {
             statisticsWriter.write(String.format("%d, %d, %d, %d, %d, %d, %d, %d\n", DeltaFlagRequest.globalDeltaUpdateCount, insertsBytes, deletesBytes, updatesBytes, insertsCount, deletesCount, updatesCount, (endTime - startTime)/1000));
