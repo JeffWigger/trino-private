@@ -364,13 +364,26 @@ public class DispatchManager
                     }
                 }
                 return null;
-            }, directExecutor());
+            }, batchExecutor);
 
             // Starting applying the deltaupdate
             allSucceeded.addListener(() -> {
                 //log.info("All queries dispatched queries have been added to the waiting queue");
                 // do the delta update
                 log.info("before whenAllComplete");
+                /*if (batchedQueries.size() <3) {
+                    for (int jj = 0; jj < 200; jj++) {
+                        try {
+                            Thread.sleep(100);
+                            for (QueryId qid : batchedQueries) {
+                                System.out.println(jj + " QUERY STATE: " + getQueryInfo(qid).getState());
+                            }
+                        }
+                        catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }*/
                 Futures.whenAllComplete(queriesFinished).call(() -> {
                     // held for the duration of applying the stored deltas
                     log.info("All queries of the batch are done inner: ");

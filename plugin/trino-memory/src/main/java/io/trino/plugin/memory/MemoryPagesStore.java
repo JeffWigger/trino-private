@@ -617,6 +617,7 @@ public class MemoryPagesStore
 
         // it takes the DeltaFlagRequest lock such that TaskSource::setDeltaUpdateFlag must wait for the current split to be processed
         synchronized (this) {
+            System.out.println("getPages got lock: "+partNumber);
             ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
             if (!contains(tableId)) {
                 throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
@@ -664,6 +665,7 @@ public class MemoryPagesStore
                 // columns get copied here
                 partitionedPages.add(getColumns(page, columnIndexes));
             }
+            System.out.println("getPages end: "+partNumber);
             return partitionedPages.build();
         }
     }

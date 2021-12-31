@@ -219,8 +219,9 @@ public class QueuedStatementResource
 
     private ListenableFuture<Response> getStatus(Query query, long token, Duration maxWait, UriInfo uriInfo)
     {
-        long waitMillis = WAIT_ORDERING.min(MAX_WAIT_TIME, maxWait).toMillis();
-
+        long waitMillis = WAIT_ORDERING.min(MAX_WAIT_TIME, maxWait).toMillis(); // this is only 1000, which is to short for batching
+        waitMillis = 100000;
+        //log.warn("wait time in getStatus is only: "+ waitMillis);
         return FluentFuture.from(query.waitForDispatched())
                 // wait for query to be dispatched, up to the wait timeout
                 .withTimeout(waitMillis, MILLISECONDS, timeoutExecutor)
