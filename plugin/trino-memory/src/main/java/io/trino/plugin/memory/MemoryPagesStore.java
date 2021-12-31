@@ -48,8 +48,10 @@ import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.nio.file.Paths;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static io.trino.plugin.memory.MemoryErrorCode.MEMORY_LIMIT_EXCEEDED;
@@ -148,8 +150,13 @@ public class MemoryPagesStore
         }
     }
 
-    public synchronized int add(Long tableId, Page page)
+    /**
+     * For the test setup this function gets only called in the beginning so strictly speaking no locking would be necessary as it gets called by a single thread
+     * due to leveldb connector only having one split
+     */
+    public int add(Long tableId, Page page)
     {
+        System.out.println("adding a page: "+ Thread.currentThread().getName());
         int added = 0;
         int index = 0;
         int positionCount = page.getPositionCount();
@@ -194,11 +201,17 @@ public class MemoryPagesStore
 
 
                 // Best solution for now is to delete the old record
+                // TODO: give unique lock
+                //tableData.lock(tableDataPosition.bucket);
                 UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
                 uPage.deleteRow(tableDataPosition.position);
                 // Now we add the entry in the new page to the hash table
                 added--;
                 tableData.decreaseNumberOfRows(1);
+                htable.put(key, new TableDataPosition(bucket, pageNr, i));
+                added++;
+                //tableData.unlock(tableDataPosition.bucket);
+                continue;
             }
             htable.put(key, new TableDataPosition(bucket, pageNr, i));
             added++;
@@ -206,6 +219,7 @@ public class MemoryPagesStore
         if (added == 0) {
             return 0;
         }
+        // no locking necessary, but only because we know that this function is only called once per table (Not counting the recursion)
         UpdatablePage updatablePage = make_updatable(page, tableId);
         //updatablePage.compact();
 
@@ -307,10 +321,13 @@ public class MemoryPagesStore
         return key.toString();
     }
 
-    public synchronized void applyDeltas(){
+    /**
+     * This function is also applied in a single thread. So locking is not really necessary.
+     */
+    public void applyDeltas(){
         // we do not further break up the pages, as they should already be small enough, else we need to make sure that we do not split at a deleted followed by an insert
         // as that may simulate an update.
-        List<Map.Entry<Long, List<DeltaPage>[]>> expList = new ArrayList<>(tablesDelta.entrySet());
+        List< Map.Entry<Long, List<DeltaPage>[]>> expList = new ArrayList<>(tablesDelta.entrySet());
         if(expList.isEmpty()){
             System.out.println("applyDeltas empty");
             return;
@@ -497,6 +514,11 @@ public class MemoryPagesStore
         }
     }
 
+    /**
+     * It also only gets called once per table
+     * Only works if a delta update does not contain updates to another delta update of this batch.
+     * This runs while other queries are running, so parallelling it would yield only marginal gains.
+     */
     public synchronized int addDelta(Long tableId, DeltaPage page)
     {
         long startTime = System.nanoTime();
@@ -537,7 +559,6 @@ public class MemoryPagesStore
                     // The entry with this key value already exists, so we treat this insert like an update!
                     TableData tableData = tables.get(tableId);
                     UpdatablePage uPage = tableData.pages[tableDataPosition.bucket].get(tableDataPosition.pageNr);
-
                     // TODO: what if the same value gets deleted several times in the same delta update ????, this works for the experimental data
                     pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, uPage.getSingleValuePage(tableDataPosition.position), Mode.DEL);
                     pageBuilderAddRecord(pageBuilder[tableDataPosition.bucket], types, row, Mode.INS);
@@ -596,6 +617,9 @@ public class MemoryPagesStore
         return 0; //added; TODO: need to find a good solution here
     }
 
+    /**
+     * lock not needed as it is never executed together with a query that changes the underlying data
+     */
     public List<Page> getPages(
             Long tableId,
             int partNumber,
@@ -616,59 +640,59 @@ public class MemoryPagesStore
         assert(totalParts == splitsPerNode);
 
         // it takes the DeltaFlagRequest lock such that TaskSource::setDeltaUpdateFlag must wait for the current split to be processed
-        synchronized (this) {
-            System.out.println("getPages got lock: "+partNumber);
-            ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
-            if (!contains(tableId)) {
-                throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
+        //synchronized (this) {
+        System.out.println("getPages got lock: "+partNumber);
+        ImmutableList.Builder<Page> partitionedPages = ImmutableList.builder();
+        if (!contains(tableId)) {
+            throw new TrinoException(MISSING_DATA, "Failed to find table on a worker.");
+        }
+        TableData tableData = tables.get(tableId);
+        // TODO: Currently cannot support it as addDelta does not directly change the data.
+        /*if (tableData.getRows() != expectedRows) {
+            throw new TrinoException(MISSING_DATA,
+                    format("Expected to find [%s] rows on a worker, but found [%s]. Table had [%d] decreases.", expectedRows, tableData.getRows(), decreases));
+        }*/
+
+        boolean done = false;
+        long totalRows = 0;
+
+        List<UpdatablePage> uPages = tableData.getPages(partNumber);
+        for (UpdatablePage uPage : uPages) {
+            if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
+                continue;
             }
-            TableData tableData = tables.get(tableId);
-            // TODO: Currently cannot support it as addDelta does not directly change the data.
-            /*if (tableData.getRows() != expectedRows) {
-                throw new TrinoException(MISSING_DATA,
-                        format("Expected to find [%s] rows on a worker, but found [%s]. Table had [%d] decreases.", expectedRows, tableData.getRows(), decreases));
-            }*/
 
-            boolean done = false;
-            long totalRows = 0;
+            Page page = null;
 
-            List<UpdatablePage> uPages = tableData.getPages(partNumber);
-            for (UpdatablePage uPage : uPages) {
-                if (sampleRatio.isPresent() && ThreadLocalRandom.current().nextDouble() >= sampleRatio.getAsDouble()) {
-                    continue;
-                }
-
-                Page page = null;
-
-                if (limit.isPresent()) {
-                    // && totalRows > limit.getAsLong()
-                    if (limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0) {
-                        // can safely read everything from the page
-                        page = uPage.getEntriesFrom(0, uPage.getPositionCount());
-                        totalRows += page.getPositionCount();
-                    }
-                    else {
-                        // Get only what is needed
-                        page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
-                        totalRows += page.getPositionCount();
-                        if (totalRows > limit.getAsLong()) {
-                            throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
-                        }
-                    }
-                }
-                else {
-                    // creating a genuine Page, not a Updatable page
-                    // this forces a copy, do not want to return the actual data
+            if (limit.isPresent()) {
+                // && totalRows > limit.getAsLong()
+                if (limit.getAsLong() - totalRows - uPage.getPositionCount() >= 0) {
+                    // can safely read everything from the page
                     page = uPage.getEntriesFrom(0, uPage.getPositionCount());
                     totalRows += page.getPositionCount();
                 }
-                // columns get copied here
-                partitionedPages.add(getColumns(page, columnIndexes));
+                else {
+                    // Get only what is needed
+                    page = uPage.getEntriesFrom(0, (int) (limit.getAsLong() - totalRows));
+                    totalRows += page.getPositionCount();
+                    if (totalRows > limit.getAsLong()) {
+                        throw new TrinoException(GENERIC_INTERNAL_ERROR, "got more than the limit");
+                    }
+                }
             }
-            System.out.println("getPages end: "+partNumber);
-            return partitionedPages.build();
+            else {
+                // creating a genuine Page, not a Updatable page
+                // this forces a copy, do not want to return the actual data
+                page = uPage.getEntriesFrom(0, uPage.getPositionCount());
+                totalRows += page.getPositionCount();
+            }
+            // columns get copied here
+            partitionedPages.add(getColumns(page, columnIndexes));
         }
+        System.out.println("getPages end: "+partNumber);
+        return partitionedPages.build();
     }
+    //}
 
     public synchronized boolean contains(Long tableId)
     {
@@ -722,13 +746,24 @@ public class MemoryPagesStore
     private final class TableData
     {
         private final List<UpdatablePage>[] pages;
+        private final ReentrantLock[] locks;
         private long rows;
 
         TableData(int buckets){
             pages = new ArrayList[buckets];
+            locks = new ReentrantLock[buckets];
             for(int i = 0; i < buckets; i++){
+                locks[i] = new ReentrantLock();
                 pages[i] = new ArrayList<>();
             }
+        }
+
+        public void lock(int bucket){
+            locks[bucket].lock();
+        }
+
+        public void unlock(int bucket){
+            locks[bucket].unlock();
         }
 
         // TODO: check that it is synchronized

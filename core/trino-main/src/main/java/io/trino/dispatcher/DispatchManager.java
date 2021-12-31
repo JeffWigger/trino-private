@@ -299,7 +299,7 @@ public class DispatchManager
 
     public void startBatch()
     {
-        log.info("start startBatch: " + batchState.get());
+        // log.info("start startBatch: " + batchState.get());
         if (batchState.compareAndExchange(0,1) == 0) {
             batchListLock.lock();
             // copy the global list such that createQuery can add new queries to the global list
