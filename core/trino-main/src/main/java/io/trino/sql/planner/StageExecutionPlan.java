@@ -32,6 +32,7 @@ public class StageExecutionPlan
 {
     private final PlanFragment fragment;
     private final Map<PlanNodeId, SplitSource> splitSources;
+    private final Map<PlanNodeId, SplitSource> splitDeltaSources;
     private final List<StageExecutionPlan> subStages;
     private final Optional<List<String>> fieldNames;
     private final Map<PlanNodeId, TableInfo> tables;
@@ -39,10 +40,13 @@ public class StageExecutionPlan
     public StageExecutionPlan(
             PlanFragment fragment,
             Map<PlanNodeId, SplitSource> splitSources,
-            List<StageExecutionPlan> subStages, Map<PlanNodeId, TableInfo> tables)
+            Map<PlanNodeId, SplitSource> splitDeltaSources,
+            List<StageExecutionPlan> subStages,
+            Map<PlanNodeId, TableInfo> tables)
     {
         this.fragment = requireNonNull(fragment, "fragment is null");
         this.splitSources = requireNonNull(splitSources, "splitSources is null");
+        this.splitDeltaSources = requireNonNull(splitDeltaSources, "splitSources is null");
         this.subStages = ImmutableList.copyOf(requireNonNull(subStages, "subStages is null"));
 
         fieldNames = (fragment.getRoot() instanceof OutputNode) ?
@@ -68,6 +72,11 @@ public class StageExecutionPlan
         return splitSources;
     }
 
+    public Map<PlanNodeId, SplitSource> getSplitDeltaSources()
+    {
+        return splitDeltaSources;
+    }
+
     public List<StageExecutionPlan> getSubStages()
     {
         return subStages;
@@ -80,7 +89,7 @@ public class StageExecutionPlan
 
     public StageExecutionPlan withBucketToPartition(Optional<int[]> bucketToPartition)
     {
-        return new StageExecutionPlan(fragment.withBucketToPartition(bucketToPartition), splitSources, subStages, tables);
+        return new StageExecutionPlan(fragment.withBucketToPartition(bucketToPartition), splitSources, splitDeltaSources, subStages, tables);
     }
 
     @Override
@@ -89,6 +98,7 @@ public class StageExecutionPlan
         return toStringHelper(this)
                 .add("fragment", fragment)
                 .add("splitSources", splitSources)
+                .add("splitDeltaSources", splitDeltaSources)
                 .add("subStages", subStages)
                 .toString();
     }

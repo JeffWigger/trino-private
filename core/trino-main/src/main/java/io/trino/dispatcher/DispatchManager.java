@@ -152,8 +152,7 @@ public class DispatchManager
             SessionPropertyDefaults sessionPropertyDefaults,
             SessionPropertyManager sessionPropertyManager,
             QueryManagerConfig queryManagerConfig,
-            DispatchExecutor dispatchExecutor,
-            DeltaRequestExchanger deltaRequestExchanger)
+            DispatchExecutor dispatchExecutor)
     {
         this.queryIdGenerator = requireNonNull(queryIdGenerator, "queryIdGenerator is null");
         this.queryPreparer = requireNonNull(queryPreparer, "queryPreparer is null");

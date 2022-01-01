@@ -238,6 +238,7 @@ public class StateMachine<T>
     private void fireStateChangedListener(T newState, StateChangeListener<T> stateChangeListener)
     {
         try {
+            //System.out.println(String.format("%s %s %s",name, newState, stateChangeListener));
             stateChangeListener.stateChanged(newState);
         }
         catch (Throwable e) {

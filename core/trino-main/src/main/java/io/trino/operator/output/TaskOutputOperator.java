@@ -29,6 +29,7 @@ import io.trino.spi.type.Type;
 import io.trino.sql.planner.plan.PlanNodeId;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import static io.trino.execution.buffer.PageSplitterUtil.splitPage;
@@ -98,6 +99,7 @@ public class TaskOutputOperator
     private final PagesSerde serde;
     private ListenableFuture<Void> isBlocked = NOT_BLOCKED;
     private boolean finished;
+    private AtomicInteger counter = new AtomicInteger(0);
 
     public TaskOutputOperator(OperatorContext operatorContext, OutputBuffer outputBuffer, Function<Page, Page> pagePreprocessor, PagesSerdeFactory serdeFactory)
     {
@@ -153,6 +155,9 @@ public class TaskOutputOperator
         }
 
         page = pagePreprocessor.apply(page);
+
+        //System.out.println("TaskOutputOperator: "+counter.incrementAndGet());
+
 
         outputBuffer.enqueue(splitAndSerializePage(page));
         operatorContext.recordOutput(page.getSizeInBytes(), page.getPositionCount());

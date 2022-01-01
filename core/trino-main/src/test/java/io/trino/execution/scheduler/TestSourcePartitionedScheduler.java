@@ -606,6 +606,7 @@ public class TestSourcePartitionedScheduler
         return new StageExecutionPlan(
                 testFragment,
                 ImmutableMap.of(tableScanNodeId, new ConnectorAwareSplitSource(CONNECTOR_ID, splitSource)),
+                ImmutableMap.of(),
                 ImmutableList.of(),
                 ImmutableMap.of(tableScanNodeId, new TableInfo(new QualifiedObjectName("test", "test", "test"), TupleDomain.all())));
     }

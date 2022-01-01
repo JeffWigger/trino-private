@@ -37,7 +37,11 @@ public enum TaskState
      */
     FLUSHING(false),
     /**
-     * Task has finished executing and all output has been consumed.
+     * Task has finished executing and all output has been consumed, but it is kept alive for Delta Updates.
+     */
+    COMPLETED(false),
+    /**
+     * Task has finished executing and all output has been consumed. And the coordinator informed that the Query is finished.
      */
     FINISHED(true),
     /**

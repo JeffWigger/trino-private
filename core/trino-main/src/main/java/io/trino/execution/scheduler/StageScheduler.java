@@ -27,6 +27,14 @@ public interface StageScheduler
      */
     ScheduleResult schedule();
 
+    default ScheduleResult scheduleDelta(){
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+
+    default void resetDelta(){
+        throw new UnsupportedOperationException(getClass().getName());
+    }
+
     @Override
     default void close() {}
 }

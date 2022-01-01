@@ -25,6 +25,7 @@ import io.trino.execution.StateMachine.StateChangeListener;
 import io.trino.execution.buffer.OutputBuffers;
 import io.trino.execution.scheduler.SplitSchedulerStats;
 import io.trino.failuredetector.FailureDetector;
+import io.trino.metadata.DeltaSplit;
 import io.trino.metadata.InternalNode;
 import io.trino.metadata.Split;
 import io.trino.server.DynamicFilterService;
@@ -73,7 +74,7 @@ import static java.util.Objects.requireNonNull;
 @ThreadSafe
 public final class SqlStageExecution
 {
-    private final StageStateMachine stateMachine;
+    public final StageStateMachine stateMachine;
     private final RemoteTaskFactory remoteTaskFactory;
     private final NodeTaskMap nodeTaskMap;
     private final boolean summarizeTaskInfo;
@@ -240,6 +241,11 @@ public final class SqlStageExecution
         stateMachine.transitionToScheduling();
     }
 
+    public void beginDeltaScheduling()
+    {
+        stateMachine.transitionToScheduling();
+    }
+
     public synchronized void transitionToSchedulingSplits()
     {
         stateMachine.transitionToSchedulingSplits();
@@ -255,7 +261,7 @@ public final class SqlStageExecution
             stateMachine.transitionToFlushing();
         }
         if (finishedTasks.containsAll(allTasks)) {
-            stateMachine.transitionToFinished();
+            stateMachine.transitionToCompleted();
         }
 
         for (PlanNodeId partitionedSource : stateMachine.getFragment().getPartitionedSources()) {
@@ -403,6 +409,7 @@ public final class SqlStageExecution
     {
         requireNonNull(node, "node is null");
         requireNonNull(splits, "splits is null");
+        boolean delta = splits.values().stream().allMatch(split -> split instanceof DeltaSplit);
 
         if (stateMachine.getState().isDone()) {
             return ImmutableSet.of();
@@ -543,7 +550,7 @@ public final class SqlStageExecution
                     stateMachine.transitionToFlushing();
                 }
                 if (finishedTasks.containsAll(allTasks)) {
-                    stateMachine.transitionToFinished();
+                    stateMachine.transitionToCompleted();
                 }
             }
         }
@@ -568,6 +575,7 @@ public final class SqlStageExecution
 
     private synchronized void checkAllTaskFinal()
     {
+        // TODO needs this to change too?
         if (stateMachine.getState().isDone() && tasksWithFinalInfo.containsAll(allTasks)) {
             List<TaskInfo> finalTaskInfos = getAllTasks().stream()
                     .map(RemoteTask::getTaskInfo)

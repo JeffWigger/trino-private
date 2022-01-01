@@ -42,6 +42,8 @@ public class LevelDBConnectorFactory
     {
         requireNonNull(requiredConfig, "requiredConfig is null");
 
+        System.out.println("GETTING LevelDBConnector");
+
         return new LevelDBConnector();
     }
 }

@@ -53,6 +53,7 @@ public class RecordPageSourceProvider
         RecordSet recordSet = recordSetProvider.getRecordSet(transaction, session, split, table, columns);
         // System.out.println("ConnectorRecordSetProvider: "+ recordSet.getClass().getName());
         if (recordSet instanceof DeltaRecordSet){
+            System.out.println("ConnectorRecordSetProvider: DELTA");
             return new DeltaRecordPageSource((DeltaRecordSet) recordSet);
         }else{
             return new RecordPageSource(recordSet);

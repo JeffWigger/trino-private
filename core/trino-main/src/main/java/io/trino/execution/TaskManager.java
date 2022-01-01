@@ -97,6 +97,12 @@ public interface TaskManager
             Map<DynamicFilterId, Domain> dynamicFilterDomains);
 
     /**
+     * finishes the task, frees its resources, calls all the relevant noMore functions
+     */
+    TaskInfo finishTask(
+            TaskId taskId);
+
+    /**
      * Cancels a task.  If the task does not already exist, it is created and then
      * canceled.
      */

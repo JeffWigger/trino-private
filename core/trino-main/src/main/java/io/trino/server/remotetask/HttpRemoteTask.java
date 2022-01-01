@@ -16,6 +16,7 @@ package io.trino.server.remotetask;
 import com.google.common.base.Ticker;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.net.HttpHeaders;
@@ -115,6 +116,7 @@ public final class HttpRemoteTask
     private final PlanFragment planFragment;
 
     private final AtomicLong nextSplitId = new AtomicLong();
+    private final AtomicLong nextDeltaSplitId = new AtomicLong();
 
     private final RemoteTaskStats stats;
     private final TaskInfoFetcher taskInfoFetcher;
@@ -133,15 +135,31 @@ public final class HttpRemoteTask
 
     @GuardedBy("this")
     private final SetMultimap<PlanNodeId, ScheduledSplit> pendingSplits = HashMultimap.create();
+
+    @GuardedBy("this")
+    private final SetMultimap<PlanNodeId, ScheduledSplit> pendingDeltaSplits = HashMultimap.create();
+
     private final int maxUnacknowledgedSplits;
     @GuardedBy("this")
     private volatile int pendingSourceSplitCount;
     @GuardedBy("this")
+    private volatile int pendingSourceDeltaSplitCount = 0;
+    @GuardedBy("this")
     private final SetMultimap<PlanNodeId, Lifespan> pendingNoMoreSplitsForLifespan = HashMultimap.create();
+
+    @GuardedBy("this")
+    private final SetMultimap<PlanNodeId, Lifespan> pendingNoMoreDeltaSplitsForLifespan = HashMultimap.create();
     @GuardedBy("this")
     // The keys of this map represent all plan nodes that have "no more splits".
     // The boolean value of each entry represents whether the "no more splits" notification is pending delivery to workers.
     private final Map<PlanNodeId, Boolean> noMoreSplits = new HashMap<>();
+
+
+    @GuardedBy("this")
+    // The keys of this map represent all plan nodes that have "no more splits".
+    // The boolean value of each entry represents whether the "no more splits" notification is pending delivery to workers.
+    private final Map<PlanNodeId, Boolean> noMoreDeltaSplits = new HashMap<>();
+
     @GuardedBy("this")
     private final AtomicReference<OutputBuffers> outputBuffers = new AtomicReference<>();
     private final FutureStateChange<Void> whenSplitQueueHasSpace = new FutureStateChange<>();
@@ -164,6 +182,7 @@ public final class HttpRemoteTask
     private final AtomicBoolean needsUpdate = new AtomicBoolean(true);
     private final AtomicBoolean sendPlan = new AtomicBoolean(true);
 
+    // Do not need an extra one for delta splits
     private final PartitionedSplitCountTracker partitionedSplitCountTracker;
 
     private final AtomicBoolean started = new AtomicBoolean(false);
@@ -395,6 +414,68 @@ public final class HttpRemoteTask
     }
 
     @Override
+    public void addDeltaSplits(Multimap<PlanNodeId, Split> splitsBySource)
+    {
+        requireNonNull(splitsBySource, "splitsBySource is null");
+
+        // only add pending split if not done
+        //if (getTaskStatus().getState().isDone()) {
+          //  return;
+        //}
+
+        boolean needsUpdate = false;
+        for (Entry<PlanNodeId, Collection<Split>> entry : splitsBySource.asMap().entrySet()) {
+            PlanNodeId sourceId = entry.getKey();
+            Collection<Split> splits = entry.getValue();
+
+            checkState(!noMoreDeltaSplits.containsKey(sourceId), "noMoreDeltaSplits has already been set for %s", sourceId);
+            int added = 0;
+            for (Split split : splits) {
+                if (pendingDeltaSplits.put(sourceId, new ScheduledSplit(nextDeltaSplitId.getAndIncrement(), sourceId, split))) {
+                    added++;
+                }
+            }
+            if (planFragment.isPartitionedSources(sourceId)) {
+                pendingSourceDeltaSplitCount += added;
+                partitionedSplitCountTracker.setPartitionedSplitCount(getPartitionedSplitCount());
+            }
+            needsUpdate = true;
+        }
+        updateSplitQueueSpace();
+
+        if (needsUpdate) {
+            triggerUpdate();
+        }
+
+    }
+
+    @Override
+    public void noMoreDeltaSplits(PlanNodeId sourceId)
+    {
+        if (noMoreDeltaSplits.containsKey(sourceId)) {
+            return;
+        }
+
+        noMoreDeltaSplits.put(sourceId, true);
+        triggerUpdate();
+
+    }
+
+    @Override
+    public void noMoreDeltaSplits(PlanNodeId sourceId, Lifespan lifespan)
+    {
+        if (pendingNoMoreDeltaSplitsForLifespan.put(sourceId, lifespan)) {
+            triggerUpdate();
+        }
+
+    }
+
+    @Override
+    public void resetStateDelta(){
+        // TODO: implement and call this function
+    }
+
+    @Override
     public synchronized void setOutputBuffers(OutputBuffers newOutputBuffers)
     {
         if (getTaskStatus().getState().isDone()) {
@@ -434,9 +515,10 @@ public final class HttpRemoteTask
     }
 
     @SuppressWarnings("FieldAccessNotGuarded")
+    // TODO: maybe split up into two functions, this is confusing
     private int getPendingSourceSplitCount()
     {
-        return pendingSourceSplitCount;
+        return pendingSourceSplitCount + pendingSourceDeltaSplitCount;
     }
 
     @Override
@@ -480,27 +562,48 @@ public final class HttpRemoteTask
         }
     }
 
-    private synchronized void processTaskUpdate(TaskInfo newValue, List<TaskSource> sources)
+    private synchronized void processTaskUpdate(TaskInfo newValue, List<TaskSource> sources, boolean isDeltaUpdate)
     {
         updateTaskInfo(newValue);
-
-        // remove acknowledged splits, which frees memory
-        for (TaskSource source : sources) {
-            PlanNodeId planNodeId = source.getPlanNodeId();
-            int removed = 0;
-            for (ScheduledSplit split : source.getSplits()) {
-                if (pendingSplits.remove(planNodeId, split)) {
-                    removed++;
+        if (isDeltaUpdate){
+            // remove acknowledged splits, which frees memory
+            for (TaskSource source : sources) {
+                PlanNodeId planNodeId = source.getPlanNodeId();
+                int removed = 0;
+                for (ScheduledSplit split : source.getSplits()) {
+                    if (pendingDeltaSplits.remove(planNodeId, split)) {
+                        removed++;
+                    }
+                }
+                if (source.isNoMoreSplits()) {
+                    noMoreDeltaSplits.put(planNodeId, false);
+                }
+                for (Lifespan lifespan : source.getNoMoreSplitsForLifespan()) {
+                    pendingNoMoreDeltaSplitsForLifespan.remove(planNodeId, lifespan);
+                }
+                if (planFragment.isPartitionedSources(planNodeId)) {
+                    pendingSourceDeltaSplitCount -= removed;
                 }
             }
-            if (source.isNoMoreSplits()) {
-                noMoreSplits.put(planNodeId, false);
-            }
-            for (Lifespan lifespan : source.getNoMoreSplitsForLifespan()) {
-                pendingNoMoreSplitsForLifespan.remove(planNodeId, lifespan);
-            }
-            if (planFragment.isPartitionedSources(planNodeId)) {
-                pendingSourceSplitCount -= removed;
+        }else {
+            // remove acknowledged splits, which frees memory
+            for (TaskSource source : sources) {
+                PlanNodeId planNodeId = source.getPlanNodeId();
+                int removed = 0;
+                for (ScheduledSplit split : source.getSplits()) {
+                    if (pendingSplits.remove(planNodeId, split)) {
+                        removed++;
+                    }
+                }
+                if (source.isNoMoreSplits()) {
+                    noMoreSplits.put(planNodeId, false);
+                }
+                for (Lifespan lifespan : source.getNoMoreSplitsForLifespan()) {
+                    pendingNoMoreSplitsForLifespan.remove(planNodeId, lifespan);
+                }
+                if (planFragment.isPartitionedSources(planNodeId)) {
+                    pendingSourceSplitCount -= removed;
+                }
             }
         }
         // Update node level split tracker before split queue space to ensure it's up to date before waking up the scheduler
@@ -548,6 +651,7 @@ public final class HttpRemoteTask
         }
 
         List<TaskSource> sources = getSources();
+        boolean isDeltaUpdate = sources.stream().allMatch(TaskSource::isDeltaSource);
         VersionedDynamicFilterDomains dynamicFilterDomains = outboundDynamicFiltersCollector.acknowledgeAndGetNewDomains(sentDynamicFiltersVersion);
 
         // Workers don't need the embedded JSON representation when the fragment is sent
@@ -586,32 +690,49 @@ public final class HttpRemoteTask
 
         Futures.addCallback(
                 future,
-                new SimpleHttpResponseHandler<>(new UpdateResponseHandler(sources, dynamicFilterDomains.getVersion()), request.getUri(), stats),
+                new SimpleHttpResponseHandler<>(new UpdateResponseHandler(sources, dynamicFilterDomains.getVersion(), isDeltaUpdate), request.getUri(), stats),
                 executor);
     }
 
     private synchronized List<TaskSource> getSources()
     {
+        boolean onlyDelta = !pendingDeltaSplits.isEmpty();
         return Stream.concat(planFragment.getPartitionedSourceNodes().stream(), planFragment.getRemoteSourceNodes().stream())
                 .filter(Objects::nonNull)
                 .map(PlanNode::getId)
-                .map(this::getSource)
+                .map(nodeId -> this.getSource(nodeId, onlyDelta))
                 .filter(Objects::nonNull)
                 .collect(toImmutableList());
     }
 
-    private synchronized TaskSource getSource(PlanNodeId planNodeId)
+    private synchronized TaskSource getSource(PlanNodeId planNodeId, boolean onlyDelta)
     {
-        Set<ScheduledSplit> splits = pendingSplits.get(planNodeId);
+
         boolean pendingNoMoreSplits = Boolean.TRUE.equals(this.noMoreSplits.get(planNodeId));
         boolean noMoreSplits = this.noMoreSplits.containsKey(planNodeId);
         Set<Lifespan> noMoreSplitsForLifespan = pendingNoMoreSplitsForLifespan.get(planNodeId);
+        if (!onlyDelta){
+            Set<ScheduledSplit> splits = pendingSplits.get(planNodeId);
+            TaskSource element = null;
+            if (!splits.isEmpty() || !noMoreSplitsForLifespan.isEmpty() || pendingNoMoreSplits) {
+                element = new TaskSource(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits);
+            }
+            return element;
+        }else{
+            Set<ScheduledSplit> splits = pendingDeltaSplits.get(planNodeId);
+            boolean pendingNoMoreDeltaSplits = Boolean.TRUE.equals(this.noMoreDeltaSplits.get(planNodeId));
+            boolean noMoreDeltaSplits = this.noMoreDeltaSplits.containsKey(planNodeId);
+            // lifespans are currently reused
+            Set<Lifespan> noMoreDeltaSplitsForLifespan = pendingNoMoreDeltaSplitsForLifespan.get(planNodeId);
 
-        TaskSource element = null;
-        if (!splits.isEmpty() || !noMoreSplitsForLifespan.isEmpty() || pendingNoMoreSplits) {
-            element = new TaskSource(planNodeId, splits, noMoreSplitsForLifespan, noMoreSplits);
+            TaskSource element = null;
+            if (!splits.isEmpty() || !noMoreDeltaSplitsForLifespan.isEmpty() || pendingNoMoreDeltaSplits) {
+                // it should not contain any updates to normal splits
+                element = new TaskSource(planNodeId, ImmutableSet.of(), ImmutableSet.of(), false, splits, noMoreDeltaSplitsForLifespan, noMoreDeltaSplits);
+            }
+            return element;
         }
-        return element;
+
     }
 
     @Override
@@ -638,7 +759,9 @@ public final class HttpRemoteTask
 
         // clear pending splits to free memory
         pendingSplits.clear();
+        pendingDeltaSplits.clear();
         pendingSourceSplitCount = 0;
+        pendingSourceDeltaSplitCount = 0;
         partitionedSplitCountTracker.setPartitionedSplitCount(getPartitionedSplitCount());
         splitQueueHasSpace = true;
         whenSplitQueueHasSpace.complete(null, executor);
@@ -814,11 +937,13 @@ public final class HttpRemoteTask
     {
         private final List<TaskSource> sources;
         private final long currentRequestDynamicFiltersVersion;
+        private final boolean isDeltaUpdate;
 
-        private UpdateResponseHandler(List<TaskSource> sources, long currentRequestDynamicFiltersVersion)
+        private UpdateResponseHandler(List<TaskSource> sources, long currentRequestDynamicFiltersVersion, boolean isDeltaUpdate)
         {
             this.sources = ImmutableList.copyOf(requireNonNull(sources, "sources is null"));
             this.currentRequestDynamicFiltersVersion = currentRequestDynamicFiltersVersion;
+            this.isDeltaUpdate = isDeltaUpdate;
         }
 
         @Override
@@ -836,7 +961,7 @@ public final class HttpRemoteTask
                     // Remove dynamic filters which were successfully sent to free up memory
                     outboundDynamicFiltersCollector.acknowledge(currentRequestDynamicFiltersVersion);
                     updateStats(currentRequestStartNanos);
-                    processTaskUpdate(value, sources);
+                    processTaskUpdate(value, sources, isDeltaUpdate);
                     updateErrorTracker.requestSucceeded();
                 }
                 finally {

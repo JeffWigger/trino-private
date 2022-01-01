@@ -60,6 +60,7 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.inject.Inject;
 
 import java.io.Closeable;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -105,6 +106,9 @@ public class SqlTaskManager
     private final LocalMemoryManager localMemoryManager;
     private final LoadingCache<QueryId, QueryContext> queryContexts;
     private final LoadingCache<TaskId, SqlTask> tasks;
+
+    @GuardedBy("this")
+    private final List<TaskId> pendingFinishingTasks = new LinkedList<>();
 
     private final SqlTaskIoStats cachedStats = new SqlTaskIoStats();
     private final SqlTaskIoStats finishedTaskStats = new SqlTaskIoStats();
@@ -414,7 +418,47 @@ public class SqlTaskManager
         }
 
         sqlTask.recordHeartbeat();
-        return sqlTask.updateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
+        boolean isDeltaUpdate = sources.stream().allMatch(taskSource -> taskSource.isDeltaSource());
+        if (isDeltaUpdate){
+            return sqlTask.deltaUpdateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
+        }else{
+            return sqlTask.updateTask(session, fragment, sources, outputBuffers, dynamicFilterDomains);
+        }
+    }
+
+    @Override
+    public TaskInfo finishTask(
+            TaskId taskId)
+    {
+        try {
+            return versionEmbedder.embedVersion(() -> doFinishTask(taskId)).call();
+        }
+        catch (Exception e) {
+            throwIfUnchecked(e);
+            // impossible, doFinishTask does not throw checked exceptions
+            throw new RuntimeException(e);
+        }
+    }
+
+    private TaskInfo doFinishTask(
+            TaskId taskId)
+    {
+        requireNonNull(taskId, "taskId is null");
+        // this should not recreate it if it does not exist
+        SqlTask sqlTask = tasks.asMap().getOrDefault(taskId, null);
+        if (sqlTask != null){
+            synchronized (this) {
+                pendingFinishingTasks.add(taskId);
+            }
+            sqlTask.recordHeartbeat();
+            TaskInfo finalTaskInfo = sqlTask.finish();
+            return finalTaskInfo;
+        }else{
+            System.out.println("Task "+ taskId.toString()+"does already not exist");
+            return null;
+        }
+
+
     }
 
     @Override
@@ -471,10 +515,19 @@ public class SqlTaskManager
                 .filter(Objects::nonNull)
                 .forEach(taskInfo -> {
                     TaskId taskId = taskInfo.getTaskStatus().getTaskId();
+                    //taskId.getQueryId()
                     try {
                         DateTime endTime = taskInfo.getStats().getEndTime();
                         if (endTime != null && endTime.isBefore(oldestAllowedTask)) {
                             tasks.asMap().remove(taskId);
+                            synchronized (this){
+                                if (pendingFinishingTasks.contains(taskId)) {
+                                    pendingFinishingTasks.remove(taskId);
+                                }else{
+                                    System.out.println("removed task that was not finished: "+ taskId);
+                                    log.warn("removed task that was not finished: "+ taskId);
+                                }
+                            }
                         }
                     }
                     catch (RuntimeException e) {

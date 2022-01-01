@@ -54,6 +54,7 @@ import static io.airlift.units.DataSize.succinctBytes;
 import static io.airlift.units.Duration.succinctDuration;
 import static io.trino.execution.StageState.ABORTED;
 import static io.trino.execution.StageState.CANCELED;
+import static io.trino.execution.StageState.COMPLETED;
 import static io.trino.execution.StageState.FAILED;
 import static io.trino.execution.StageState.FINISHED;
 import static io.trino.execution.StageState.FLUSHING;
@@ -170,8 +171,14 @@ public class StageStateMachine
         return stageState.setIf(FLUSHING, currentState -> currentState != FLUSHING && !currentState.isDone());
     }
 
+    public boolean transitionToCompleted()
+    {
+        return stageState.setIf(COMPLETED, currentState -> !currentState.isDone());
+    }
+
     public boolean transitionToFinished()
     {
+        // TODO: only allow when all stages are COMPLETED
         return stageState.setIf(FINISHED, currentState -> !currentState.isDone());
     }
 
