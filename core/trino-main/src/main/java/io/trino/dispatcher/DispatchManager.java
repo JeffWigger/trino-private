@@ -44,6 +44,7 @@ import io.trino.transaction.TransactionManager;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
 
+import javax.annotation.Nullable;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
@@ -247,7 +248,7 @@ public class DispatchManager
                     Futures.addCallback(listenableFuture, new FutureCallback<>()
                     {
                         @Override
-                        public void onSuccess(@org.checkerframework.checker.nullness.qual.Nullable Void result)
+                        public void onSuccess(@Nullable Void result)
                         {
                             log.info("deferred deltaupdate is dispatched");
                             ddu.settableFuture.set(null);
@@ -323,7 +324,7 @@ public class DispatchManager
                 Futures.addCallback(listenableFuture, new FutureCallback<>()
                 {
                     @Override
-                    public void onSuccess(@org.checkerframework.checker.nullness.qual.Nullable Void result)
+                    public void onSuccess(@Nullable Void result)
                     {
                         log.info("Batched Query has been dispatched");
                         cqs.settableFuture.set(null);

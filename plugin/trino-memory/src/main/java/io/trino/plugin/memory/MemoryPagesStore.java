@@ -395,7 +395,7 @@ public class MemoryPagesStore
                                 uPage.deleteRow(tableDataPosition.position);
                                 //System.out.println("DEL bucket: "+ tableDataPosition.bucket + " pageNr: "+ tableDataPosition.pageNr + " position: "+ tableDataPosition.position);
                                 hashTable.remove(key);
-                                added--;
+                                //added--;
                                 deletes++;
                                 tableData.decreaseNumberOfRows(1);
                                 prevKey = key;
